@@ -30,7 +30,6 @@ many questions can be packed into a single match.
 
 - No accounts, networking, leaderboards, or multiplayer.
 - No speech synthesis (explicitly declined).
-- No cup/tournament arc (deferred).
 - No penalty-shootout minigame (deferred).
 - No timers or time pressure visible to the player.
 - No word problems in any language.
@@ -98,10 +97,15 @@ only to the new mode.
 Shown at boot. Wordless:
 
 - A grid of eight large buttons showing the digits `5`–`12` (age → starting
-  band).
-- One `⚽` button for plain arcade play with no maths.
+  band). This enters the cup (§13).
+- A row of three `⚽` buttons marked `★`, `★★`, `★★★` for plain arcade play with
+  no maths, at chosen opposition strength (§13.6).
+- A trophy shelf showing cups won (§13.5).
 - Selection persists, so a returning child skips straight in via `↻`; a small
   grid glyph returns to the selector.
+
+Stars carry "easy / normal / hard" without language, which the words themselves
+could not. The layout stays flat — two groups of buttons, no nested menus.
 
 ## 7. Maths content
 
@@ -262,12 +266,16 @@ chosen specifically as reasons to start another match:
 3. **Visible, permanent progress.** Unlocks accumulate and never expire, and
    the next one is always visible as a filling silhouette — there is always a
    near-term reason to play one more.
-4. **The game keeps changing.** Themes, balls and hats alter how it *looks* over
+4. **An unfinished cup.** A tournament three opponents deep is the most concrete
+   "come back tomorrow" in the design (§13). Unlike everything else here it
+   leaves a *specific* thing outstanding rather than a general sense of
+   progress, which is a stronger pull.
+5. **The game keeps changing.** Themes, balls and hats alter how it *looks* over
    time, so it stays novel rather than same-y.
-5. **Escalating spectacle.** The streak tiers give something to chase within a
+6. **Escalating spectacle.** The streak tiers give something to chase within a
    session, ending in genuine silliness.
-6. **Ownership.** Cosmetics are earned and chosen, so the game becomes *theirs*.
-7. **Low friction to restart.** Short matches and a one-tap `↻`, no menus in the
+7. **Ownership.** Cosmetics are earned and chosen, so the game becomes *theirs*.
+8. **Low friction to restart.** Short matches and a one-tap `↻`, no menus in the
    way of another go.
 
 ### 9.1 Streak spectacle
@@ -340,12 +348,17 @@ associates that feeling with maths.
 `game.js` is already 654 lines; folding maths in would push it past 1,000.
 
 ```
-maths.js  →  pure question generation + adaptive engine. No DOM, no game state.
-quiz.js   →  renders a question, handles taps, reports the result. DOM only.
-game.js   →  physics, rendering, turn loop. Gains one new state.
+maths.js       →  pure question generation + adaptive engine. No DOM, no game state.
+tournament.js  →  pure cup state: opponents, index, season. No DOM, no game knowledge.
+quiz.js        →  renders a question, handles taps, reports the result. DOM only.
+game.js        →  physics, rendering, turn loop. Gains one new state.
 
-game.js → quiz.js → maths.js         (maths.js depends on nothing)
+game.js → quiz.js → maths.js
+game.js → tournament.js              (both leaf modules depend on nothing)
 ```
+
+Two pure leaves, one DOM layer, one game layer. Both leaves are testable in
+Node without a browser.
 
 Loaded as plain scripts in that order (see §4 on `file://`). `maths.js` ends
 with `if (typeof module !== 'undefined') module.exports = Maths;` so Node can
@@ -387,10 +400,12 @@ HUMAN_QUESTION → HUMAN_AIM → MOVING → AI_WAIT → MOVING → HUMAN_QUESTIO
 The question panel overlays the pitch, then clears entirely so aiming is
 unobstructed.
 
-In arcade (`⚽`) mode the new state is skipped entirely: chaos modifiers revert
-to firing randomly as they do today, no charges are granted, and no unlock
-progress accrues (unlocks are earned by correct answers). Equipped cosmetics
-still apply, so anything already earned is enjoyed in arcade play too.
+In arcade (`⚽ ★/★★/★★★`) mode the new state is skipped entirely: chaos
+modifiers revert to firing randomly as they do today, no charges are granted,
+and no unlock or cup progress accrues (those are earned by correct answers and
+cup wins respectively). AI strength comes from the chosen star rating (§13.6).
+Equipped cosmetics still apply, so anything already earned is enjoyed in arcade
+play too.
 
 ### 10.4 Persistence
 
@@ -447,10 +462,127 @@ accuracy `p`:
   7.5 all settle at 72–88% observed accuracy, including the weakest, who
   regresses to ~65% if floor support (§8.6) is broken
 
-**Browser verification** of the turn flow, wordless UI, and unlock milestones,
-as done for the base game.
+**Tournament invariants** (`tournament.js` is pure, so these are cheap):
 
-## 13. Implementation order
+- `recordResult(false)` never advances the index; `recordResult(true)` advances
+  by exactly one
+- the index never exceeds the opponent count; completing the last opponent
+  increments the season and resets the index
+- `skill` is strictly increasing across the five opponents, and never exceeds
+  the `0.95` cap of §13.2 — including in later seasons, where the raised base
+  must still clamp
+- state survives a serialise/deserialise round trip unchanged
+
+**Browser verification** of the turn flow, wordless UI, unlock milestones, and
+cup progression, as done for the base game.
+
+**Playtest requirement** (§13.3): confirm a young child can actually beat
+opponent 5. With no dynamic mercy, the fixed curve is the only safeguard, and
+this cannot be verified by unit tests.
+
+## 13. The cup
+
+A five-opponent tournament, which exists to serve repeat play (§1): a
+part-finished cup is a concrete reason to come back tomorrow.
+
+### 13.1 It replaces the match rather than sitting beside it
+
+The intro gains no new options. Choosing an age drops the child straight into
+the cup — the tournament simply *is* how the game is structured now. `⚽`
+arcade mode remains standalone with no cup progress.
+
+Progress shows as a row of five procedurally-drawn crests (colour plus a simple
+pattern — stripes, halves, sash, quarters, hoops), completed ones ticked, the
+current one highlighted. No names, no text.
+
+### 13.2 Rising AI quality
+
+The opposition must genuinely get better. `aiLaunch()` currently has a fixed
+aim error of `0.14` rad and semi-random power; the cup threads one `skill`
+value `s ∈ [0, 1]` through it, driving three behaviours:
+
+| Behaviour | Formula |
+| --- | --- |
+| Aim error | `0.24 − 0.19·s` rad (≈0.21 → 0.06) |
+| Power jitter | `0.28 − 0.24·s` (sloppy → calibrated) |
+| Player choice | nearest-to-ball when `s < 0.5`; angle-to-goal weighted when `s ≥ 0.5` |
+
+Opponents run `s = 0.15, 0.35, 0.55, 0.75, 0.95`. One number, three effects,
+one qualitative switch — no new AI subsystem.
+
+**The ceiling is capped at `0.95` deliberately.** Zero aim error would make the
+final opponent close to unbeatable, and §13.3 removes the safety net that would
+otherwise catch a stuck child.
+
+### 13.3 Losing costs progress but never destroys it
+
+Lose and you replay the same opponent. The arc only ever moves forward.
+Elimination would mean a child losing the final loses everything, which
+contradicts the rule that a wrong answer never costs a turn.
+
+There is **no dynamic mercy** — an opponent's skill does not drop after
+repeated losses. This keeps the challenge honest and avoids an older child
+noticing they are being patronised, but it has a consequence worth stating
+plainly:
+
+> The fixed skill curve is now the *only* thing standing between a young child
+> and an unwinnable wall. If a 5-year-old cannot beat opponent 5, they have no
+> route forward except persistence.
+
+Three things make that acceptable, and all three need checking in playtest:
+
+1. The ceiling cap above.
+2. The child has charged shots and earned chaos modifiers; the CPU has neither.
+3. The physics is genuinely chaotic — collisions and bounces mean upsets happen
+   regardless of aim quality.
+
+If playtesting shows opponent 5 walling young children, the fix is lowering the
+top of the curve, not reintroducing dynamic mercy.
+
+### 13.4 Two difficulty systems, deliberately orthogonal
+
+Maths difficulty adapts **invisibly to the child** (§8). Football difficulty
+rises **visibly through the cup**. These are not welded together on purpose: a
+child may be a fine footballer and shaky at times tables, or the reverse.
+
+### 13.5 Trophy shelf
+
+Completing a cup adds a trophy to a shelf on the intro screen and begins a new
+season with a slightly higher base skill, giving indefinite replay without new
+content.
+
+Trophies are kept **separate from the cosmetic unlocks** rather than tangled
+into them: cosmetics come from correct answers, trophies from winning cups. Two
+categories, no shared currency to reason about.
+
+### 13.6 Arcade difficulty
+
+Arcade play gets the same three AI behaviours, set directly instead of by cup
+progression — one shared `skill` knob, two ways of reaching it:
+
+| Button | Meaning | `skill` |
+| --- | --- | --- |
+| `⚽ ★` | Easy | `0.20` |
+| `⚽ ★★` | Normal | `0.55` |
+| `⚽ ★★★` | Hard | `0.90` |
+
+Stars rather than words, for the reason in §6. The chosen value feeds the exact
+same formulas in §13.2, so there is a single AI difficulty implementation with
+no second code path to keep in sync.
+
+### 13.7 Module
+
+```js
+Tournament.state()          → {season, index, opponents, lastResult}
+Tournament.current()        → {crest, skill}
+Tournament.recordResult(won) → newState   // advances only on a win
+```
+
+Pure, no DOM, no game knowledge — the same shape as `maths.js`. `game.js` reads
+`Tournament.current().skill` when configuring the AI and calls `recordResult()`
+at match end. Persisted alongside the other `ffc.` keys (§10.4).
+
+## 14. Implementation order
 
 This is larger than one sitting, and the pieces have a natural dependency
 order. Each phase leaves the game playable, so progress is verifiable
@@ -465,14 +597,18 @@ throughout rather than only at the end.
    add the intro selector. Self-contained and touches mostly presentation.
 4. **Juice** (§9.3) — shake, hit-stop, trails, slow motion. Independent of
    everything above; large felt improvement for small effort.
-5. **Unlocks** (§9.2) — persistence, milestones, procedural cosmetics, the
+5. **`tournament.js` + AI skill** (§13) — parameterise `aiLaunch()` with one
+   `skill` value, add crests, the cup row, the star-rated arcade buttons and
+   the trophy shelf. Independent of the maths work; the AI parameterisation is
+   worth doing early since both the cup and arcade difficulty depend on it.
+6. **Unlocks** (§9.2) — persistence, milestones, procedural cosmetics, the
    filling silhouette. Last because it depends on a working correct-answer
    count and is the most self-contained.
 
-Phases 1–2 deliver the core ask. Phases 3–5 are separable and could each be
-their own plan if preferred.
+Phases 1–2 deliver the core educational ask. Phases 3–6 are separable and could
+each be their own plan if preferred.
 
-## 14. Deferred
+## 15. Deferred
 
 Recorded so the reasoning is not lost:
 
@@ -480,10 +616,8 @@ Recorded so the reasoning is not lost:
   raises *density* within a session, which §1 identifies as the lesser lever;
   it does little for wanting to return. Easy to add later if more practice per
   sitting is ever wanted.
-- **Cup run** — five opponents of rising difficulty with crests. Note this was
-  the one deferred item that served **repeat play** rather than density: a
-  part-finished tournament is a concrete reason to come back tomorrow. Worth
-  revisiting first if retention proves weaker than hoped.
+(The cup run was previously deferred and has since been brought into scope —
+see §13.)
 - **Speech synthesis** — would let a pre-reader play unaided; declined in
   favour of a silent game.
 - **Answer-zone goals and numbered players** — alternative integrations
