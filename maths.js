@@ -110,10 +110,102 @@ var Maths = (function () {
     };
   }
 
+  // --- band 3: within 20, doubles, sequences ---
+  function genAdd20(rand) {
+    var a = _randInt(rand, 2, 15), b = _randInt(rand, 2, 20 - a);
+    return {
+      render: [{ t: 'num', v: a }, { t: 'op', v: OP.add },
+               { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
+      answer: a + b, skill: 'add20',
+      near: [a + b + 1, a + b - 1, a + b + 10, Math.abs(a - b)]
+    };
+  }
+
+  function genSub20(rand) {
+    var a = _randInt(rand, 5, 20), b = _randInt(rand, 1, a);
+    return {
+      render: [{ t: 'num', v: a }, { t: 'op', v: OP.sub },
+               { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
+      answer: a - b, skill: 'sub20',
+      near: [a - b + 1, Math.max(0, a - b - 1), a + b, b]
+    };
+  }
+
+  function genDouble(rand) {
+    var a = _randInt(rand, 2, 10);
+    return {
+      render: [{ t: 'num', v: a }, { t: 'op', v: OP.add },
+               { t: 'num', v: a }, { t: 'eq' }, { t: 'box' }],
+      answer: a * 2, skill: 'double',
+      near: [a * 2 + 1, a * 2 - 1, a, a * 2 + 2]
+    };
+  }
+
+  function genSeq(rand) {
+    var step = _pick(rand, [2, 5, 10]);
+    var start = step * _randInt(rand, 1, 4);
+    var gap = _randInt(rand, 1, 3); // index of the hidden term among 5
+    var render = [], i, v;
+    for (i = 0; i < 5; i++) {
+      v = start + i * step;
+      if (i > 0) { render.push({ t: 'sep' }); }
+      render.push(i === gap ? { t: 'box' } : { t: 'num', v: v });
+    }
+    var answer = start + gap * step;
+    return {
+      render: render, answer: answer, skill: 'seq',
+      near: [answer + step, answer - step, answer + 1, answer - 1]
+    };
+  }
+
+  // --- band 4: easy tables, within 100, halves ---
+  function genMul(rand) {
+    var a = _pick(rand, [2, 5, 10]), b = _randInt(rand, 2, 12);
+    return {
+      render: [{ t: 'num', v: a }, { t: 'op', v: OP.mul },
+               { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
+      answer: a * b, skill: 'mul',
+      near: [a * b + a, a * b - a, a + b, a * b + 1]
+    };
+  }
+
+  function genAdd100(rand) {
+    var a = _randInt(rand, 10, 89), b = _randInt(rand, 5, 99 - a);
+    return {
+      render: [{ t: 'num', v: a }, { t: 'op', v: OP.add },
+               { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
+      answer: a + b, skill: 'add100',
+      near: [a + b + 10, a + b - 10, a + b + 1, a + b - 1]
+    };
+  }
+
+  function genSub100(rand) {
+    var a = _randInt(rand, 20, 99), b = _randInt(rand, 5, a);
+    return {
+      render: [{ t: 'num', v: a }, { t: 'op', v: OP.sub },
+               { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
+      answer: a - b, skill: 'sub100',
+      near: [a - b + 10, Math.max(0, a - b - 10), a - b + 1, a + b]
+    };
+  }
+
+  function genHalf(rand) {
+    var n = _randInt(rand, 1, 15) * 2;
+    return {
+      render: [{ t: 'frac', n: 1, d: 2 }, { t: 'op', v: OP.mul },
+               { t: 'num', v: n }, { t: 'eq' }, { t: 'box' }],
+      answer: n / 2, skill: 'half',
+      near: [n, n / 2 + 1, n / 2 - 1, n / 2 + 2]
+    };
+  }
+
   var _BANDS = {
     1: [genCount, genBond5],
     2: [genAdd10, genSub10, genBond10]
   };
+
+  _BANDS[3] = [genAdd20, genSub20, genDouble, genSeq];
+  _BANDS[4] = [genMul, genAdd100, genSub100, genHalf];
 
   function make(difficulty, state, rand) { return null; }
   function update(state, outcome) { return state; }

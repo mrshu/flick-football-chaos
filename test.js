@@ -183,4 +183,29 @@ checkGenerators(2, false);
   }
 })();
 
+// ---- Task 5 ----
+checkGenerators(3, false);
+checkGenerators(4, false);
+
+(function () {
+  var rand = makeRng(31), i, q, k, boxes;
+  for (i = 0; i < 400; i++) {
+    q = Maths._BANDS[3][0](rand);
+    ok(q.answer <= 20, 'band 3 addition stays within 20');
+  }
+  // The sequence generator must leave exactly one gap.
+  for (i = 0; i < 400; i++) {
+    q = Maths._BANDS[3][3](rand);
+    boxes = 0;
+    for (k = 0; k < q.render.length; k++) { if (q.render[k].t === 'box') { boxes++; } }
+    eq(boxes, 1, 'sequence question has exactly one gap');
+    ok(q.answer > 0, 'sequence answer is positive');
+  }
+  // Halving must always be exact.
+  for (i = 0; i < 400; i++) {
+    q = Maths._BANDS[4][3](rand);
+    eq(q.answer, Math.floor(q.answer), 'halving yields a whole number');
+  }
+})();
+
 done();
