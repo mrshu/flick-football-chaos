@@ -323,4 +323,48 @@ checkGenerators(8, true);   // band 8 alone may go negative
      'weak skill is favoured above its uniform 1/3 share (got ' + (weak / total).toFixed(3) + ')');
 })();
 
+// ---- Task 9 ----
+(function () {
+  var base = Maths.newState(4), s;
+
+  function outcome(correct, ms, band, skill) {
+    return { correct: correct, elapsedMs: ms, band: band || 4, skill: skill || 'mul' };
+  }
+
+  // Purity.
+  s = Maths.update(base, outcome(true, 1000));
+  eq(base.difficulty, 4, 'update does not mutate the input state');
+  ok(s !== base, 'update returns a new object');
+
+  // Step sizes. Expected time at band 4 is 2500 + 3600 = 6100ms.
+  eq(Number((Maths.update(base, outcome(true, 1000)).difficulty - 4).toFixed(3)), 0.100,
+     'correct and fast steps up 0.100');
+  eq(Number((Maths.update(base, outcome(true, 6000)).difficulty - 4).toFixed(3)), 0.075,
+     'correct at expected pace steps up 0.075');
+  eq(Number((Maths.update(base, outcome(true, 20000)).difficulty - 4).toFixed(3)), 0.040,
+     'correct but slow steps up 0.040');
+  eq(Number((Maths.update(base, outcome(false, 1000)).difficulty - 4).toFixed(3)), -0.300,
+     'wrong steps down 0.300');
+
+  // Clamping.
+  s = Maths.newState(1);
+  for (var i = 0; i < 50; i++) { s = Maths.update(s, outcome(false, 1000, 1)); }
+  eq(s.difficulty, 1, 'difficulty never falls below 1');
+  s = Maths.newState(8);
+  for (i = 0; i < 200; i++) { s = Maths.update(s, outcome(true, 100, 8)); }
+  eq(s.difficulty, 8, 'difficulty never rises above 8');
+
+  // Mastery tracking.
+  s = Maths.update(Maths.newState(4), outcome(true, 1000, 4, 'mul'));
+  ok(s.mastery.mul > 0.5, 'a correct answer raises mastery above the 0.5 start');
+  s = Maths.update(Maths.newState(4), outcome(false, 1000, 4, 'mul'));
+  ok(s.mastery.mul < 0.5, 'a wrong answer lowers mastery');
+
+  s = Maths.newState(4);
+  for (i = 0; i < 200; i++) { s = Maths.update(s, outcome(true, 1000, 4, 'div')); }
+  ok(s.mastery.div <= 1 && s.mastery.div > 0.9, 'mastery converges towards 1 without exceeding it');
+  for (i = 0; i < 400; i++) { s = Maths.update(s, outcome(false, 1000, 4, 'div')); }
+  ok(s.mastery.div >= 0 && s.mastery.div < 0.1, 'mastery converges towards 0 without going below');
+})();
+
 done();

@@ -419,7 +419,36 @@ var Maths = (function () {
       skill: q.skill, band: band
     };
   }
-  function update(state, outcome) { return state; }
+  var UP_FAST = 0.100, UP_MID = 0.075, UP_SLOW = 0.040, DOWN = 0.300;
+  var MASTERY_ALPHA = 0.25;
+
+  function expectedMs(band) { return 2500 + 900 * band; }
+
+  function update(state, outcome) {
+    var d = state.difficulty, step, exp = expectedMs(outcome.band);
+    if (outcome.correct) {
+      if (outcome.elapsedMs < exp * 0.6) { step = UP_FAST; }
+      else if (outcome.elapsedMs > exp * 1.4) { step = UP_SLOW; }
+      else { step = UP_MID; }
+    } else {
+      step = -DOWN;
+    }
+    d += step;
+    if (d < 1) { d = 1; }
+    if (d > 8) { d = 8; }
+
+    var mastery = {}, k;
+    for (k in state.mastery) {
+      if (Object.prototype.hasOwnProperty.call(state.mastery, k)) {
+        mastery[k] = state.mastery[k];
+      }
+    }
+    var prev = mastery[outcome.skill] !== undefined ? mastery[outcome.skill] : 0.5;
+    mastery[outcome.skill] =
+      prev + MASTERY_ALPHA * ((outcome.correct ? 1 : 0) - prev);
+
+    return { difficulty: d, mastery: mastery };
+  }
 
   return {
     make: make, update: update, newState: newState,
