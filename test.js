@@ -57,6 +57,12 @@ ok(r1() !== r1(), 'successive values differ');
      Maths._shuffle(makeRng(9), arr).join(','), 'shuffle is deterministic per seed');
 
   ok(arr.indexOf(Maths._pick(makeRng(3), arr)) !== -1, 'pick returns a member');
+
+  var reordered = false, sd;
+  for (sd = 1; sd <= 20 && !reordered; sd++) {
+    if (Maths._shuffle(makeRng(sd), arr).join(',') !== arr.join(',')) { reordered = true; }
+  }
+  ok(reordered, 'shuffle actually reorders elements across seeds');
 })();
 
 done();
