@@ -440,6 +440,17 @@ function checkGenerators(band, allowNegative) {
       }
       ok(Object.prototype.toString.call(q.near) === '[object Array]',
          'band ' + band + ' provides near-miss candidates');
+      // Distractors are checked as strictly as the answer. Several generators
+      // build them as `answer - k`, which goes negative whenever the answer is
+      // small — a class of bug that is invisible unless `near` is inspected.
+      for (k = 0; k < q.near.length; k++) {
+        if (typeof q.near[k] === 'number') {
+          ok(isFinite(q.near[k]), 'band ' + band + ' near value is finite');
+          if (!allowNegative) {
+            ok(q.near[k] >= 0, 'band ' + band + ' near value is not negative');
+          }
+        }
+      }
     }
   }
 }
@@ -635,7 +646,7 @@ Add inside the IIFE, after the band 2 generators:
       render: [{ t: 'num', v: a }, { t: 'op', v: OP.sub },
                { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
       answer: a - b, skill: 'sub20',
-      near: [a - b + 1, a - b - 1, a + b, b]
+      near: [a - b + 1, Math.max(0, a - b - 1), a + b, b]
     };
   }
 
@@ -693,7 +704,7 @@ Add inside the IIFE, after the band 2 generators:
       render: [{ t: 'num', v: a }, { t: 'op', v: OP.sub },
                { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
       answer: a - b, skill: 'sub100',
-      near: [a - b + 10, a - b - 10, a - b + 1, a + b]
+      near: [a - b + 10, Math.max(0, a - b - 10), a - b + 1, a + b]
     };
   }
 
@@ -837,14 +848,16 @@ Add inside the IIFE, after the band 4 generators:
 
   // --- band 6: multi-digit, decimals, fraction comparison ---
   function genAdd1000(rand) {
-    var a = _randInt(rand, 100, 800), b = _randInt(rand, 20, 199);
+    var a = _randInt(rand, 100, 800);
+    // b never exceeds a, so the subtraction branch cannot go negative.
+    var b = _randInt(rand, 20, Math.min(199, a));
     var addition = rand() < 0.5;
     return {
       render: [{ t: 'num', v: a }, { t: 'op', v: addition ? OP.add : OP.sub },
                { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
       answer: addition ? a + b : a - b, skill: 'add1000',
       near: addition ? [a + b + 10, a + b - 10, a + b + 100, a - b]
-                     : [a - b + 10, a - b - 10, a - b + 100, a + b]
+                     : [a - b + 10, Math.max(0, a - b - 10), a - b + 100, a + b]
     };
   }
 
@@ -981,7 +994,9 @@ Add inside the IIFE, after the band 6 generators:
       render: [{ t: 'pct', v: p }, { t: 'op', v: OP.mul },
                { t: 'num', v: n }, { t: 'eq' }, { t: 'box' }],
       answer: answer, skill: 'pct',
-      near: [answer * 2, answer / 2, answer + 10, n - answer]
+      // Math.round keeps the "halved it" misconception without offering a
+      // fractional choice to an integer question.
+      near: [answer * 2, Math.round(answer / 2), answer + 10, n - answer]
     };
   }
 
@@ -1033,7 +1048,7 @@ Add inside the IIFE, after the band 6 generators:
       render: [{ t: 'op', v: '√' }, { t: 'num', v: sq },
                { t: 'eq' }, { t: 'box' }],
       answer: n, skill: 'root',
-      near: [n + 1, n - 1, sq / 2, n * 2]
+      near: [n + 1, n - 1, Math.round(sq / 2), n * 2]
     };
   }
 
