@@ -1475,6 +1475,32 @@ Append to `test.js` before `done();`. Note this deliberately re-derives each ans
   }
   ok(failures === failuresBefore, 'sweep completed with no invariant violations');
 })();
+
+// Fraction comparison is the one question type the sweep above cannot
+// recompute, because its answer is a symbol rather than a number. A sign
+// inversion there would teach children the wrong thing while passing every
+// shape-level assertion, so check the direction directly against known pairs.
+(function () {
+  var rand = makeRng(4242), i, q, left, right, expected, sawLt = 0, sawGt = 0, sawEq = 0;
+  for (i = 0; i < 3000; i++) {
+    q = Maths._BANDS[6][2](rand);
+    // Verify by division, NOT by cross-multiplying. Recomputing with the
+    // generator's own formula would let a reversed comparison cancel out and
+    // pass. Denominators here are at most 6, so the smallest real gap between
+    // two distinct fractions is 1/30 — far above any rounding error, making
+    // the epsilon comparison safe.
+    left = q.render[0].n / q.render[0].d;
+    right = q.render[2].n / q.render[2].d;
+    expected = Math.abs(left - right) < 1e-12 ? '=' : (left < right ? '<' : '>');
+    eq(q.answer, expected, 'fraction comparison points the right way');
+    if (q.answer === '<') { sawLt++; } else if (q.answer === '>') { sawGt++; } else { sawEq++; }
+  }
+  // Without this, a generator that always answered '<' would satisfy the loop
+  // above only if the check were also broken — but it would sail through any
+  // test that never looked at the spread.
+  ok(sawLt > 0 && sawGt > 0 && sawEq > 0,
+     'all three comparison outcomes occur (< ' + sawLt + ', > ' + sawGt + ', = ' + sawEq + ')');
+})();
 ```
 
 - [ ] **Step 2: Run the sweep**
