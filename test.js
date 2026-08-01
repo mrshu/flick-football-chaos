@@ -412,12 +412,22 @@ checkGenerators(8, true);   // band 8 alone may go negative
            'sweep: no non-finite token value');
       }
 
-      // Independent recomputation for the plain a-op-b-=-box forms.
+      // Independent recomputation for the plain a-op-b-=-box forms. This
+      // guard skips shapes that don't reduce to two operands and one
+      // operator: sequences, ratios, order-of-operations, fraction-of,
+      // percentages, squares and roots. Squares and roots are not
+      // unverified — they're recomputed from render tokens in the band 8
+      // block of the main test suite (see genSquare/genRoot checks there).
       nums = numsOf(q.render);
       ops = [];
       for (k = 0; k < q.render.length; k++) {
         if (q.render[k].t === 'op') { ops.push(q.render[k].v); }
       }
+      // The frac/pct check below is redundant today given nums.length === 2
+      // (genHalf, genFracOf, genPct all have nums=1). Keep it anyway: it's
+      // the only thing that would stop a future one-operand branch (added
+      // for genRoot, say) from misreading those three generators as roots,
+      // since they share the same nums=1, ops=1, trailing-box shape.
       if (nums.length === 2 && ops.length === 1 &&
           q.render[q.render.length - 1].t === 'box' &&
           q.render[0].t !== 'frac' && q.render[0].t !== 'pct') {
