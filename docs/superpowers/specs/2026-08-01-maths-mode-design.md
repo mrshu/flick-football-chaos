@@ -99,11 +99,15 @@ play button, everything visible at once with the current selection highlighted.
 
 | Row | Choices | Meaning |
 | --- | --- | --- |
+| Team | three slot cards | Who is playing (§14) — everything earned belongs to the selected slot |
 | Mode | `⚽` \| `🏆` | One match, or a five-match cup (§13) |
 | Maths | `⚽` `5` `6` `7` `8` `9` `10` `11` `12` | No maths, or starting band by age |
 | Opposition | `★` `★★` `★★★` | AI strength (§13.6) — dimmed when `🏆` is chosen, since the cup sets its own curve |
 
-Then a large `▶`. Plus a trophy shelf showing cups won (§13.5).
+Then a large `▶`. Plus the selected team's trophy shelf (§13.5).
+
+Four rows plus a play button is a lot for a small phone in portrait; the screen
+may scroll, but `▶` stays pinned and reachable without scrolling.
 
 Stars carry "easy / normal / hard" without language, which the words themselves
 could not; digits carry the age band.
@@ -335,6 +339,9 @@ The first is deliberately early — a reward within the first match or two
 establishes that playing yields things. A silhouette fills as the next
 approaches.
 
+Counts and unlocks are **per slot** (§14.1), so siblings each earn their own
+rather than one child's practice unlocking rewards for another.
+
 Nothing is ever lost or expires. This is the strongest "one more go" driver and
 is healthy precisely because it is pure accumulation.
 
@@ -426,8 +433,8 @@ maths-free play too.
 
 ### 10.4 Persistence
 
-`localStorage` under an `ffc.` prefix: starting band, current difficulty,
-mastery map, cumulative correct count, unlocked cosmetics, equipped cosmetics.
+`localStorage` under an `ffc.` prefix. Progress is stored **per slot** rather
+than globally — see §14.5 for the full shape and the robustness rules.
 
 All access wrapped in `try/catch` falling back to in-memory defaults —
 `localStorage` throws in some private browsing modes, and the game is fully
@@ -489,6 +496,20 @@ accuracy `p`:
   the `0.95` cap of §13.2 — including in later seasons, where the raised base
   must still clamp
 - state survives a serialise/deserialise round trip unchanged
+
+**Slot and persistence invariants** (§14) — the storage layer is pure enough to
+test headlessly with a stubbed store:
+
+- a corrupt, truncated or non-JSON slot value loads as empty rather than
+  throwing
+- an unknown `ffc.v` triggers migration rather than a crash or silent data loss
+- a throwing `localStorage` (private mode) degrades to in-memory without
+  breaking play
+- writes to slot 1 never alter slots 0 or 2 — the isolation that §14.1 depends
+  on
+- a slot round-trips through save and load unchanged, including an empty name
+  and a multi-byte emoji
+- deleting a slot clears only that slot and leaves `ffc.active` valid
 
 **Browser verification** of the turn flow, wordless UI, unlock milestones, and
 cup progression, as done for the base game.
@@ -574,9 +595,9 @@ child may be a fine footballer and shaky at times tables, or the reverse.
 
 ### 13.5 Trophy shelf
 
-Completing a cup adds a trophy to a shelf on the setup screen and begins a new
-season with a slightly higher base skill, giving indefinite replay without new
-content.
+Completing a cup adds a trophy to the selected team's shelf (§14.1) on the setup
+screen and begins a new season with a slightly higher base skill, giving
+indefinite replay without new content.
 
 Trophies are kept **separate from the cosmetic unlocks** rather than tangled
 into them: cosmetics come from correct answers, trophies from winning cups. Two
@@ -613,7 +634,103 @@ Pure, no DOM, no game knowledge — the same shape as `maths.js`. `game.js` read
 `Tournament.current().skill` when configuring the AI and calls `recordResult()`
 at match end. Persisted alongside the other `ffc.` keys (§10.4).
 
-## 14. Implementation order
+## 14. Slots and team identity
+
+Three save slots, each with a customisable team, all persisted to
+`localStorage`.
+
+### 14.1 A slot is a player, not just a cup
+
+Three slots with distinct team identities are really three *players* — most
+obviously siblings sharing a tablet. That drives the most important decision
+here: **everything earned lives inside the slot**, including the adaptive maths
+state.
+
+If difficulty and mastery were global, a seven-year-old and a five-year-old
+sharing a device would drag each other's difficulty around and the adaptive
+engine (§8) would serve both badly — it would be tuning to the average of two
+different children, which describes neither.
+
+Per slot: team identity, cup progress, maths difficulty and mastery, correct
+answer totals, unlocks and equipped cosmetics, trophies.
+
+Global: only the last-used setup choices (mode, band, stars), as a convenience.
+
+A single child wanting three parallel cups is served by the same model at no
+cost — they simply use three teams.
+
+### 14.2 Team identity
+
+- **Emoji** — required, chosen from a curated grid of ~30 (animals, weather,
+  sport, symbols). A curated grid rather than the system emoji picker: it is
+  tap-only, needs no keyboard, and is not overwhelming for a young child.
+- **Name** — *optional* text, up to 12 characters, may be empty.
+
+The name is the one place text appears, and it does not break §4: the game
+still ships no words, and the child supplies their own in their own language.
+Because it needs a keyboard, it must never be required — a slot with only an
+emoji is complete and usable.
+
+The team emoji appears on the player's side of the HUD during matches, so the
+identity is part of play rather than a label seen once.
+
+**Rendering user input:** names are written with `textContent` or canvas
+`fillText`, never `innerHTML`. The data is local-only, but building a habit of
+injecting user strings as markup is a defect regardless of reachability.
+
+### 14.3 Discoverability
+
+Slots appear as a row of three cards at the top of the setup screen (§6), each
+showing its emoji large, its name beneath, and a small `✏️` badge in the
+corner. Tapping a card selects it; tapping `✏️` opens the editor with the emoji
+grid and the name field.
+
+An empty slot shows `+`; tapping it creates a team and opens the editor
+immediately, so the first thing a new player does is choose their emoji.
+
+### 14.4 Deleting a slot
+
+This is the one destructive control in the game, which §13.1 otherwise avoids.
+It cannot be dodged here: with a fixed three slots, a full set must be
+reclaimable.
+
+It is made safe rather than absent: a `🗑` on the editor requires a second tap
+to confirm, the button turning red with `✓` / `✗` between taps. Wordless, and
+no single tap destroys anything.
+
+### 14.5 Storage
+
+```
+ffc.v          → schema version (integer)
+ffc.slots      → [slot, slot, slot]   (null for empty)
+ffc.active     → 0 | 1 | 2
+ffc.setup      → {mode, band, stars}  (last-used, global)
+```
+
+Each slot:
+
+```js
+{
+  emoji: '🦁', name: 'Lions',
+  cup:      {season, index, results},
+  maths:    {difficulty, mastery},
+  stats:    {correct, total},
+  unlocked: [...], equipped: {ball, hat, pitch},
+  trophies: 2
+}
+```
+
+Total well under any quota. Three rules keep it robust:
+
+- **Every read is wrapped.** A corrupt or partial value yields an empty slot
+  rather than a crash — a bad save must never brick the game.
+- **`ffc.v` is checked on load**, so a future schema change can migrate instead
+  of breaking existing players.
+- **`localStorage` may be unavailable** (private mode) and throws; the existing
+  in-memory fallback (§10.4) applies, with progress lost on close. This is not
+  surfaced, because warning about it wordlessly is not realistic.
+
+## 15. Implementation order
 
 This is larger than one sitting, and the pieces have a natural dependency
 order. Each phase leaves the game playable, so progress is verifiable
@@ -624,22 +741,27 @@ throughout rather than only at the end.
    generator that marks wrong answers correct poisons everything downstream.
 2. **`quiz.js` + the `HUMAN_QUESTION` state** — panel, tap handling, charged
    shot, streak pips. The game is now educational and playable end to end.
-3. **Wordless conversion** — replace every string in the existing UI (§6) and
-   add the intro selector. Self-contained and touches mostly presentation.
-4. **Juice** (§9.3) — shake, hit-stop, trails, slow motion. Independent of
-   everything above; large felt improvement for small effort.
+3. **`storage.js` + slots** (§14) — the slot model, per-slot state, and the
+   wrapped/versioned `localStorage` layer. Early, because the cup, unlocks and
+   maths state all persist through it, and retrofitting per-slot isolation
+   afterwards means touching every one of them again.
+4. **Wordless conversion + setup screen** (§6) — replace every string in the
+   existing UI, and build the team/mode/maths/opposition rows. Depends on
+   phase 3 for the team cards.
 5. **`tournament.js` + AI skill** (§13) — parameterise `aiLaunch()` with one
    `skill` value, add crests, the cup row, the star opposition buttons and the
-   trophy shelf. Independent of the maths work; the AI parameterisation is worth
-   doing early, since both the cup and the single-match stars depend on it.
-6. **Unlocks** (§9.2) — persistence, milestones, procedural cosmetics, the
-   filling silhouette. Last because it depends on a working correct-answer
-   count and is the most self-contained.
+   trophy shelf. Both the cup and the single-match stars depend on the AI
+   parameterisation, which is small and could be pulled earlier on its own.
+6. **Juice** (§9.3) — shake, hit-stop, trails, slow motion. Independent of
+   everything above; large felt improvement for small effort.
+7. **Unlocks** (§9.2) — milestones, procedural cosmetics, the filling
+   silhouette. Last because it depends on both a working correct-answer count
+   and the slot storage from phase 3.
 
-Phases 1–2 deliver the core educational ask. Phases 3–6 are separable and could
-each be their own plan if preferred.
+Phases 1–2 deliver the core educational ask and leave the game fully playable.
+Phases 3–7 are separable and could each be their own plan if preferred.
 
-## 15. Deferred
+## 16. Deferred
 
 Recorded so the reasoning is not lost:
 
@@ -647,8 +769,7 @@ Recorded so the reasoning is not lost:
   raises *density* within a session, which §1 identifies as the lesser lever;
   it does little for wanting to return. Easy to add later if more practice per
   sitting is ever wanted.
-(The cup run was previously deferred and has since been brought into scope —
-see §13.)
+- **Cup run** — no longer deferred; brought into scope as §13.
 - **Speech synthesis** — would let a pre-reader play unaided; declined in
   favour of a silent game.
 - **Answer-zone goals and numbered players** — alternative integrations
