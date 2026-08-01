@@ -72,8 +72,8 @@ var Maths = (function () {
   function genBond5(rand) {
     var a = _randInt(rand, 1, 4);
     return {
-      render: [{ t: 'num', v: a }, { t: 'op', v: OP.add }, { t: 'box' },
-               { t: 'eq' }, { t: 'num', v: 5 }],
+      render: [{ t: 'balls', v: a }, { t: 'op', v: OP.add }, { t: 'box' },
+               { t: 'eq' }, { t: 'balls', v: 5 }],
       answer: 5 - a, skill: 'bond5',
       near: [5 - a + 1, 5 - a - 1, a, 5]
     };
@@ -395,7 +395,7 @@ var Maths = (function () {
     var i, m, w, weights = [], total = 0, r;
     if (rand() < 0.4) { return gens[_randInt(rand, 0, gens.length - 1)]; }
     for (i = 0; i < gens.length; i++) {
-      m = state.mastery && state.mastery[skills[i]] !== undefined
+      m = state.mastery[skills[i]] !== undefined
         ? state.mastery[skills[i]] : 0.5;
       w = 1 - m + 0.1;
       weights.push(w);
@@ -411,7 +411,7 @@ var Maths = (function () {
 
   function make(difficulty, state, rand) {
     var band = pickBand(difficulty, rand);
-    var q = pickGenerator(band, state || { mastery: {} }, rand)(rand);
+    var q = pickGenerator(band, state, rand)(rand);
     var min = band === 8 ? -30 : 0;
     var choices = buildChoices(q.answer, choiceCount(difficulty), q.near, rand, min);
     return {
@@ -419,6 +419,10 @@ var Maths = (function () {
       skill: q.skill, band: band
     };
   }
+  // A random walk with up-step u and down-step d settles at accuracy
+  // p* = d / (u + d). With UP_MID = 0.075 and DOWN = 0.300, p* = 0.80 —
+  // the intended 80% success target (spec 8.7, checked by the convergence
+  // test). UP_FAST/UP_SLOW are faster/slower variants of the same up-step.
   var UP_FAST = 0.100, UP_MID = 0.075, UP_SLOW = 0.040, DOWN = 0.300;
   var MASTERY_ALPHA = 0.25;
 
