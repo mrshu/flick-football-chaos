@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Flick Football Chaos</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="wrap">
+  <header id="hud">
+    <span class="team blue">YOU <b id="scoreHuman">0</b></span>
+    <span id="turnMsg" class="human">Your turn</span>
+    <span class="team red"><b id="scoreAi">0</b> CPU</span>
+  </header>
+
+  <div id="stage">
+    <canvas id="game" width="600" height="900"></canvas>
+    <div id="chaosBanner" class="hidden"></div>
+    <div id="goalFlash" class="hidden">GOAL!</div>
+    <div id="overlay" class="hidden">
+      <div id="overCard">
+        <h1 id="overTitle">You Win!</h1>
+        <p id="overSub"></p>
+        <button id="again">Play Again</button>
+      </div>
+    </div>
+  </div>
+
+  <footer id="hint">Drag a blue player back &amp; release to flick &mdash; first to 3 goals wins!</footer>
+</div>
+<script src="game.js"></script>
+</body>
+</html>
