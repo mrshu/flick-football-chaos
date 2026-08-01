@@ -171,6 +171,15 @@ Append to `test.js`, immediately before the `done();` call:
   eq(Maths._shuffle(makeRng(9), arr).join(','),
      Maths._shuffle(makeRng(9), arr).join(','), 'shuffle is deterministic per seed');
 
+  // The three assertions above all pass against a no-op `return arr.slice()`.
+  // This one is what makes a dead shuffle fail. A correct shuffle may return
+  // the original order by chance, so require only that some seed reorders.
+  var reordered = false, sd;
+  for (sd = 1; sd <= 20 && !reordered; sd++) {
+    if (Maths._shuffle(makeRng(sd), arr).join(',') !== arr.join(',')) { reordered = true; }
+  }
+  ok(reordered, 'shuffle actually reorders elements across seeds');
+
   ok(arr.indexOf(Maths._pick(makeRng(3), arr)) !== -1, 'pick returns a member');
 })();
 ```
