@@ -181,6 +181,20 @@ checkGenerators(2, false);
     q = Maths._BANDS[2][0](rand);
     ok(q.answer <= 10, 'band 2 addition stays within 10');
   }
+
+  // Bonds-to-5/10 render as `a + box = target`; recompute independently
+  // from the rendered parts rather than repeating the generator's own
+  // `target - a` formula.
+  for (i = 0; i < 400; i++) {
+    q = Maths._BANDS[1][1](rand);
+    eq(q.answer + q.render[0].v, q.render[4].v,
+       'bond-to-5 recomputes from the rendered parts');
+  }
+  for (i = 0; i < 400; i++) {
+    q = Maths._BANDS[2][2](rand);
+    eq(q.answer + q.render[0].v, q.render[4].v,
+       'bond-to-10 recomputes from the rendered parts');
+  }
 })();
 
 // ---- Task 5 ----
@@ -188,7 +202,7 @@ checkGenerators(3, false);
 checkGenerators(4, false);
 
 (function () {
-  var rand = makeRng(31), i, q, k, boxes;
+  var rand = makeRng(31), i, q, k, boxes, terms, gapIdx, step, refIdx, refVal, p;
   for (i = 0; i < 400; i++) {
     q = Maths._BANDS[3][0](rand);
     ok(q.answer <= 20, 'band 3 addition stays within 20');
@@ -200,11 +214,32 @@ checkGenerators(4, false);
     for (k = 0; k < q.render.length; k++) { if (q.render[k].t === 'box') { boxes++; } }
     eq(boxes, 1, 'sequence question has exactly one gap');
     ok(q.answer > 0, 'sequence answer is positive');
+
+    // Independent recomputation: derive the step from a visible adjacent
+    // pair of terms (separators skipped) and extrapolate to the box.
+    terms = [];
+    for (k = 0; k < q.render.length; k++) {
+      if (q.render[k].t === 'num' || q.render[k].t === 'box') { terms.push(q.render[k]); }
+    }
+    gapIdx = -1;
+    for (p = 0; p < terms.length; p++) { if (terms[p].t === 'box') { gapIdx = p; } }
+    step = undefined;
+    for (p = 0; p < terms.length - 1; p++) {
+      if (terms[p].t === 'num' && terms[p + 1].t === 'num') {
+        step = terms[p + 1].v - terms[p].v;
+        refIdx = p; refVal = terms[p].v;
+        break;
+      }
+    }
+    eq(q.answer, refVal + (gapIdx - refIdx) * step,
+       'sequence gap recomputes from visible terms');
   }
   // Halving must always be exact.
   for (i = 0; i < 400; i++) {
     q = Maths._BANDS[4][3](rand);
     eq(q.answer, Math.floor(q.answer), 'halving yields a whole number');
+    eq(q.answer * 2, q.render[2].v,
+       'halving recomputes from the rendered amount');
   }
 })();
 
@@ -225,6 +260,8 @@ checkGenerators(6, false);
   for (i = 0; i < 500; i++) {
     q = Maths._BANDS[5][2](rand);
     eq(q.answer, Math.floor(q.answer), 'fraction of amount is a whole number');
+    eq(q.answer * q.render[0].d, q.render[2].v,
+       'fraction of amount recomputes from the rendered fraction');
   }
   // Decimals must be multiples of 0.25, so binary representation is exact.
   for (i = 0; i < 500; i++) {
@@ -252,14 +289,21 @@ checkGenerators(8, true);   // band 8 alone may go negative
   for (i = 0; i < 500; i++) {
     q = Maths._BANDS[7][0](rand);
     eq(q.answer, Math.floor(q.answer), 'percentage of amount is a whole number');
+    eq(q.answer * 100, q.render[0].v * q.render[2].v,
+       'percentage recomputes from the rendered percent and amount');
   }
   // Order of operations: multiplication binds before addition.
   for (i = 0; i < 500; i++) {
     q = Maths._BANDS[7][1](rand);
     var a = q.render[0].v, b = q.render[2].v, c = q.render[4].v;
     eq(q.answer, a + b * c, 'order of operations respects precedence');
-    ok(q.answer !== (a + b) * c || b * c === (a + b) * c - a,
-       'order question is not trivially ambiguous');
+  }
+  // Ratio scaling must preserve the proportion: a:b = (a*k):answer, so
+  // cross-multiplying gives an independent check of the scaled term.
+  for (i = 0; i < 500; i++) {
+    q = Maths._BANDS[7][2](rand);
+    eq(q.answer * q.render[0].v, q.render[2].v * q.render[4].v,
+       'ratio recomputes via cross-multiplication');
   }
   // Squares and roots are inverse and exact.
   for (i = 0; i < 300; i++) {
@@ -267,6 +311,12 @@ checkGenerators(8, true);   // band 8 alone may go negative
     eq(q.answer, q.render[0].v * q.render[0].v, 'square is exact');
     q = Maths._BANDS[8][2](rand);
     eq(q.answer * q.answer, q.render[1].v, 'root is exact');
+  }
+  // Equation solving: box + b = total, recomputed from the rendered totals.
+  for (i = 0; i < 500; i++) {
+    q = Maths._BANDS[8][3](rand);
+    eq(q.answer + q.render[2].v, q.render[4].v,
+       'equation recomputes from the rendered totals');
   }
   // Negative results do occur in band 8.
   for (i = 0; i < 500; i++) {
@@ -412,12 +462,24 @@ checkGenerators(8, true);   // band 8 alone may go negative
            'sweep: no non-finite token value');
       }
 
-      // Independent recomputation for the plain a-op-b-=-box forms. This
-      // guard skips shapes that don't reduce to two operands and one
-      // operator: sequences, ratios, order-of-operations, fraction-of,
-      // percentages, squares and roots. Squares and roots are not
-      // unverified — they're recomputed from render tokens in the band 8
-      // block of the main test suite (see genSquare/genRoot checks there).
+      // Independent recomputation for the plain a-op-b-=-box forms. The
+      // guard's real rule is: two numeric operands, one operator, AND the
+      // box in the trailing position — not just "two operands and one
+      // operator", since `3 + box = 10` satisfies that but hides its box
+      // in the middle. Excluded generators, and where each is verified
+      // instead (all added to the main test suite, not left unverified):
+      //   genBond5, genBond10, genEqn - two operands/one operator but the
+      //     box isn't trailing; recomputed from render tokens in Task 4
+      //     (bond5/bond10) and Task 7 (eqn).
+      //   genSeq   - more than two numeric terms; recomputed in Task 5.
+      //   genRatio - three numeric operands; recomputed in Task 7.
+      //   genOrder - three operands, two operators; recomputed above via
+      //     the explicit a + b*c precedence check.
+      //   genHalf, genFracOf, genPct - one numeric operand plus a
+      //     frac/pct token; recomputed in Task 5, Task 6 and Task 7
+      //     respectively.
+      //   genSquare, genRoot - one numeric operand, no "a op b" shape;
+      //     recomputed from render tokens in the band 8 block of Task 7.
       nums = numsOf(q.render);
       ops = [];
       for (k = 0; k < q.render.length; k++) {
