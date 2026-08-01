@@ -43,6 +43,7 @@ var Maths = (function () {
     }
 
     // Pad outward from the answer until we have enough distinct options.
+    // Maximum count is 4, so at most 3 extra values needed; each iteration offers 2 candidates.
     for (i = 1; out.length < count && i <= 12; i++) {
       if (out.length < count && answer + i >= min && out.indexOf(answer + i) === -1) {
         out.push(answer + i);

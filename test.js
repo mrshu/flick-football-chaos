@@ -90,6 +90,7 @@ ok(r1() !== r1(), 'successive values differ');
   for (i = 0; i < 500; i++) {
     c = Maths.buildChoices(1, 4, [2], rand, 0);
     ok(c.indexOf(1) !== -1, 'small-space choices contain the answer');
+    eq(c.length, 4, 'small-space choices reach requested count via padding');
     for (j = 0; j < c.length; j++) {
       ok(c.indexOf(c[j]) === j, 'small-space choices are unique');
       ok(c[j] >= 0, 'small-space choices respect min');
@@ -99,6 +100,9 @@ ok(r1() !== r1(), 'successive values differ');
   // Negative-capable band 8.
   c = Maths.buildChoices(-2, 4, [-1, -3, 2], rand, -20);
   ok(c.indexOf(-2) !== -1, 'negative answers are supported');
+  for (j = 0; j < c.length; j++) {
+    ok(c[j] >= -20, 'negative-range choices respect min');
+  }
 
   // String answers (comparison questions) use `near` verbatim.
   c = Maths.buildChoices('<', 3, ['>', '='], rand, 0);
