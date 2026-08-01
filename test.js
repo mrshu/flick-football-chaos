@@ -488,7 +488,7 @@ checkGenerators(8, true);   // band 8 alone may go negative
       choices = Maths.choiceCount(s.difficulty);
       p = known + (1 - known) / choices;
       ok_ = rand() < p;
-      ms = ok_ ? (2500 + 900 * band) * (0.4 + rand()) : 9000;
+      ms = ok_ ? (2500 + 900 * band) * (0.4 + rand() * 1.4) : 9000;
       s = Maths.update(s, { correct: ok_, elapsedMs: ms, band: band, skill: 'x' });
       if (i > n / 2) { total++; sum += s.difficulty; if (ok_) { correct++; } }
       ok(s.difficulty >= 1 && s.difficulty <= 8, 'difficulty stays within [1,8]');
