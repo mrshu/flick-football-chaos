@@ -147,6 +147,16 @@ function checkGenerators(band, allowNegative) {
       }
       ok(Object.prototype.toString.call(q.near) === '[object Array]',
          'band ' + band + ' provides near-miss candidates');
+      for (k = 0; k < q.near.length; k++) {
+        if (typeof q.near[k] === 'number') {
+          ok(isFinite(q.near[k]),
+             'band ' + band + ' near-miss is finite');
+          if (!allowNegative) {
+            ok(q.near[k] >= 0,
+               'band ' + band + ' near-miss is not negative');
+          }
+        }
+      }
     }
   }
 }

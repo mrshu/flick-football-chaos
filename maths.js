@@ -96,7 +96,7 @@ var Maths = (function () {
       render: [{ t: 'num', v: a }, { t: 'op', v: OP.sub },
                { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
       answer: a - b, skill: 'sub10',
-      near: [a - b + 1, a - b - 1, a + b, b]
+      near: [a - b + 1, Math.max(0, a - b - 1), a + b, b]
     };
   }
 
