@@ -336,6 +336,13 @@ checkGenerators(8, true);   // band 8 alone may go negative
   eq(base.difficulty, 4, 'update does not mutate the input state');
   ok(s !== base, 'update returns a new object');
 
+  // The purity check above only covers `difficulty`. A shallow copy that
+  // aliased `mastery` would pass everything else in this block.
+  var shared = Maths.newState(4);
+  shared.mastery.mul = 0.5;
+  Maths.update(shared, outcome(true, 1000, 4, 'mul'));
+  eq(shared.mastery.mul, 0.5, 'update does not mutate the input mastery object');
+
   // Step sizes. Expected time at band 4 is 2500 + 3600 = 6100ms.
   eq(Number((Maths.update(base, outcome(true, 1000)).difficulty - 4).toFixed(3)), 0.100,
      'correct and fast steps up 0.100');
