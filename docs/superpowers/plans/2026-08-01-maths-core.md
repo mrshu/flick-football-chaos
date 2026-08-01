@@ -21,6 +21,7 @@ This is **Plan 1 of 7**, covering Phase 1 of the spec (`docs/superpowers/specs/2
 - **Division is always exact** in bands 4–6; no remainders (spec §11).
 - **Language-independent:** `render` emits only token objects, never words. Token types are exactly `num`, `balls`, `op`, `eq`, `box`, `frac`, `bar`, `sep`, `pct`, `pow` (spec §10.2).
 - **ES5 syntax** (`var`, `function`) to match the existing `game.js` style and avoid any transpilation question.
+- **Commit messages follow the repo standard in `CLAUDE.md`:** Conventional Commits, with a body giving the motivation (why) and the concrete change (what/how), wrapped at 72 columns. Use `git commit -F - <<'EOF'` rather than `-m`, which mangles backticks. Each task's commit step below contains the exact message to use.
 
 ---
 
@@ -112,7 +113,25 @@ Expected: PASS — `6 checks, 0 failures`, exit code 0
 
 ```bash
 git add maths.js test.js
-git commit -m "test: add maths module skeleton and test harness"
+git commit -F - <<'EOF'
+test: add maths module skeleton and test harness
+
+Previously the maths engine did not exist; this commit lays down the
+module shape and a dependency-free test runner so every later task has
+somewhere to land and something to prove itself against.
+
+`maths.js` is an IIFE assigning a global rather than an ES module,
+because ES modules cannot load over `file://` and the game must run by
+opening `index.html`; a `module.exports` tail lets Node test the same
+file unchanged.
+
+- Add `maths.js` with stub `make`, `update` and `newState`, replaced by
+  later tasks
+- Add `test.js` with `ok`/`eq` assertions, a seeded LCG `makeRng` so
+  runs are reproducible, and `done()` exiting non-zero on any failure
+- Keep ES5 syntax and inject randomness rather than calling
+  `Math.random`, matching the constraints the rest of the plan relies on
+EOF
 ```
 
 ---
@@ -202,7 +221,20 @@ Expected: PASS, 0 failures
 
 ```bash
 git add maths.js test.js
-git commit -m "feat: add seeded random helpers to maths module"
+git commit -F - <<'EOF'
+feat: add seeded random helpers to maths module
+
+Previously each generator would have had to reimplement bounded random
+draws; this commit adds three shared helpers so band code stays focused
+on arithmetic rather than plumbing.
+
+Randomness is taken as an injected `rand` function rather than read from
+`Math.random`, which is what makes every generator test reproducible.
+
+- Add `_randInt`, `_pick` and `_shuffle` inside the `Maths` IIFE
+- Make `_shuffle` copy its input, so callers' arrays are never mutated
+- Cover range, both bounds, determinism per seed, and non-mutation
+EOF
 ```
 
 ---
@@ -326,7 +358,24 @@ Expected: PASS, 0 failures
 
 ```bash
 git add maths.js test.js
-git commit -m "feat: add choice count and distractor generation"
+git commit -F - <<'EOF'
+feat: add choice count and distractor generation
+
+Previously nothing turned an answer into a set of tappable options; this
+commit adds that, plus the floor-support rule that keeps the weakest
+learners near the target success rate.
+
+Difficulty cannot fall below band 1, so at the bottom of the scale the
+lever becomes the number of choices rather than the content: fewer
+options mean less to compare and a better chance.
+
+- Add `choiceCount`, returning 2 at difficulty <= 1.25, 3 at <= 1.75,
+  else 4
+- Add `buildChoices`, which always includes the answer, never emits a
+  duplicate, and respects a minimum value so low bands stay positive
+- Pad outward from the answer when near-misses run short, and pass
+  string answers (comparison questions) through untouched
+EOF
 ```
 
 ---
@@ -490,7 +539,21 @@ Expected: PASS, 0 failures
 
 ```bash
 git add maths.js test.js
-git commit -m "feat: add band 1 and 2 question generators"
+git commit -F - <<'EOF'
+feat: add band 1 and 2 question generators
+
+Previously no questions existed; this commit adds the two easiest
+bands, covering ages five and six.
+
+Band 1 renders quantities as footballs rather than digits, so a child
+who cannot yet read numerals can still answer by counting.
+
+- Add `genCount` and `genBond5` for counting and bonds within 5
+- Add `genAdd10`, `genSub10` and `genBond10` for work within 10
+- Establish the generator contract returning `render`, `answer`,
+  `skill` and `near`, which every later band follows
+- Add a shared `checkGenerators` test helper reused by later bands
+EOF
 ```
 
 ---
@@ -654,7 +717,21 @@ Expected: PASS, 0 failures
 
 ```bash
 git add maths.js test.js
-git commit -m "feat: add band 3 and 4 question generators"
+git commit -F - <<'EOF'
+feat: add band 3 and 4 question generators
+
+Previously only bands 1 and 2 existed; this commit adds ages seven and
+eight, introducing the first non-linear question shapes.
+
+Sequences and halving broaden the question forms beyond `a op b`, which
+matters because form variety keeps practice interesting at a fixed
+skill level.
+
+- Add `genAdd20`, `genSub20`, `genDouble` and `genSeq` for band 3
+- Add `genMul`, `genAdd100`, `genSub100` and `genHalf` for band 4
+- Keep halving exact by generating from an even multiple
+- Cover the single-gap invariant for sequences and whole-number halves
+EOF
 ```
 
 ---
@@ -805,7 +882,22 @@ Expected: PASS, 0 failures
 
 ```bash
 git add maths.js test.js
-git commit -m "feat: add band 5 and 6 question generators"
+git commit -F - <<'EOF'
+feat: add band 5 and 6 question generators
+
+Previously the ladder stopped at band 4; this commit adds ages nine and
+ten, where fractions and decimals first appear.
+
+Decimals are restricted to multiples of 0.25 because those are exactly
+representable in binary, which sidesteps float drift entirely rather
+than papering over it with a tolerance.
+
+- Add `genTable`, `genDiv` and `genFracOf` for band 5, generating
+  division from a known product so it is always exact
+- Add `genAdd1000`, `genDec` and `genFracCmp` for band 6
+- Compare fractions by cross-multiplying integers, avoiding division
+- Answer comparison questions with the symbols `<`, `>` and `=`
+EOF
 ```
 
 ---
@@ -965,7 +1057,22 @@ Expected: PASS, 0 failures
 
 ```bash
 git add maths.js test.js
-git commit -m "feat: add band 7 and 8 question generators"
+git commit -F - <<'EOF'
+feat: add band 7 and 8 question generators
+
+Previously the ladder stopped at band 6; this commit completes it with
+ages eleven and twelve.
+
+Band 8 is the only band permitted negative values, and the unknown stays
+a box rather than a Latin letter so early algebra needs no language.
+
+- Add `genPct`, `genOrder` and `genRatio` for band 7, drawing amounts
+  divisible by 20 so every percentage lands whole
+- Add `genNeg`, `genSquare`, `genRoot` and `genEqn` for band 8
+- Generate roots from a known square, keeping them exact
+- Reuse the `op` token for `:` and the radical rather than widening the
+  token vocabulary
+EOF
 ```
 
 ---
@@ -1114,7 +1221,25 @@ Expected: PASS, 0 failures
 
 ```bash
 git add maths.js test.js
-git commit -m "feat: add band mixing and weak-spot weighted question selection"
+git commit -F - <<'EOF'
+feat: add band mixing and weak-spot weighted question selection
+
+Previously the bands existed but nothing chose between them; this commit
+adds the selection layer that turns a continuous difficulty into a
+concrete question.
+
+Difficulty is a float, and the fractional part is the probability of
+drawing from the band above, so progression is a gradual shift in mix
+rather than a cliff between levels.
+
+- Add `pickBand`, splitting difficulty into a band and a mix probability
+- Add `pickGenerator`, favouring weak skills 60% of the time and
+  choosing uniformly the other 40%, since drilling only weaknesses is
+  how a child comes to resent the subject
+- Resolve each generator's skill id once at load into `_skillIndex`
+  rather than probing on every call
+- Assemble `render`, `answer`, `choices`, `skill` and `band` in `make`
+EOF
 ```
 
 ---
@@ -1230,7 +1355,22 @@ Expected: PASS, 0 failures
 
 ```bash
 git add maths.js test.js
-git commit -m "feat: add adaptive difficulty engine"
+git commit -F - <<'EOF'
+feat: add adaptive difficulty engine
+
+Previously difficulty never moved; this commit makes it track the child,
+rising when they succeed and falling when they struggle.
+
+Step sizes are derived rather than guessed: a random walk settles where
+`p* = d / (u + d)`, so an up-step near 0.075 against a down-step of
+0.300 targets 80% accuracy. Response time separates fluency from
+finger-counting, and is measured but never shown.
+
+- Add `update`, returning a new state rather than mutating the input
+- Bucket correct answers by speed against `2500 + 900 * band` ms
+- Clamp difficulty to [1, 8]
+- Track per-skill mastery as an EWMA initialised at 0.5
+EOF
 ```
 
 ---
@@ -1331,7 +1471,24 @@ Then revert that change and re-run to confirm PASS.
 
 ```bash
 git add test.js
-git commit -m "test: add full generator invariant sweep across all bands"
+git commit -F - <<'EOF'
+test: add full generator invariant sweep across all bands
+
+Previously each band was tested in isolation; this commit sweeps all
+eight at volume, because the worst defect an educational game can ship
+is a question whose stated answer is wrong.
+
+The sweep re-derives each answer from the rendered tokens rather than
+trusting the generator, so a generator and its own test cannot agree on
+the same mistake.
+
+- Generate 2000 questions per band and assert the answer is among the
+  choices, choices are unique, and nothing is NaN or Infinite
+- Assert no negative values below band 8 and that division is exact
+- Verify every render token is a known type
+- Deliberately break a generator to confirm the sweep detects it, then
+  revert, so the suite is known to bite rather than assumed to
+EOF
 ```
 
 ---
@@ -1424,7 +1581,23 @@ Expected: PASS, 0 failures, exit code 0
 
 ```bash
 git add test.js docs/superpowers/specs/2026-08-01-maths-mode-design.md
-git commit -m "test: verify adaptive convergence against the real engine"
+git commit -F - <<'EOF'
+test: verify adaptive convergence against the real engine
+
+Previously the tuning was validated only by a standalone prototype
+written during design; this commit reproduces that result against the
+real engine and removes the prototype.
+
+Keeping both would mean two implementations of the same tuning that can
+drift apart silently, with no signal about which one is authoritative.
+
+- Simulate learners of fixed ability and assert each settles at 72-88%
+  observed accuracy, matching the design's convergence table
+- Assert difficulty never escapes [1, 8] during simulation
+- Assert a strong learner climbs and a struggling one descends
+- Delete the superseded prototype and update the spec to point at
+  `test.js` as the single source of truth
+EOF
 ```
 
 ---
