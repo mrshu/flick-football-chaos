@@ -361,9 +361,65 @@ var Maths = (function () {
   _BANDS[7] = [genPct, genOrder, genRatio];
   _BANDS[8] = [genNeg, genSquare, genRoot, genEqn];
 
-  function make(difficulty, state, rand) { return null; }
+  function newState(startBand) {
+    var d = typeof startBand === 'number' ? startBand : 1;
+    if (d < 1) { d = 1; }
+    if (d > 8) { d = 8; }
+    return { difficulty: d, mastery: {} };
+  }
+
+  function pickBand(difficulty, rand) {
+    var b = Math.floor(difficulty), f = difficulty - b;
+    if (b < 1) { b = 1; f = 0; }
+    if (b >= 8) { return 8; }
+    return rand() < f ? b + 1 : b;
+  }
+
+  // Each generator's skill id, resolved once at load rather than on every
+  // call. Placed after every _BANDS[n] assignment so the table is complete.
+  var _skillIndex = (function () {
+    var idx = {}, b, i, gens, fixed = function () { return 0.5; };
+    for (b = 1; b <= 8; b++) {
+      gens = _BANDS[b];
+      idx[b] = [];
+      for (i = 0; i < gens.length; i++) {
+        idx[b].push(gens[i](fixed).skill);
+      }
+    }
+    return idx;
+  })();
+
+  // 60% of the time favour weak skills, 40% uniform (spec 8.4).
+  function pickGenerator(band, state, rand) {
+    var gens = _BANDS[band], skills = _skillIndex[band];
+    var i, m, w, weights = [], total = 0, r;
+    if (rand() < 0.4) { return gens[_randInt(rand, 0, gens.length - 1)]; }
+    for (i = 0; i < gens.length; i++) {
+      m = state.mastery && state.mastery[skills[i]] !== undefined
+        ? state.mastery[skills[i]] : 0.5;
+      w = 1 - m + 0.1;
+      weights.push(w);
+      total += w;
+    }
+    r = rand() * total;
+    for (i = 0; i < gens.length; i++) {
+      r -= weights[i];
+      if (r <= 0) { return gens[i]; }
+    }
+    return gens[gens.length - 1];
+  }
+
+  function make(difficulty, state, rand) {
+    var band = pickBand(difficulty, rand);
+    var q = pickGenerator(band, state || { mastery: {} }, rand)(rand);
+    var min = band === 8 ? -30 : 0;
+    var choices = buildChoices(q.answer, choiceCount(difficulty), q.near, rand, min);
+    return {
+      render: q.render, answer: q.answer, choices: choices,
+      skill: q.skill, band: band
+    };
+  }
   function update(state, outcome) { return state; }
-  function newState(startBand) { return { difficulty: startBand, mastery: {} }; }
 
   return {
     make: make, update: update, newState: newState,

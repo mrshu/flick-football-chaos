@@ -276,4 +276,51 @@ checkGenerators(8, true);   // band 8 alone may go negative
   ok(sawNegative, 'band 8 actually produces negative answers');
 })();
 
+// ---- Task 8 ----
+(function () {
+  var rand = makeRng(101), i, q, counts = { 3: 0, 4: 0 };
+
+  // Band mixing: difficulty 3.4 should draw roughly 40% from band 4.
+  for (i = 0; i < 4000; i++) {
+    q = Maths.make(3.4, Maths.newState(3.4), rand);
+    ok(q.band === 3 || q.band === 4, 'difficulty 3.4 draws from band 3 or 4');
+    counts[q.band]++;
+  }
+  var frac = counts[4] / 4000;
+  ok(frac > 0.33 && frac < 0.47, 'band 4 share is near 40% (got ' + frac.toFixed(3) + ')');
+
+  // Integer difficulty draws only that band.
+  for (i = 0; i < 500; i++) {
+    eq(Maths.make(5, Maths.newState(5), rand).band, 5, 'integer difficulty picks that band');
+  }
+  eq(Maths.make(8, Maths.newState(8), rand).band, 8, 'difficulty 8 never overflows to band 9');
+
+  // Shape of the returned question.
+  for (i = 0; i < 2000; i++) {
+    q = Maths.make(1 + rand() * 7, Maths.newState(4), rand);
+    ok(q.choices.indexOf(q.answer) !== -1, 'choices always contain the answer');
+    ok(q.choices.length >= 2 && q.choices.length <= 4, 'choice count is 2-4');
+    for (var k = 0; k < q.choices.length; k++) {
+      ok(q.choices.indexOf(q.choices[k]) === k, 'choices are unique');
+    }
+    ok(typeof q.skill === 'string', 'question reports its skill');
+  }
+
+  // Floor support: at the bottom of the scale choices reduce.
+  eq(Maths.make(1.0, Maths.newState(1), rand).choices.length, 2,
+     'difficulty 1.0 offers two choices');
+  eq(Maths.make(1.5, Maths.newState(1.5), rand).choices.length, 3,
+     'difficulty 1.5 offers three choices');
+
+  // Weak-spot weighting: a skill with low mastery is over-sampled.
+  var st = Maths.newState(2);
+  st.mastery = { add10: 0.05, sub10: 0.95, bond10: 0.95 };
+  var weak = 0, total = 6000;
+  for (i = 0; i < total; i++) {
+    if (Maths.make(2, st, rand).skill === 'add10') { weak++; }
+  }
+  ok(weak / total > 0.40,
+     'weak skill is favoured above its uniform 1/3 share (got ' + (weak / total).toFixed(3) + ')');
+})();
+
 done();
