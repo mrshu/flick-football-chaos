@@ -208,4 +208,37 @@ checkGenerators(4, false);
   }
 })();
 
+// ---- Task 6 ----
+checkGenerators(5, false);
+checkGenerators(6, false);
+
+(function () {
+  var rand = makeRng(57), i, q;
+
+  // Division must be exact.
+  for (i = 0; i < 500; i++) {
+    q = Maths._BANDS[5][1](rand);
+    eq(q.answer, Math.floor(q.answer), 'division yields a whole number');
+    ok(q.answer > 0, 'division answer is positive');
+  }
+  // Fractions of amounts must be exact.
+  for (i = 0; i < 500; i++) {
+    q = Maths._BANDS[5][2](rand);
+    eq(q.answer, Math.floor(q.answer), 'fraction of amount is a whole number');
+  }
+  // Decimals must be multiples of 0.25, so binary representation is exact.
+  for (i = 0; i < 500; i++) {
+    q = Maths._BANDS[6][1](rand);
+    eq(q.answer * 4, Math.round(q.answer * 4), 'decimal answer is a multiple of 0.25');
+    eq(q.answer, Number(q.answer.toFixed(2)), 'decimal answer has no float drift');
+  }
+  // Comparison answers are symbols with all three offered.
+  for (i = 0; i < 300; i++) {
+    q = Maths._BANDS[6][2](rand);
+    ok(q.answer === '<' || q.answer === '>' || q.answer === '=',
+       'fraction comparison answers with a symbol');
+    eq(q.near.length, 2, 'comparison offers the two other symbols');
+  }
+})();
+
 done();

@@ -199,6 +199,78 @@ var Maths = (function () {
     };
   }
 
+  // --- band 5: tables to 12, division, fractions of amounts ---
+  function genTable(rand) {
+    var a = _randInt(rand, 2, 12), b = _randInt(rand, 2, 12);
+    return {
+      render: [{ t: 'num', v: a }, { t: 'op', v: OP.mul },
+               { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
+      answer: a * b, skill: 'table',
+      near: [a * b + a, a * b - a, a * b + b, a + b]
+    };
+  }
+
+  function genDiv(rand) {
+    var b = _randInt(rand, 2, 12), q = _randInt(rand, 2, 12), a = b * q;
+    return {
+      render: [{ t: 'num', v: a }, { t: 'op', v: OP.div },
+               { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
+      answer: q, skill: 'div',
+      near: [q + 1, q - 1, b, a - b]
+    };
+  }
+
+  function genFracOf(rand) {
+    var d = _pick(rand, [2, 3, 4]), k = _randInt(rand, 2, 8), n = d * k;
+    return {
+      render: [{ t: 'frac', n: 1, d: d }, { t: 'op', v: OP.mul },
+               { t: 'num', v: n }, { t: 'eq' }, { t: 'box' }],
+      answer: k, skill: 'fracOf',
+      near: [k + 1, k - 1, n, d]
+    };
+  }
+
+  // --- band 6: multi-digit, decimals, fraction comparison ---
+  function genAdd1000(rand) {
+    var a = _randInt(rand, 100, 800);
+    // b never exceeds a, so the subtraction branch cannot go negative.
+    var b = _randInt(rand, 20, Math.min(199, a));
+    var addition = rand() < 0.5;
+    return {
+      render: [{ t: 'num', v: a }, { t: 'op', v: addition ? OP.add : OP.sub },
+               { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
+      answer: addition ? a + b : a - b, skill: 'add1000',
+      near: addition ? [a + b + 10, a + b - 10, a + b + 100, a - b]
+                     : [a - b + 10, Math.max(0, a - b - 10), a - b + 100, a + b]
+    };
+  }
+
+  // Quarters only: multiples of 0.25 are binary-exact, so no float drift.
+  function genDec(rand) {
+    var aq = _randInt(rand, 1, 8), bq = _randInt(rand, 1, 8); // quarter units
+    var sum = (aq + bq) / 4;
+    return {
+      render: [{ t: 'num', v: aq / 4 }, { t: 'op', v: OP.add },
+               { t: 'num', v: bq / 4 }, { t: 'eq' }, { t: 'box' }],
+      answer: sum, skill: 'dec',
+      near: [(aq + bq + 1) / 4, (aq + bq - 1) / 4,
+             (aq + bq + 4) / 4, Math.abs(aq - bq) / 4]
+    };
+  }
+
+  function genFracCmp(rand) {
+    var an = _randInt(rand, 1, 5), ad = _randInt(rand, 2, 6);
+    var bn = _randInt(rand, 1, 5), bd = _randInt(rand, 2, 6);
+    var left = an * bd, right = bn * ad; // cross-multiply, integers only
+    var answer = left < right ? '<' : (left > right ? '>' : '=');
+    var all = ['<', '>', '='], near = [], i;
+    for (i = 0; i < all.length; i++) { if (all[i] !== answer) { near.push(all[i]); } }
+    return {
+      render: [{ t: 'frac', n: an, d: ad }, { t: 'box' }, { t: 'frac', n: bn, d: bd }],
+      answer: answer, skill: 'fracCmp', near: near
+    };
+  }
+
   var _BANDS = {
     1: [genCount, genBond5],
     2: [genAdd10, genSub10, genBond10]
@@ -206,6 +278,8 @@ var Maths = (function () {
 
   _BANDS[3] = [genAdd20, genSub20, genDouble, genSeq];
   _BANDS[4] = [genMul, genAdd100, genSub100, genHalf];
+  _BANDS[5] = [genTable, genDiv, genFracOf];
+  _BANDS[6] = [genAdd1000, genDec, genFracCmp];
 
   function make(difficulty, state, rand) { return null; }
   function update(state, outcome) { return state; }
