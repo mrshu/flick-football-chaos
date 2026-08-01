@@ -1583,7 +1583,10 @@ Append to `test.js` before `done();`:
       choices = Maths.choiceCount(s.difficulty);
       p = known + (1 - known) / choices;
       ok_ = rand() < p;
-      ms = ok_ ? (2500 + 900 * band) * (0.4 + rand()) : 9000;
+      // Multiplier spans [0.4, 1.8) so that all three timing buckets occur.
+      // With `0.4 + rand()` it never exceeds 1.4, and the slow branch — one of
+      // the four derived step constants — would never be exercised here.
+      ms = ok_ ? (2500 + 900 * band) * (0.4 + rand() * 1.4) : 9000;
       s = Maths.update(s, { correct: ok_, elapsedMs: ms, band: band, skill: 'x' });
       if (i > n / 2) { total++; sum += s.difficulty; if (ok_) { correct++; } }
       ok(s.difficulty >= 1 && s.difficulty <= 8, 'difficulty stays within [1,8]');
