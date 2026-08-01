@@ -374,4 +374,93 @@ checkGenerators(8, true);   // band 8 alone may go negative
   ok(s.mastery.div >= 0 && s.mastery.div < 0.1, 'mastery converges towards 0 without going below');
 })();
 
+// ---- Task 10: invariant sweep (spec 12) ----
+(function () {
+  var rand = makeRng(2024), band, i, q, k, tok, nums, ops, failuresBefore = failures;
+
+  function numsOf(render) {
+    var out = [], k;
+    for (k = 0; k < render.length; k++) {
+      if (render[k].t === 'num' || render[k].t === 'balls') { out.push(render[k].v); }
+    }
+    return out;
+  }
+
+  for (band = 1; band <= 8; band++) {
+    for (i = 0; i < 2000; i++) {
+      q = Maths.make(band, Maths.newState(band), rand);
+
+      // Structural invariants.
+      eq(q.band, band, 'sweep: integer difficulty stays in band');
+      ok(q.choices.indexOf(q.answer) !== -1, 'sweep: answer is among the choices');
+      for (k = 0; k < q.choices.length; k++) {
+        ok(q.choices.indexOf(q.choices[k]) === k, 'sweep: choices are unique');
+        if (typeof q.choices[k] === 'number') {
+          ok(isFinite(q.choices[k]), 'sweep: no NaN or Infinity in choices');
+          if (band < 8) { ok(q.choices[k] >= 0, 'sweep: no negative choice below band 8'); }
+        }
+      }
+      ok(q.choices.length >= 2 && q.choices.length <= 4, 'sweep: 2-4 choices');
+      if (typeof q.answer === 'number') {
+        ok(isFinite(q.answer), 'sweep: answer is finite');
+        if (band < 8) { ok(q.answer >= 0, 'sweep: no negative answer below band 8'); }
+      }
+      for (k = 0; k < q.render.length; k++) {
+        tok = q.render[k];
+        ok(TOKEN_TYPES.indexOf(tok.t) !== -1, 'sweep: token type is known');
+        ok(!(tok.v !== undefined && typeof tok.v === 'number' && !isFinite(tok.v)),
+           'sweep: no non-finite token value');
+      }
+
+      // Independent recomputation for the plain a-op-b-=-box forms.
+      nums = numsOf(q.render);
+      ops = [];
+      for (k = 0; k < q.render.length; k++) {
+        if (q.render[k].t === 'op') { ops.push(q.render[k].v); }
+      }
+      if (nums.length === 2 && ops.length === 1 &&
+          q.render[q.render.length - 1].t === 'box' &&
+          q.render[0].t !== 'frac' && q.render[0].t !== 'pct') {
+        if (ops[0] === '+') {
+          ok(Math.abs(q.answer - (nums[0] + nums[1])) < 1e-9, 'sweep: addition recomputes');
+        } else if (ops[0] === '−') {
+          ok(Math.abs(q.answer - (nums[0] - nums[1])) < 1e-9, 'sweep: subtraction recomputes');
+        } else if (ops[0] === '×') {
+          ok(Math.abs(q.answer - nums[0] * nums[1]) < 1e-9, 'sweep: multiplication recomputes');
+        } else if (ops[0] === '÷') {
+          ok(Math.abs(q.answer - nums[0] / nums[1]) < 1e-9, 'sweep: division recomputes');
+          eq(nums[0] % nums[1], 0, 'sweep: division is exact');
+        }
+      }
+    }
+  }
+  ok(failures === failuresBefore, 'sweep completed with no invariant violations');
+})();
+
+// Fraction comparison is the one question type the sweep above cannot
+// recompute, because its answer is a symbol rather than a number. A sign
+// inversion there would teach children the wrong thing while passing every
+// shape-level assertion, so check the direction directly against known pairs.
+(function () {
+  var rand = makeRng(4242), i, q, left, right, expected, sawLt = 0, sawGt = 0, sawEq = 0;
+  for (i = 0; i < 3000; i++) {
+    q = Maths._BANDS[6][2](rand);
+    // Verify by division, NOT by cross-multiplying. Recomputing with the
+    // generator's own formula would let a reversed comparison cancel out and
+    // pass. Denominators here are at most 6, so the smallest real gap between
+    // two distinct fractions is 1/30 — far above any rounding error, making
+    // the epsilon comparison safe.
+    left = q.render[0].n / q.render[0].d;
+    right = q.render[2].n / q.render[2].d;
+    expected = Math.abs(left - right) < 1e-12 ? '=' : (left < right ? '<' : '>');
+    eq(q.answer, expected, 'fraction comparison points the right way');
+    if (q.answer === '<') { sawLt++; } else if (q.answer === '>') { sawGt++; } else { sawEq++; }
+  }
+  // Without this, a generator that always answered '<' would satisfy the loop
+  // above only if the check were also broken — but it would sail through any
+  // test that never looked at the spread.
+  ok(sawLt > 0 && sawGt > 0 && sawEq > 0,
+     'all three comparison outcomes occur (< ' + sawLt + ', > ' + sawGt + ', = ' + sawEq + ')');
+})();
+
 done();
