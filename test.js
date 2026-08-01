@@ -473,4 +473,40 @@ checkGenerators(8, true);   // band 8 alone may go negative
      'all three comparison outcomes occur (< ' + sawLt + ', > ' + sawGt + ', = ' + sawEq + ')');
 })();
 
+// ---- Task 11: adaptive convergence (spec 8.7) ----
+(function () {
+  // A synthetic learner of fixed ability on the 1-8 band scale. Chance of
+  // knowing the answer falls off as difficulty exceeds ability; whatever is
+  // not known is guessed from the available choices, which is what makes
+  // floor support (spec 8.6) measurable.
+  function simulate(ability, n, seed) {
+    var rand = makeRng(seed), s = Maths.newState(4);
+    var correct = 0, total = 0, sum = 0, i, known, choices, p, ok_, band, ms;
+    for (i = 0; i < n; i++) {
+      band = Math.round(s.difficulty);
+      known = 1 / (1 + Math.exp(1.6 * (s.difficulty - ability)));
+      choices = Maths.choiceCount(s.difficulty);
+      p = known + (1 - known) / choices;
+      ok_ = rand() < p;
+      ms = ok_ ? (2500 + 900 * band) * (0.4 + rand()) : 9000;
+      s = Maths.update(s, { correct: ok_, elapsedMs: ms, band: band, skill: 'x' });
+      if (i > n / 2) { total++; sum += s.difficulty; if (ok_) { correct++; } }
+      ok(s.difficulty >= 1 && s.difficulty <= 8, 'difficulty stays within [1,8]');
+    }
+    return { accuracy: correct / total, band: sum / total };
+  }
+
+  var abilities = [1.5, 3, 4.5, 6, 7.5], i, r;
+  for (i = 0; i < abilities.length; i++) {
+    r = simulate(abilities[i], 40000, 900 + i);
+    ok(r.accuracy > 0.72 && r.accuracy < 0.88,
+       'ability ' + abilities[i] + ' settles near 80% (got ' +
+       (r.accuracy * 100).toFixed(1) + '% at band ' + r.band.toFixed(2) + ')');
+  }
+
+  // A strong learner climbs, a struggling one descends.
+  ok(simulate(8, 4000, 77).band > 6, 'a strong learner climbs the scale');
+  ok(simulate(1, 4000, 78).band < 2.5, 'a struggling learner descends the scale');
+})();
+
 done();

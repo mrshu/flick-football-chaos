@@ -267,7 +267,9 @@ All land in the 72–88% band, matching the predicted `p* = 0.80`, and
 difficulty never escaped `[1.0, 8.0]`.
 
 The first row is why §8.6 exists: **without floor support that learner sat at
-64.8%**. The simulation is worth reproducing as part of `test.js`.
+64.8%**. This is reproduced against the real engine in `test.js`; the standalone
+prototype it was first measured with has been removed to avoid two sources of
+truth.
 
 ## 9. Rewards, streaks and unlocks
 
