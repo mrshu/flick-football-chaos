@@ -281,6 +281,86 @@ var Maths = (function () {
   _BANDS[5] = [genTable, genDiv, genFracOf];
   _BANDS[6] = [genAdd1000, genDec, genFracCmp];
 
+  // --- band 7: percentages, order of operations, ratio ---
+  function genPct(rand) {
+    var p = _pick(rand, [10, 25, 50, 75]);
+    var n = _randInt(rand, 1, 10) * 20; // divisible by 20, so all four are exact
+    var answer = n * p / 100;
+    return {
+      render: [{ t: 'pct', v: p }, { t: 'op', v: OP.mul },
+               { t: 'num', v: n }, { t: 'eq' }, { t: 'box' }],
+      answer: answer, skill: 'pct',
+      // Math.round keeps the "halved it" misconception without offering a
+      // fractional choice to an integer question.
+      near: [answer * 2, Math.round(answer / 2), answer + 10, n - answer]
+    };
+  }
+
+  function genOrder(rand) {
+    var a = _randInt(rand, 2, 12), b = _randInt(rand, 2, 9), c = _randInt(rand, 2, 9);
+    return {
+      render: [{ t: 'num', v: a }, { t: 'op', v: OP.add },
+               { t: 'num', v: b }, { t: 'op', v: OP.mul },
+               { t: 'num', v: c }, { t: 'eq' }, { t: 'box' }],
+      answer: a + b * c, skill: 'order',
+      near: [(a + b) * c, a + b + c, a + b * c + 1, a * b + c]
+    };
+  }
+
+  function genRatio(rand) {
+    var a = _randInt(rand, 1, 6), b = _randInt(rand, 1, 6), k = _randInt(rand, 2, 5);
+    return {
+      render: [{ t: 'num', v: a }, { t: 'op', v: ':' }, { t: 'num', v: b },
+               { t: 'eq' },
+               { t: 'num', v: a * k }, { t: 'op', v: ':' }, { t: 'box' }],
+      answer: b * k, skill: 'ratio',
+      near: [b * k + b, b * k - b, b + k, a * k]
+    };
+  }
+
+  // --- band 8: negatives, squares, roots, equations ---
+  function genNeg(rand) {
+    var a = _randInt(rand, 1, 9), b = _randInt(rand, 1, 12);
+    return {
+      render: [{ t: 'num', v: a }, { t: 'op', v: OP.sub },
+               { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
+      answer: a - b, skill: 'neg',
+      near: [b - a, a - b + 1, a - b - 1, a + b]
+    };
+  }
+
+  function genSquare(rand) {
+    var n = _randInt(rand, 2, 12);
+    return {
+      render: [{ t: 'pow', v: n, e: 2 }, { t: 'eq' }, { t: 'box' }],
+      answer: n * n, skill: 'square',
+      near: [n * 2, n * n + n, n * n - n, n * n + 1]
+    };
+  }
+
+  function genRoot(rand) {
+    var n = _randInt(rand, 2, 12), sq = n * n;
+    return {
+      render: [{ t: 'op', v: '√' }, { t: 'num', v: sq },
+               { t: 'eq' }, { t: 'box' }],
+      answer: n, skill: 'root',
+      near: [n + 1, n - 1, Math.round(sq / 2), n * 2]
+    };
+  }
+
+  function genEqn(rand) {
+    var x = _randInt(rand, 1, 12), b = _randInt(rand, 1, 12);
+    return {
+      render: [{ t: 'box' }, { t: 'op', v: OP.add }, { t: 'num', v: b },
+               { t: 'eq' }, { t: 'num', v: x + b }],
+      answer: x, skill: 'eqn',
+      near: [x + b, x + 1, x - 1, b]
+    };
+  }
+
+  _BANDS[7] = [genPct, genOrder, genRatio];
+  _BANDS[8] = [genNeg, genSquare, genRoot, genEqn];
+
   function make(difficulty, state, rand) { return null; }
   function update(state, outcome) { return state; }
   function newState(startBand) { return { difficulty: startBand, mastery: {} }; }

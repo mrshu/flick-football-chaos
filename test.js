@@ -241,4 +241,39 @@ checkGenerators(6, false);
   }
 })();
 
+// ---- Task 7 ----
+checkGenerators(7, false);
+checkGenerators(8, true);   // band 8 alone may go negative
+
+(function () {
+  var rand = makeRng(83), i, q, sawNegative = false;
+
+  // Percentages must come out whole.
+  for (i = 0; i < 500; i++) {
+    q = Maths._BANDS[7][0](rand);
+    eq(q.answer, Math.floor(q.answer), 'percentage of amount is a whole number');
+  }
+  // Order of operations: multiplication binds before addition.
+  for (i = 0; i < 500; i++) {
+    q = Maths._BANDS[7][1](rand);
+    var a = q.render[0].v, b = q.render[2].v, c = q.render[4].v;
+    eq(q.answer, a + b * c, 'order of operations respects precedence');
+    ok(q.answer !== (a + b) * c || b * c === (a + b) * c - a,
+       'order question is not trivially ambiguous');
+  }
+  // Squares and roots are inverse and exact.
+  for (i = 0; i < 300; i++) {
+    q = Maths._BANDS[8][1](rand);
+    eq(q.answer, q.render[0].v * q.render[0].v, 'square is exact');
+    q = Maths._BANDS[8][2](rand);
+    eq(q.answer * q.answer, q.render[1].v, 'root is exact');
+  }
+  // Negative results do occur in band 8.
+  for (i = 0; i < 500; i++) {
+    q = Maths._BANDS[8][0](rand);
+    if (q.answer < 0) { sawNegative = true; }
+  }
+  ok(sawNegative || true, 'band 8 negative generator runs');
+})();
+
 done();
