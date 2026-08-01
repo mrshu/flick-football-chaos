@@ -92,20 +92,35 @@ only to the new mode.
 | Footer hint sentence | Small looping drag-and-release animation |
 | Chaos banner text | Icon only (🎈 💥 🧊 🐜) |
 
-### Intro screen
+### Setup screen
 
-Shown at boot. Wordless:
+Shown at boot. One flat screen, no nested menus — three rows of choices and a
+play button, everything visible at once with the current selection highlighted.
 
-- A grid of eight large buttons showing the digits `5`–`12` (age → starting
-  band). This enters the cup (§13).
-- A row of three `⚽` buttons marked `★`, `★★`, `★★★` for plain arcade play with
-  no maths, at chosen opposition strength (§13.6).
-- A trophy shelf showing cups won (§13.5).
-- Selection persists, so a returning child skips straight in via `↻`; a small
-  grid glyph returns to the selector.
+| Row | Choices | Meaning |
+| --- | --- | --- |
+| Mode | `⚽` \| `🏆` | One match, or a five-match cup (§13) |
+| Maths | `⚽` `5` `6` `7` `8` `9` `10` `11` `12` | No maths, or starting band by age |
+| Opposition | `★` `★★` `★★★` | AI strength (§13.6) — dimmed when `🏆` is chosen, since the cup sets its own curve |
+
+Then a large `▶`. Plus a trophy shelf showing cups won (§13.5).
 
 Stars carry "easy / normal / hard" without language, which the words themselves
-could not. The layout stays flat — two groups of buttons, no nested menus.
+could not; digits carry the age band.
+
+**The two axes are orthogonal**, so all four combinations are valid and there
+are no invalid states to guard against:
+
+| | No maths | With maths |
+| --- | --- | --- |
+| **Single** | The original arcade game | One match with questions |
+| **Cup** | Football-only tournament | The full educational campaign |
+
+Choosing a single match rather than a cup matters: committing a child to five
+matches when they have ten minutes is a good way to have them not start at all.
+
+Selections persist, so a returning child taps `▶` once — or `↻` from the end
+screen to replay immediately. A small grid glyph returns here.
 
 ## 7. Maths content
 
@@ -400,12 +415,14 @@ HUMAN_QUESTION → HUMAN_AIM → MOVING → AI_WAIT → MOVING → HUMAN_QUESTIO
 The question panel overlays the pitch, then clears entirely so aiming is
 unobstructed.
 
-In arcade (`⚽ ★/★★/★★★`) mode the new state is skipped entirely: chaos
-modifiers revert to firing randomly as they do today, no charges are granted,
-and no unlock or cup progress accrues (those are earned by correct answers and
-cup wins respectively). AI strength comes from the chosen star rating (§13.6).
-Equipped cosmetics still apply, so anything already earned is enjoyed in arcade
-play too.
+With maths switched off (`⚽` in the Maths row of §6), the new state is skipped
+entirely: chaos modifiers revert to firing randomly as they do today, no
+charges are granted, and no unlock progress accrues (unlocks are earned by
+correct answers). This is independent of the Mode row — a football-only cup
+still advances through crests and still awards a trophy.
+
+Equipped cosmetics always apply, so anything already earned is enjoyed in
+maths-free play too.
 
 ### 10.4 Persistence
 
@@ -485,15 +502,25 @@ this cannot be verified by unit tests.
 A five-opponent tournament, which exists to serve repeat play (§1): a
 part-finished cup is a concrete reason to come back tomorrow.
 
-### 13.1 It replaces the match rather than sitting beside it
+### 13.1 One of two modes
 
-The intro gains no new options. Choosing an age drops the child straight into
-the cup — the tournament simply *is* how the game is structured now. `⚽`
-arcade mode remains standalone with no cup progress.
+The cup is chosen on the setup screen (§6) alongside the single-match option,
+and is independent of whether maths is switched on — a football-only cup is a
+perfectly good thing to want.
 
 Progress shows as a row of five procedurally-drawn crests (colour plus a simple
 pattern — stripes, halves, sash, quarters, hoops), completed ones ticked, the
 current one highlighted. No names, no text.
+
+Cup progress is saved after every match, so a part-finished tournament survives
+closing the tab — which is the entire point of it (§9.0).
+
+**Choosing `🏆` always resumes an unfinished cup**, and only starts a fresh one
+when the previous is complete. There is deliberately no "abandon cup" action:
+it would be the single destructive control in the game, and confirming it
+wordlessly is awkward. Since a loss never costs progress (§13.3), a child has
+no reason to want one — the only escape from a hard opponent is `⚽` single
+match, which is always one tap away and costs the cup nothing.
 
 ### 13.2 Rising AI quality
 
@@ -547,7 +574,7 @@ child may be a fine footballer and shaky at times tables, or the reverse.
 
 ### 13.5 Trophy shelf
 
-Completing a cup adds a trophy to a shelf on the intro screen and begins a new
+Completing a cup adds a trophy to a shelf on the setup screen and begins a new
 season with a slightly higher base skill, giving indefinite replay without new
 content.
 
@@ -555,20 +582,24 @@ Trophies are kept **separate from the cosmetic unlocks** rather than tangled
 into them: cosmetics come from correct answers, trophies from winning cups. Two
 categories, no shared currency to reason about.
 
-### 13.6 Arcade difficulty
+### 13.6 Single-match difficulty
 
-Arcade play gets the same three AI behaviours, set directly instead of by cup
-progression — one shared `skill` knob, two ways of reaching it:
+A single match gets the same three AI behaviours, set directly instead of by
+cup progression — one shared `skill` knob, two ways of reaching it. This applies
+whether or not maths is switched on:
 
 | Button | Meaning | `skill` |
 | --- | --- | --- |
-| `⚽ ★` | Easy | `0.20` |
-| `⚽ ★★` | Normal | `0.55` |
-| `⚽ ★★★` | Hard | `0.90` |
+| `★` | Easy | `0.20` |
+| `★★` | Normal | `0.55` |
+| `★★★` | Hard | `0.90` |
 
 Stars rather than words, for the reason in §6. The chosen value feeds the exact
 same formulas in §13.2, so there is a single AI difficulty implementation with
 no second code path to keep in sync.
+
+The row is dimmed when `🏆` is selected: the cup supplies its own rising curve,
+and letting both set `skill` would be two controls fighting over one value.
 
 ### 13.7 Module
 
@@ -598,9 +629,9 @@ throughout rather than only at the end.
 4. **Juice** (§9.3) — shake, hit-stop, trails, slow motion. Independent of
    everything above; large felt improvement for small effort.
 5. **`tournament.js` + AI skill** (§13) — parameterise `aiLaunch()` with one
-   `skill` value, add crests, the cup row, the star-rated arcade buttons and
-   the trophy shelf. Independent of the maths work; the AI parameterisation is
-   worth doing early since both the cup and arcade difficulty depend on it.
+   `skill` value, add crests, the cup row, the star opposition buttons and the
+   trophy shelf. Independent of the maths work; the AI parameterisation is worth
+   doing early, since both the cup and the single-match stars depend on it.
 6. **Unlocks** (§9.2) — persistence, milestones, procedural cosmetics, the
    filling silhouette. Last because it depends on a working correct-answer
    count and is the most self-contained.
