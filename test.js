@@ -111,4 +111,66 @@ ok(r1() !== r1(), 'successive values differ');
      'comparison choices are the three symbols');
 })();
 
+// ---- Band generator shared checks (used by Tasks 4-7) ----
+var TOKEN_TYPES = ['num', 'balls', 'op', 'eq', 'box', 'frac', 'bar', 'sep', 'pct', 'pow'];
+
+function checkGenerators(band, allowNegative) {
+  var gens = Maths._BANDS[band], rand = makeRng(1000 + band), g, q, i, k, tok;
+  ok(gens && gens.length > 0, 'band ' + band + ' has generators');
+  for (g = 0; g < gens.length; g++) {
+    for (i = 0; i < 300; i++) {
+      q = gens[g](rand);
+      ok(!!q && typeof q === 'object', 'band ' + band + ' generator returns an object');
+      ok(typeof q.skill === 'string' && q.skill.length > 0,
+         'band ' + band + ' question has a skill id');
+      ok(q.answer !== undefined && q.answer !== null,
+         'band ' + band + ' question has an answer');
+      if (typeof q.answer === 'number') {
+        ok(isFinite(q.answer), 'band ' + band + ' answer is finite');
+        if (!allowNegative) {
+          ok(q.answer >= 0, 'band ' + band + ' answer is not negative');
+        }
+      }
+      ok(Object.prototype.toString.call(q.render) === '[object Array]' && q.render.length > 0,
+         'band ' + band + ' render is a non-empty array');
+      for (k = 0; k < q.render.length; k++) {
+        tok = q.render[k];
+        ok(TOKEN_TYPES.indexOf(tok.t) !== -1,
+           'band ' + band + ' token type "' + tok.t + '" is known');
+        if (tok.t === 'num' || tok.t === 'balls' || tok.t === 'pct') {
+          ok(typeof tok.v === 'number' && isFinite(tok.v),
+             'band ' + band + ' ' + tok.t + ' token has a finite value');
+          if (!allowNegative) {
+            ok(tok.v >= 0, 'band ' + band + ' displayed value is not negative');
+          }
+        }
+      }
+      ok(Object.prototype.toString.call(q.near) === '[object Array]',
+         'band ' + band + ' provides near-miss candidates');
+    }
+  }
+}
+
+// ---- Task 4 ----
+checkGenerators(1, false);
+checkGenerators(2, false);
+
+(function () {
+  // Band 1 must stay within bonds-to-5 and use football pictograms.
+  var rand = makeRng(5), i, q, usedBalls = false;
+  for (i = 0; i < 400; i++) {
+    q = Maths._BANDS[1][0](rand);
+    ok(q.answer <= 5, 'band 1 counting answers stay within 5');
+    for (var k = 0; k < q.render.length; k++) {
+      if (q.render[k].t === 'balls') { usedBalls = true; }
+    }
+  }
+  ok(usedBalls, 'band 1 renders quantities as footballs');
+
+  for (i = 0; i < 400; i++) {
+    q = Maths._BANDS[2][0](rand);
+    ok(q.answer <= 10, 'band 2 addition stays within 10');
+  }
+})();
+
 done();
