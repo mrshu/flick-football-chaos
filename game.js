@@ -38,6 +38,38 @@ function fitCanvas() {
 }
 window.addEventListener('resize', fitCanvas);
 
+/* ---------- fullscreen ---------- */
+const wrapEl = el('wrap'), fsBtn = el('fsBtn');
+const requestFs = wrapEl.requestFullscreen || wrapEl.webkitRequestFullscreen;
+const exitFs = document.exitFullscreen || document.webkitExitFullscreen;
+const inFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+
+if (!requestFs) {
+  fsBtn.classList.add('hidden'); // iOS Safari cannot fullscreen non-video elements
+} else {
+  const toggleFullscreen = () => {
+    // the browser requires a user gesture; on refusal we stay windowed, but say why
+    const p = inFullscreen() ? exitFs.call(document) : requestFs.call(wrapEl);
+    if (p && p.catch) p.catch(err => console.warn('Fullscreen refused:', err && err.message));
+  };
+  fsBtn.addEventListener('click', toggleFullscreen);
+  window.addEventListener('keydown', e => {
+    if (e.key !== 'f' && e.key !== 'F') return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return; // leave Cmd/Ctrl+F for browser find
+    e.preventDefault();
+    toggleFullscreen();
+  });
+  const onFsChange = () => {
+    const on = inFullscreen();
+    fsBtn.innerHTML = on ? '&#10005;' : '&#9974;';
+    fsBtn.title = on ? 'Exit fullscreen (F)' : 'Fullscreen (F)';
+    fitCanvas();                              // layout settles a frame later on some browsers
+    requestAnimationFrame(fitCanvas);
+  };
+  document.addEventListener('fullscreenchange', onFsChange);
+  document.addEventListener('webkitfullscreenchange', onFsChange);
+}
+
 /* ---------- sound (tiny generated blips) ---------- */
 const SFX = (() => {
   let ac = null;
