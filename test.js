@@ -273,7 +273,7 @@ checkGenerators(8, true);   // band 8 alone may go negative
     q = Maths._BANDS[8][0](rand);
     if (q.answer < 0) { sawNegative = true; }
   }
-  ok(sawNegative || true, 'band 8 negative generator runs');
+  ok(sawNegative, 'band 8 actually produces negative answers');
 })();
 
 done();
