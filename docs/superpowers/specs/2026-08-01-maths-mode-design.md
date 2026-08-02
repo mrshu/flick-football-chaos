@@ -49,30 +49,66 @@ These are hard and shape the architecture:
   in the existing game.
 - **Touch and mouse equally.** Tap targets sized for a 5-year-old on a phone.
 
-## 5. Core mechanic: the Charged Shot
+## 5. Core mechanic: the Advertised Prize
 
-One question per turn, immediately before the human aims.
+One question per turn, immediately before the human aims — **offered, not
+imposed**.
 
-- **Correct** → the player glows gold and the flick gets a power multiplier of
-  `1.35`. Streak advances.
-- **Wrong** → the correct answer flashes green, the tapped choice flashes red,
+The panel shows three things at once: **the prize you would win**, the
+question, and a skip control.
+
+```
+        🎈  <- the prize, shown before you answer
+      12 - 8 = []
+   [ 4 ]  [ 5 ]  [ 3 ]        [ skip ]
+```
+
+- **Correct** -> the advertised chaos modifier fires for this turn, with its
+  banner. Streak advances.
+- **Wrong** -> the correct answer flashes green, the tapped choice flashes red,
   and the child **still takes a normal shot**. No turn is lost. Streak resets.
+- **Skip** -> straight to aiming. No prize, no penalty, no comment.
 
-The no-penalty rule is deliberate: losing a turn for a wrong answer teaches a
-child that maths is the obstacle between them and football.
+### Why the prize is shown first
 
-The CPU never answers questions and never receives charges. This asymmetry
-makes the game easier for the child, which is intended.
+Showing the reward before the question turns a toll booth into an offer. A
+child who can see they are playing *for* a Giant Ball is choosing to do maths;
+a child handed a question with no visible stake is paying a tax to reach the
+football.
 
-### Optional bonus question
+### Why the prize is a chaos modifier
 
-After answering, the child may voluntarily take a second question for
-additional charge. It works by making the child *choose* extra maths to get a
-reward they want.
+The chaos modifiers already exist, are genuinely funny, and read as a single
+icon with no words. More importantly they are **unconditional**: the modifier
+fires whether or not the child then aims well.
 
-Per §1 this is a **secondary** lever — it raises density within a session,
-where wanting to return matters more — but it costs almost nothing to build on
-top of the question flow that already exists.
+This replaces an earlier design in which a correct answer multiplied flick
+power by 1.35. That was abandoned because the reward was invisible (a
+multiplier cannot be seen), *contingent* on a second skill (a child good at
+maths and bad at flicking received nothing), and occasionally a penalty (more
+power overshoots, and ruins a delicate positioning nudge).
+
+Chaos is therefore **earned only** while maths is on; the random per-turn roll
+survives only in the maths-off arcade mode.
+
+### Why skipping is allowed
+
+If answering is optional, no child is ever blocked, and every question answered
+is one the child chose. That is the whole "doing a ton of maths by accident"
+goal (§1).
+
+The risk is real and accepted: a child *can* skip everything and do no maths.
+The prize therefore has to carry the entire motivation, which is why it must be
+something genuinely wanted rather than a number.
+
+### Streak escalation
+
+The prize shown escalates with the streak, so the offer gets louder the better
+the child is doing (§9.1). Streak progress is displayed as filling pips beside
+the prize, so there is always a visible next rung.
+
+The CPU never answers questions and never receives prizes. This asymmetry makes
+the game easier for the child, which is intended.
 
 ## 6. Wordless UI
 
@@ -304,11 +340,15 @@ chosen specifically as reasons to start another match:
 Streak counts consecutive correct answers and resets to zero **only** on a
 wrong answer.
 
-| Streak | Reward |
+| Streak | Prize shown before the question |
 | --- | --- |
-| 3 | A chaos modifier fires (the existing system, now *earned* rather than random) |
-| 5 | Chaos modifier + screen shake + enlarged confetti |
-| 8 | All three human players launch together along the aim vector, fanned slightly |
+| 1-2 | One chaos modifier |
+| 3-4 | One chaos modifier + screen shake |
+| 5-7 | Two chaos modifiers at once |
+| 8+ | All three human players launch together, fanned — re-offered every third answer |
+
+The prize is always **displayed before the child answers** (§5), so the streak
+is felt as a rising offer rather than discovered afterwards.
 
 Past 8, every further 3 correct answers re-fires the tier-8 reward. Progress is
 shown as filling pips, not text.
@@ -448,9 +488,13 @@ playable unpersisted.
   internally and formatted only for display. No float equality anywhere.
 - **No negatives before band 8.** A six-year-old should never be shown `−3`.
 - **Division is always exact** in bands 4–6; no remainders.
-- **Power stacking.** Charge (`1.35`) can coincide with the Super Shot chaos
-  modifier (`1.6`) for `2.16×`. The combined multiplier is capped at `2.0`, and
-  `chargeMult` is cleared at turn end alongside `clearModifier()`.
+- **Stacked modifiers.** From streak 5 the prize is *two* chaos modifiers at
+  once, but `activateModifier` was written for one at a time: a second call
+  overwrites `game.modifier` and the banner, and Giant Ball plus Tiny Players
+  are contradictory rather than merely additive. Stacking must therefore apply
+  both effects, show both icons, and be undone completely by `clearModifier`.
+  Combinations that fight each other (Giant Ball with Tiny Players) are
+  excluded when the pair is drawn.
 - **No question** during goal pauses or after the match ends.
 - **Restart** resets streak and match state; difficulty, mastery and unlocks
   persist.
@@ -582,7 +626,7 @@ plainly:
 Three things make that acceptable, and all three need checking in playtest:
 
 1. The ceiling cap above.
-2. The child has charged shots and earned chaos modifiers; the CPU has neither.
+2. The child earns chaos modifiers; the CPU never does.
 3. The physics is genuinely chaotic — collisions and bounces mean upsets happen
    regardless of aim quality.
 
