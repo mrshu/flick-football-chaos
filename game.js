@@ -305,16 +305,13 @@ function gameOver(winner) {
 }
 
 /* ---------- AI ---------- */
+// Shooter selection is angle-aware (Formation.chooseShooter): it scores each
+// CPU player by whether hitting the ball from their position would actually
+// send it goalward, not just by raw distance. Cheap vector maths only - no
+// simulation or search, so the AI stays light.
 function pickAiPlayer() {
-  const b = game.ball;
-  let best = null, bestScore = Infinity;
-  for (const p of game.players) {
-    if (p.team !== 'ai') continue;
-    const d = Math.hypot(p.x - b.x, p.y - b.y);
-    const wrongSide = p.y > b.y - 6 ? 420 : 0; // player between ball and its own target goal
-    if (d + wrongSide < bestScore) { bestScore = d + wrongSide; best = p; }
-  }
-  return best;
+  const aiPlayers = game.players.filter(p => p.team === 'ai');
+  return Formation.chooseShooter(aiPlayers, game.ball, BOT_Y);
 }
 
 function aiLaunch() {
@@ -327,9 +324,11 @@ function aiLaunch() {
   const tx = b.x - dx * (b.r + p.r) * 0.85;
   const ty = b.y - dy * (b.r + p.r) * 0.85;
   let ang = Math.atan2(ty - p.y, tx - p.x);
-  ang += (Math.random() * 2 - 1) * 0.14; // aim error keeps the AI beatable
+  ang += (Math.random() * 2 - 1) * 0.07; // aim error keeps the AI beatable
   const dist = Math.hypot(tx - p.x, ty - p.y);
-  const power = Math.min(1, 0.5 + dist / 650 + Math.random() * 0.18);
+  // Higher floor and less randomness than before so shots reliably reach
+  // and drive the ball onward, without being so tight the AI stops missing.
+  const power = Math.min(1, 0.58 + dist / 760 + Math.random() * 0.09);
   const sp = power * MAX_LAUNCH * game.powerMult;
   p.vx = Math.cos(ang) * sp;
   p.vy = Math.sin(ang) * sp;

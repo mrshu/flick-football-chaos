@@ -698,4 +698,51 @@ checkGenerators(8, true);   // band 8 alone may go negative
   ok(distinctCount > 150, 'formations are genuinely varied, not a near-constant fallback');
 })();
 
+// ---- Task 13: AI shooter selection (playtester defect 2) ----
+// pickAiPlayer used to be distance-only with a crude penalty; it often
+// picked a player who would knock the ball sideways or backwards. These
+// scenarios are hand-built so the "obviously correct" pick is unambiguous.
+(function () {
+  var ball = { x: 300, y: 450 };
+
+  // A player dead behind the ball (relative to the target goal) must beat a
+  // nearer player who would only knock it sideways.
+  (function () {
+    var behind = { x: 300, y: 300 };   // 150 above the ball, perfectly aligned
+    var sideways = { x: 340, y: 450 }; // 40 away, but pushes across, not down
+    var chosen = Formation.chooseShooter([sideways, behind], ball, 828);
+    ok(chosen === behind, 'a well-aligned but farther player beats a nearer sideways one');
+  })();
+
+  // A player who would send the ball backwards must lose to one who sends
+  // it goalward, however close the backwards player is.
+  (function () {
+    var goalward = { x: 300, y: 200 };  // far, but perfectly aligned
+    var backwards = { x: 300, y: 470 }; // 20px away, but on the wrong side of the ball
+    var chosen = Formation.chooseShooter([backwards, goalward], ball, 828);
+    ok(chosen === goalward, 'a goalward player beats a nearer player who would shoot backwards');
+  })();
+
+  // Equal alignment: the nearer of two equally well-aligned players wins.
+  (function () {
+    var near = { x: 300, y: 300 };  // 150 above, aligned
+    var far = { x: 300, y: 150 };   // 300 above, equally aligned
+    var chosen = Formation.chooseShooter([far, near], ball, 828);
+    ok(chosen === near, 'ties on alignment are broken by picking the nearer player');
+  })();
+
+  // Direction-agnostic: the same logic works aiming at the top goal too.
+  (function () {
+    var aligned = { x: 300, y: 600 };   // below the ball, aligned toward the top goal
+    var sideways = { x: 260, y: 450 };
+    var chosen = Formation.chooseShooter([sideways, aligned], ball, 72);
+    ok(chosen === aligned, 'alignment scoring works toward either goal');
+  })();
+
+  // Edge cases.
+  eq(Formation.chooseShooter([], ball, 828), null, 'an empty roster has no shooter');
+  var only = { x: 300, y: 300 };
+  ok(Formation.chooseShooter([only], ball, 828) === only, 'a single player is always chosen');
+})();
+
 done();
