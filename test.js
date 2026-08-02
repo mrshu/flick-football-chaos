@@ -591,4 +591,53 @@ checkGenerators(8, true);   // band 8 alone may go negative
   ok(seen > 0 && seen < 60, 'rewards are occasional, not every answer (' + seen + '/60)');
 })();
 
+// ---- Pitch objects ----
+(function () {
+  var P = require('./pitch.js');
+
+  ok(P.MAX >= 3 && P.MAX <= 10, 'object cap is a sane small number (got ' + P.MAX + ')');
+  eq(P.KINDS.length, 2, 'two object kinds in this version');
+
+  var o = P.create('bumper', 300, 450);
+  eq(o.kind, 'bumper', 'create keeps the kind');
+  eq(o.x, 300, 'create keeps x');
+  ok(o.r > 0, 'object has a radius');
+
+  // Spots must avoid each other and both goal mouths, or the pitch becomes
+  // unplayable and objects can block a goal entirely.
+  var rand = makeRng(9), existing = [], i, spot, k;
+  for (i = 0; i < P.MAX; i++) {
+    spot = P.pickSpot(existing, rand, 600, 900);
+    ok(spot !== null, 'a spot is found while under the cap');
+    for (k = 0; k < existing.length; k++) {
+      ok(Math.hypot(spot.x - existing[k].x, spot.y - existing[k].y) > 40,
+         'spots do not crowd each other');
+    }
+    // Goal mouths span x 200..400, and the nets sit beyond y<72 and y>828.
+    ok(!(spot.x > 180 && spot.x < 420 && (spot.y < 170 || spot.y > 730)),
+       'no spot sits in front of a goal');
+    ok(spot.x > 40 && spot.x < 560 && spot.y > 120 && spot.y < 780,
+       'spots stay inside the pitch');
+    existing.push(P.create('bumper', spot.x, spot.y));
+  }
+  eq(P.pickSpot(existing, rand, 600, 900), null, 'returns null once the pitch is full');
+
+  // The seeded run above only ever probes the goal mouth by luck of the draw;
+  // a broken guard could pass it without ever being exercised. Force the very
+  // first candidate straight into the top goal mouth (x=300, y=156) and
+  // confirm the guard actually rejects it and retries into open grass,
+  // instead of merely trusting that chance avoided the danger zone.
+  var forcedCalls = 0;
+  function forcedRand() {
+    forcedCalls++;
+    if (forcedCalls === 1) { return 0.5; }  // x = 60 + 0.5*480 = 300
+    if (forcedCalls === 2) { return 0.02; } // y = 144 + 0.02*612 = 156.24 (in goal mouth)
+    return 0.5;                             // later draws land safely at (300, 450)
+  }
+  var forcedSpot = P.pickSpot([], forcedRand, 600, 900);
+  ok(forcedSpot !== null, 'guard still finds a spot after rejecting the goal mouth');
+  ok(!(forcedSpot.x > 180 && forcedSpot.x < 420 && (forcedSpot.y < 170 || forcedSpot.y > 730)),
+     'a candidate engineered to land in the goal mouth is rejected, not returned');
+})();
+
 done();
