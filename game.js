@@ -483,6 +483,34 @@ canvas.addEventListener('touchmove', e => e.preventDefault(), { passive: false }
 
 el('again').addEventListener('click', () => { SFX.unlock(); restart(); });
 
+// Provisional band picker — replaced by the wordless setup screen in Phase 3.
+(function () {
+  var row = el('ageRow'), age;
+  for (age = 5; age <= 12; age++) {
+    (function (a) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = a;
+      b.setAttribute('data-band', a - 4);
+      row.appendChild(b);
+    })(age);
+  }
+  row.addEventListener('click', function (e) {
+    var band = e.target.getAttribute && e.target.getAttribute('data-band');
+    if (band === null) { return; }
+    band = Number(band);
+    var kids = row.childNodes, i;
+    for (i = 0; i < kids.length; i++) {
+      if (kids[i].className !== undefined) { kids[i].className = ''; }
+    }
+    e.target.className = 'on';
+    game.mathsOn = band > 0;
+    game.startBand = band > 0 ? band : 1;
+    game.maths = null;
+    restart();
+  });
+})();
+
 /* ---------- particles ---------- */
 const CONFETTI_COLORS = ['#ffd54a', '#ff8a3d', '#57e389', '#6fb5ff', '#ff6b8a', '#c792ff'];
 function confetti(x, y, dir) {

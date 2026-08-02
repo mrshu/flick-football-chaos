@@ -276,3 +276,18 @@ canvas {
 #quizChoices button:active { transform: translateY(3px); box-shadow: 0 2px 0 #1e50b0; }
 #quizChoices button.right { background: #2ec27e; box-shadow: 0 5px 0 #1a8a55; }
 #quizChoices button.wrong { background: #ef4444; box-shadow: 0 5px 0 #a51f1f; }
+
+#ageRow { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; }
+#ageRow button {
+  font: inherit;
+  font-weight: 800;
+  font-size: 13px;
+  min-width: 34px;
+  padding: 5px 7px;
+  border-radius: 9px;
+  border: 2px solid rgba(255, 255, 255, .22);
+  background: rgba(255, 255, 255, .07);
+  color: #fff;
+  cursor: pointer;
+}
+#ageRow button.on { background: linear-gradient(135deg, #ffd54a, #ff8a3d); color: #2b1600; border-color: transparent; }
