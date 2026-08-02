@@ -1,7 +1,7 @@
 'use strict';
 var Quiz = (function () {
 
-  var panel, qEl, choicesEl, shownAt = 0, answered = false, done = null, current = null;
+  var panel, qEl, choicesEl, shownAt = 0, answered = false, done = null, current = null, timer = 0;
 
   function ready() {
     if (!panel) {
@@ -58,7 +58,8 @@ var Quiz = (function () {
       }
     }
     var cb = done;
-    setTimeout(function () {
+    timer = setTimeout(function () {
+      timer = 0;
       hide();
       if (cb) { cb(chosen, correct, elapsed); }
     }, correct ? 420 : 1150);
@@ -66,6 +67,7 @@ var Quiz = (function () {
 
   function show(question, onAnswer) {
     ready();
+    if (timer) { clearTimeout(timer); timer = 0; }
     current = question;
     done = onAnswer;
     answered = false;
@@ -91,6 +93,7 @@ var Quiz = (function () {
 
   function hide() {
     ready();
+    if (timer) { clearTimeout(timer); timer = 0; }
     panel.classList.add('hidden');
     qEl.innerHTML = '';
     choicesEl.innerHTML = '';
