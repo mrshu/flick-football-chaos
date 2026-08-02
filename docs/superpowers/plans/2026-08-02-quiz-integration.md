@@ -142,6 +142,12 @@ Create `quiz.js`:
 var Quiz = (function () {
 
   var panel, qEl, choicesEl, shownAt = 0, answered = false, done = null, current = null;
+  // The feedback delay must be cancellable. Without a stored handle, a stale
+  // timer can blank a freshly-shown question, or fire an answer callback for a
+  // question the game already dismissed via hide() — which restart() does.
+  var timer = 0;
+
+  function stopTimer() { if (timer) { clearTimeout(timer); timer = 0; } }
 
   function ready() {
     if (!panel) {
@@ -198,7 +204,9 @@ var Quiz = (function () {
       }
     }
     var cb = done;
-    setTimeout(function () {
+    stopTimer();
+    timer = setTimeout(function () {
+      timer = 0;
       hide();
       if (cb) { cb(chosen, correct, elapsed); }
     }, correct ? 420 : 1150);
@@ -206,6 +214,7 @@ var Quiz = (function () {
 
   function show(question, onAnswer) {
     ready();
+    stopTimer();
     current = question;
     done = onAnswer;
     answered = false;
@@ -231,6 +240,7 @@ var Quiz = (function () {
 
   function hide() {
     ready();
+    stopTimer();
     panel.classList.add('hidden');
     qEl.innerHTML = '';
     choicesEl.innerHTML = '';
@@ -251,7 +261,7 @@ Quiz.show(Maths.make(1, Maths.newState(1), Math.random),
           function (c, ok, ms) { console.log('answered', c, ok, ms + 'ms'); });
 ```
 
-Expected: a panel appears over the pitch with footballs and two answer buttons. Tapping one colours it, and after the delay the panel hides and the callback logs. Repeat with difficulty `6` and `8` and confirm fractions, percentages and `pow` superscripts all render.
+Expected: a panel appears over the pitch with footballs and two answer buttons. Tapping one colours it, and after the delay the panel hides and the callback logs. Repeat with difficulty `6`, `7` and `8` and confirm fractions, percentages and `pow` superscripts all render. Note percentages come from band **7** (`genPct`), not band 8 — band 8 is negatives, squares, roots and equations.
 
 Confirm the browser console shows no errors.
 
