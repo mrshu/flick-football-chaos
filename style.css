@@ -217,30 +217,33 @@ canvas {
 
 .hidden { display: none !important; }
 
-#quiz {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: min(92%, 430px);
-  padding: 20px 16px 16px;
-  border-radius: 18px;
-  background: rgba(6, 20, 44, .93);
-  box-shadow: 0 12px 44px rgba(0, 0, 0, .6);
-  z-index: 4;
-  text-align: center;
-}
-
-#quizQ {
+#ask {
+  width: min(96vw, 560px);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 12px;
   flex-wrap: wrap;
-  min-height: 64px;
-  font-size: clamp(26px, 5.5vh, 40px);
-  font-weight: 800;
+  padding: 7px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .07);
 }
+#askQ { display: flex; align-items: center; gap: 6px; font-size: clamp(17px, 2.8vh, 24px); font-weight: 800; }
+#askChoices { display: flex; gap: 7px; }
+#askChoices button {
+  font: inherit;
+  font-weight: 800;
+  font-size: clamp(15px, 2.4vh, 20px);
+  min-width: 48px;
+  padding: 6px 9px;
+  border: none;
+  border-radius: 10px;
+  background: #3b82f6;
+  color: #fff;
+  cursor: pointer;
+}
+#askChoices button.right { background: #2ec27e; }
+#askChoices button.wrong { background: #ef4444; }
 
 .qBalls { display: flex; gap: 3px; }
 .qBall {
@@ -258,24 +261,6 @@ canvas {
 }
 .qFrac { display: inline-flex; flex-direction: column; font-size: .6em; line-height: 1.05; }
 .qFrac span:last-child { border-top: 3px solid #fff; }
-
-#quizChoices { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 18px; }
-#quizChoices button {
-  font: inherit;
-  font-weight: 800;
-  font-size: clamp(20px, 3.4vh, 27px);
-  min-width: 78px;
-  padding: 13px 8px;
-  border: none;
-  border-radius: 14px;
-  background: #3b82f6;
-  color: #fff;
-  cursor: pointer;
-  box-shadow: 0 5px 0 #1e50b0;
-}
-#quizChoices button:active { transform: translateY(3px); box-shadow: 0 2px 0 #1e50b0; }
-#quizChoices button.right { background: #2ec27e; box-shadow: 0 5px 0 #1a8a55; }
-#quizChoices button.wrong { background: #ef4444; box-shadow: 0 5px 0 #a51f1f; }
 
 #ageRow { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; }
 #ageRow button {

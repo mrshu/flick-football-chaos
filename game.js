@@ -22,6 +22,7 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const el = id => document.getElementById(id);
 const hudScoreH = el('scoreHuman'), hudScoreA = el('scoreAi'), hudTurn = el('turnMsg');
+const askEl = el('ask'), askQEl = el('askQ'), askChoicesEl = el('askChoices');
 const chaosBanner = el('chaosBanner'), goalFlash = el('goalFlash');
 const overlay = el('overlay'), overTitle = el('overTitle'), overSub = el('overSub');
 
@@ -123,10 +124,10 @@ const game = {
   maths: null, mathsOn: true, startBand: 3,
   turnCount: 0, sinceChaos: 0, modifier: null,
   friction: BASE_FRICTION, powerMult: 1,
-  chargeMult: 1, streak: 0, tripleShot: false,
+  streak: 0, tripleShot: false,
   score: { human: 0, ai: 0 }, lastScorer: null,
   timer: 0, moveTime: 0, ballRot: 0,
-  drag: null, aiChoice: null,
+  drag: null, aiChoice: null, pending: null,
   particles: [], lastHitSfx: 0,
 };
 
@@ -161,7 +162,7 @@ function restart() {
   game.lastScorer = null;
   clearModifier();
   resetPositions();
-  Quiz.hide();
+  hideAsk();
   game.streak = 0;
   overlay.classList.add('hidden');
   goalFlash.classList.add('hidden');
@@ -197,70 +198,78 @@ function clearModifier() {
   if (game.ball) game.ball.r = BALL_R;
   game.players.forEach(p => { p.r = PLAYER_R; });
   chaosBanner.classList.add('hidden');
-  game.chargeMult = 1;
+}
+
+/* ---------- CPU-turn maths question ---------- */
+// Asked while the CPU plays, never during the human's own turn. There is no
+// timer: the strip just stops being answerable once the child starts a drag
+// (see the pointerdown handler), and an unanswered question never reaches
+// Maths.update — declining to answer is not evidence of ability.
+let askShownAt = 0;
+
+function showAsk() {
+  if (!game.maths) { game.maths = Maths.newState(game.startBand); }
+  const q = Maths.make(game.maths.difficulty, game.maths, Math.random);
+  game.pending = q;
+  askShownAt = Date.now();
+  askQEl.innerHTML = '';
+  askChoicesEl.innerHTML = '';
+  for (const t of q.render) askQEl.appendChild(Quiz.renderToken(t));
+  for (const v of q.choices) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = v;
+    btn.addEventListener('click', () => answerAsk(v, btn));
+    askChoicesEl.appendChild(btn);
+  }
+  askEl.classList.remove('hidden');
+}
+
+function hideAsk() {
+  game.pending = null;
+  askEl.classList.add('hidden');
+  askQEl.innerHTML = '';
+  askChoicesEl.innerHTML = '';
+}
+
+function answerAsk(chosen, btn) {
+  const q = game.pending;
+  if (!q) return; // already answered, or the strip is stale
+  const correct = chosen === q.answer;
+  btn.className = correct ? 'right' : 'wrong';
+  for (const b of askChoicesEl.children) {
+    b.disabled = true;
+    if (!correct && b.textContent === String(q.answer)) b.className = 'right';
+  }
+  game.maths = Maths.update(game.maths, {
+    correct, elapsedMs: Date.now() - askShownAt, band: q.band, skill: q.skill
+  });
+  game.pending = null; // answered: no longer live, but the strip stays for feedback
+  // Task 3: a correct answer spawns an earned pitch object here.
 }
 
 /* ---------- turn flow ---------- */
-var CHARGE_MULT = 1.35, MAX_TOTAL_MULT = 2.0;
-
-function onAnswered(correct) {
-  if (!correct) {
-    game.streak = 0;
-    game.chargeMult = 1;
-    return;
-  }
-  game.chargeMult = CHARGE_MULT;
-  game.streak++;
-  var reward = StreakRules.streakReward(game.streak);
-  if (reward === 'chaos' || reward === 'chaosBig') {
-    var keys = Object.keys(MODIFIERS);
-    activateModifier(keys[(Math.random() * keys.length) | 0]);
-    game.sinceChaos = 0;
-  } else if (reward === 'triple') {
-    game.tripleShot = true;
-  }
-}
-
-function askQuestion() {
-  if (!game.maths) { game.maths = Maths.newState(game.startBand); }
-  game.state = 'HUMAN_QUESTION';
-  setTurnMsg('Answer to charge your shot', 'human');
-  var q = Maths.make(game.maths.difficulty, game.maths, Math.random);
-  Quiz.show(q, function (chosen, correct, elapsedMs) {
-    game.maths = Maths.update(game.maths, {
-      correct: correct, elapsedMs: elapsedMs, band: q.band, skill: q.skill
-    });
-    onAnswered(correct);
-    game.state = 'HUMAN_AIM';
-    setTurnMsg(correct ? 'Charged! Take your shot' : 'Your turn — drag a blue player', 'human');
-  });
-}
-
 function startTurn(team) {
   game.turn = team;
   game.turnCount++;
   game.sinceChaos++;
-  // Random chaos is only for the maths-off arcade mode. With maths on, chaos
-  // is earned via a 3-answer streak (see onAnswered) — do not restore this
-  // roll for that mode, or the streak reward becomes indistinguishable from
-  // a coin flip that would have fired anyway.
+  // Random chaos is only for the maths-off arcade mode; with maths on it is
+  // left for a later pass to redefine how chaos is earned.
   if (!game.mathsOn && game.turnCount > 2 && game.sinceChaos >= 2 && Math.random() < 0.5) {
     const keys = Object.keys(MODIFIERS);
     activateModifier(keys[(Math.random() * keys.length) | 0]);
     game.sinceChaos = 0;
   }
   if (team === 'human') {
-    if (game.mathsOn) {
-      askQuestion();
-    } else {
-      game.state = 'HUMAN_AIM';
-      setTurnMsg('Your turn — drag a blue player', 'human');
-    }
+    hideAsk(); // the child's turn starts clean, whether the CPU's question was answered or not
+    game.state = 'HUMAN_AIM';
+    setTurnMsg('Your turn — drag a blue player', 'human');
   } else {
     game.state = 'AI_WAIT';
     game.timer = 0.9;
     game.aiChoice = pickAiPlayer();
     setTurnMsg('CPU is thinking…', 'ai');
+    if (game.mathsOn) showAsk();
   }
 }
 
@@ -437,6 +446,7 @@ canvas.addEventListener('pointerdown', e => {
     if (d < pl.r + 22 && d < bd) { bd = d; best = pl; }
   }
   if (best) {
+    hideAsk(); // drag begins: any pending question is silently dismissed, no timer needed
     game.drag = { player: best, px: p.x, py: p.y };
     try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
     SFX.select();
@@ -460,7 +470,7 @@ function endDrag(e) {
   const len = Math.hypot(dx, dy);
   const power = Math.min(len / MAX_DRAG, 1);
   if (power < 0.07 || len < 1) return; // too gentle: cancel, keep aiming
-  const sp = power * MAX_LAUNCH * Math.min(game.powerMult * game.chargeMult, MAX_TOTAL_MULT);
+  const sp = power * MAX_LAUNCH * game.powerMult;
   player.vx = (dx / len) * sp;
   player.vy = (dy / len) * sp;
   if (game.tripleShot) {

@@ -101,5 +101,5 @@ var Quiz = (function () {
     done = null;
   }
 
-  return { show: show, hide: hide };
+  return { show: show, hide: hide, renderToken: renderToken };
 })();
