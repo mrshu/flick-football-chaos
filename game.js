@@ -123,7 +123,7 @@ const game = {
   maths: null, mathsOn: true, startBand: 3,
   turnCount: 0, sinceChaos: 0, modifier: null,
   friction: BASE_FRICTION, powerMult: 1,
-  streak: 0, tripleShot: false, pendingPrize: null,
+  pendingPrize: null,
   score: { human: 0, ai: 0 }, lastScorer: null,
   timer: 0, moveTime: 0, ballRot: 0,
   drag: null, aiChoice: null,
@@ -163,7 +163,6 @@ function restart() {
   resetPositions();
   Quiz.hide();
   game.pendingPrize = null;
-  game.streak = 0;
   overlay.classList.add('hidden');
   goalFlash.classList.add('hidden');
   updateScore();
@@ -459,17 +458,6 @@ function endDrag(e) {
   const sp = power * MAX_LAUNCH * game.powerMult;
   player.vx = (dx / len) * sp;
   player.vy = (dy / len) * sp;
-  if (game.tripleShot) {
-    // Every human player fires along the same aim, fanned slightly.
-    var mates = game.players.filter(function (p) { return p.team === 'human' && p !== player; });
-    var baseAng = Math.atan2(player.vy, player.vx);
-    mates.forEach(function (p, i) {
-      var a = baseAng + (i === 0 ? -0.22 : 0.22);
-      p.vx = Math.cos(a) * sp;
-      p.vy = Math.sin(a) * sp;
-    });
-    game.tripleShot = false;
-  }
   game.mover = 'human';
   game.moveTime = 0;
   game.state = 'MOVING';
