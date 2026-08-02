@@ -237,7 +237,16 @@ canvas {
   font-size: clamp(40px, 9vh, 68px);
   line-height: 1;
   margin-bottom: 4px;
-  animation: bannerPop .35s ease both;
+  /* Not `bannerPop`: that keyframe ends on translateX(-50%), which is the
+     centring trick for the absolutely-positioned chaos banner. On a normally
+     flowed element with fill-mode `both` it sticks, shifting the prize half
+     its own width to the left. */
+  animation: prizePop .35s ease both;
+}
+
+@keyframes prizePop {
+  from { transform: scale(.4); opacity: 0; }
+  to   { transform: scale(1);  opacity: 1; }
 }
 
 #quizQ {
