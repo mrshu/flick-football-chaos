@@ -123,6 +123,7 @@ const game = {
   maths: null, mathsOn: true, startBand: 3,
   turnCount: 0, sinceChaos: 0, modifier: null,
   friction: BASE_FRICTION, powerMult: 1,
+  chargeMult: 1, streak: 0, tripleShot: false,
   score: { human: 0, ai: 0 }, lastScorer: null,
   timer: 0, moveTime: 0, ballRot: 0,
   drag: null, aiChoice: null,
@@ -196,10 +197,29 @@ function clearModifier() {
   if (game.ball) game.ball.r = BALL_R;
   game.players.forEach(p => { p.r = PLAYER_R; });
   chaosBanner.classList.add('hidden');
+  game.chargeMult = 1;
 }
 
 /* ---------- turn flow ---------- */
-function onAnswered(correct) { /* rewards land in Task 3 */ }
+var CHARGE_MULT = 1.35, MAX_TOTAL_MULT = 2.0;
+
+function onAnswered(correct) {
+  if (!correct) {
+    game.streak = 0;
+    game.chargeMult = 1;
+    return;
+  }
+  game.chargeMult = CHARGE_MULT;
+  game.streak++;
+  var reward = StreakRules.streakReward(game.streak);
+  if (reward === 'chaos' || reward === 'chaosBig') {
+    var keys = Object.keys(MODIFIERS);
+    activateModifier(keys[(Math.random() * keys.length) | 0]);
+    game.sinceChaos = 0;
+  } else if (reward === 'triple') {
+    game.tripleShot = true;
+  }
+}
 
 function askQuestion() {
   if (!game.maths) { game.maths = Maths.newState(game.startBand); }
@@ -436,9 +456,20 @@ function endDrag(e) {
   const len = Math.hypot(dx, dy);
   const power = Math.min(len / MAX_DRAG, 1);
   if (power < 0.07 || len < 1) return; // too gentle: cancel, keep aiming
-  const sp = power * MAX_LAUNCH * game.powerMult;
+  const sp = power * MAX_LAUNCH * Math.min(game.powerMult * game.chargeMult, MAX_TOTAL_MULT);
   player.vx = (dx / len) * sp;
   player.vy = (dy / len) * sp;
+  if (game.tripleShot) {
+    // Every human player fires along the same aim, fanned slightly.
+    var mates = game.players.filter(function (p) { return p.team === 'human' && p !== player; });
+    var baseAng = Math.atan2(player.vy, player.vx);
+    mates.forEach(function (p, i) {
+      var a = baseAng + (i === 0 ? -0.22 : 0.22);
+      p.vx = Math.cos(a) * sp;
+      p.vy = Math.sin(a) * sp;
+    });
+    game.tripleShot = false;
+  }
   game.mover = 'human';
   game.moveTime = 0;
   game.state = 'MOVING';

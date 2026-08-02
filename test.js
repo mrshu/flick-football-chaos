@@ -571,4 +571,24 @@ checkGenerators(8, true);   // band 8 alone may go negative
   ok(simulate(1, 4000, 78).band < 2.5, 'a struggling learner descends the scale');
 })();
 
+// ---- Phase 2: streak rewards ----
+(function () {
+  var Game = require('./streak-rules.js');
+  eq(Game.streakReward(0), null, 'no reward at zero');
+  eq(Game.streakReward(1), null, 'no reward at one');
+  eq(Game.streakReward(2), null, 'no reward at two');
+  eq(Game.streakReward(3), 'chaos', 'chaos modifier at three');
+  eq(Game.streakReward(4), null, 'nothing at four');
+  eq(Game.streakReward(5), 'chaosBig', 'bigger reward at five');
+  eq(Game.streakReward(6), null, 'nothing at six');
+  eq(Game.streakReward(8), 'triple', 'triple launch at eight');
+  // Past eight, every further three re-fires the top tier.
+  eq(Game.streakReward(11), 'triple', 'top tier repeats at eleven');
+  eq(Game.streakReward(14), 'triple', 'top tier repeats at fourteen');
+  eq(Game.streakReward(12), null, 'nothing between repeats');
+  var s, seen = 0;
+  for (s = 1; s <= 60; s++) { if (Game.streakReward(s)) { seen++; } }
+  ok(seen > 0 && seen < 60, 'rewards are occasional, not every answer (' + seen + '/60)');
+})();
+
 done();
