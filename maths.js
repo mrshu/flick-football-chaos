@@ -18,6 +18,16 @@ var Maths = (function () {
     return out;
   }
 
+  // A numeric distractor is only worth offering if it's close enough to the
+  // answer to look like a believable mis-computation. The band scales with
+  // the answer's magnitude: being off by 10 on "6 + 6" (answer 12, band
+  // ±7) is not a plausible slip, but being off by 10 on "42 + 43" (answer
+  // 85, band ±51) is - a fixed absolute tolerance would be either too
+  // strict for big answers or too loose for small ones.
+  function _plausibleDistractor(d, answer) {
+    return Math.abs(d - answer) <= Math.max(3, Math.round(Math.abs(answer) * 0.6));
+  }
+
   function choiceCount(difficulty) {
     if (difficulty <= 1.25) { return 2; }
     if (difficulty <= 1.75) { return 3; }
@@ -36,7 +46,9 @@ var Maths = (function () {
       return _shuffle(rand, out);
     }
 
-    var pool = _shuffle(rand, near);
+    var pool = _shuffle(rand, near.filter(function (v) {
+      return _plausibleDistractor(v, answer);
+    }));
     for (i = 0; i < pool.length && out.length < count; i++) {
       v = pool[i];
       if (typeof v === 'number' && v >= min && out.indexOf(v) === -1) { out.push(v); }

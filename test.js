@@ -640,4 +640,38 @@ checkGenerators(8, true);   // band 8 alone may go negative
      'a candidate engineered to land in the goal mouth is rejected, not returned');
 })();
 
+// ---- Distractor plausibility sweep ----
+// A wrong choice should look like a believable mistake, not a value a child
+// can eliminate on sight (e.g. "6 + 6 = box" offering 0 alongside 12).
+// buildChoices filters near-miss candidates against a tolerance that scales
+// with the answer's size - being off by 10 is a real slip on a big sum but
+// not on a small one - and this sweep checks every numeric distractor
+// Maths.make actually hands out, across every band and choice-count tier,
+// against that same rule.
+(function () {
+  function plausible(d, answer) {
+    return Math.abs(d - answer) <= Math.max(3, Math.round(Math.abs(answer) * 0.6));
+  }
+  var band, i, rand, q, k, difficulty, checked = 0;
+  for (band = 1; band <= 8; band++) {
+    rand = makeRng(6060 + band);
+    for (i = 0; i < 3000; i++) {
+      // Cycle the fractional part so 2-, 3- and 4-choice layouts (spec 8.6's
+      // floor-support rule) are all exercised, not just the 4-choice case.
+      difficulty = band + (i % 4) * 0.5;
+      if (difficulty > 8) { difficulty = 8; }
+      q = Maths.make(difficulty, Maths.newState(difficulty), rand);
+      if (typeof q.answer !== 'number') { continue; } // fraction comparisons: no numeric band to check
+      for (k = 0; k < q.choices.length; k++) {
+        if (typeof q.choices[k] !== 'number' || q.choices[k] === q.answer) { continue; }
+        checked++;
+        ok(plausible(q.choices[k], q.answer),
+           'distractor is a believable slip, not free to eliminate (band ' + band +
+           ', answer ' + q.answer + ', choice ' + q.choices[k] + ')');
+      }
+    }
+  }
+  ok(checked > 1000, 'plausibility sweep actually exercised numeric distractors (' + checked + ')');
+})();
+
 done();
