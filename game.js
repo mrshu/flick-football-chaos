@@ -120,6 +120,7 @@ const game = {
   players: [], ball: null, posts: [],
   state: 'HUMAN_AIM', // HUMAN_AIM | MOVING | AI_WAIT | GOAL_PAUSE | OVER
   turn: 'human', mover: 'human',
+  maths: null, mathsOn: true, startBand: 3,
   turnCount: 0, sinceChaos: 0, modifier: null,
   friction: BASE_FRICTION, powerMult: 1,
   score: { human: 0, ai: 0 }, lastScorer: null,
@@ -159,6 +160,8 @@ function restart() {
   game.lastScorer = null;
   clearModifier();
   resetPositions();
+  Quiz.hide();
+  game.streak = 0;
   overlay.classList.add('hidden');
   goalFlash.classList.add('hidden');
   updateScore();
@@ -196,6 +199,23 @@ function clearModifier() {
 }
 
 /* ---------- turn flow ---------- */
+function onAnswered(correct) { /* rewards land in Task 3 */ }
+
+function askQuestion() {
+  if (!game.maths) { game.maths = Maths.newState(game.startBand); }
+  game.state = 'HUMAN_QUESTION';
+  setTurnMsg('Answer to charge your shot', 'human');
+  var q = Maths.make(game.maths.difficulty, game.maths, Math.random);
+  Quiz.show(q, function (chosen, correct, elapsedMs) {
+    game.maths = Maths.update(game.maths, {
+      correct: correct, elapsedMs: elapsedMs, band: q.band, skill: q.skill
+    });
+    onAnswered(correct);
+    game.state = 'HUMAN_AIM';
+    setTurnMsg(correct ? 'Charged! Take your shot' : 'Your turn — drag a blue player', 'human');
+  });
+}
+
 function startTurn(team) {
   game.turn = team;
   game.turnCount++;
@@ -206,8 +226,12 @@ function startTurn(team) {
     game.sinceChaos = 0;
   }
   if (team === 'human') {
-    game.state = 'HUMAN_AIM';
-    setTurnMsg('Your turn — drag a blue player', 'human');
+    if (game.mathsOn) {
+      askQuestion();
+    } else {
+      game.state = 'HUMAN_AIM';
+      setTurnMsg('Your turn — drag a blue player', 'human');
+    }
   } else {
     game.state = 'AI_WAIT';
     game.timer = 0.9;
