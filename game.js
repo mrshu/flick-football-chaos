@@ -240,7 +240,11 @@ function startTurn(team) {
   game.turn = team;
   game.turnCount++;
   game.sinceChaos++;
-  if (game.turnCount > 2 && game.sinceChaos >= 2 && Math.random() < 0.5) {
+  // Random chaos is only for the maths-off arcade mode. With maths on, chaos
+  // is earned via a 3-answer streak (see onAnswered) — do not restore this
+  // roll for that mode, or the streak reward becomes indistinguishable from
+  // a coin flip that would have fired anyway.
+  if (!game.mathsOn && game.turnCount > 2 && game.sinceChaos >= 2 && Math.random() < 0.5) {
     const keys = Object.keys(MODIFIERS);
     activateModifier(keys[(Math.random() * keys.length) | 0]);
     game.sinceChaos = 0;
