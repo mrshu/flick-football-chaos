@@ -105,10 +105,6 @@ const SFX = (() => {
 })();
 
 /* ---------- game state ---------- */
-const HOME = {
-  human: [[300, 790], [168, 648], [432, 648]],
-  ai:    [[300, 110], [168, 252], [432, 252]],
-};
 const MODIFIERS = {
   giant:    '\u{1F388} GIANT BALL',
   super:    '\u{1F4A5} SUPER SHOT',
@@ -135,8 +131,9 @@ function init() {
     [MOUTH_L, TOP_Y], [MOUTH_R, TOP_Y], [MOUTH_L, BOT_Y], [MOUTH_R, BOT_Y],
   ].map(([x, y]) => ({ x, y, vx: 0, vy: 0, r: POST_R, invM: 0 }));
   game.players = [];
+  const formation = Formation.make(Math.random);
   for (const team of ['human', 'ai']) {
-    for (const [x, y] of HOME[team]) {
+    for (const [x, y] of formation[team]) {
       game.players.push({ x, y, vx: 0, vy: 0, r: PLAYER_R, invM: 0.25, team, home: [x, y] });
     }
   }
@@ -146,7 +143,16 @@ function init() {
 const movers = () => [...game.players, game.ball];
 const opp = t => (t === 'human' ? 'ai' : 'human');
 
+// A fresh random formation (mirrored, exploit-free per Formation.make) is
+// dealt out at every kickoff and every goal reset - not just once at boot -
+// so the same straight-up opening never repeats and each restart looks
+// different. Only outfield players move; the ball always resets to centre.
 function resetPositions() {
+  const formation = Formation.make(Math.random);
+  let hi = 0, ai = 0;
+  for (const p of game.players) {
+    p.home = p.team === 'human' ? formation.human[hi++] : formation.ai[ai++];
+  }
   for (const o of movers()) { [o.x, o.y] = o.home; o.vx = o.vy = 0; }
   game.ballRot = 0;
   game.drag = null;

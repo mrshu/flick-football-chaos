@@ -1,5 +1,6 @@
 'use strict';
 var Maths = require('./maths.js');
+var Formation = require('./formation.js');
 
 var checks = 0, failures = 0;
 
@@ -603,6 +604,98 @@ checkGenerators(8, true);   // band 8 alone may go negative
     }
   }
   ok(checked > 1000, 'plausibility sweep actually exercised numeric distractors (' + checked + ')');
+})();
+
+// ---- Task 12: kickoff formation (playtester defect 1) ----
+// The exploit was a fixed formation where the human centre-forward, the
+// ball, and the CPU goal centre were all on x=300: a dead-straight flick
+// scored every match, forever. These checks recompute every invariant
+// independently of Formation.make's own arithmetic - point-to-line
+// distance via the cross-product formula, not Formation's internal
+// GOAL_X-based subtraction - so a broken generator cannot cancel out
+// against a broken check.
+(function () {
+  // Perpendicular distance from point (px,py) to the infinite line through
+  // (x1,y1)-(x2,y2), computed independently of anything in formation.js.
+  function perpDist(px, py, x1, y1, x2, y2) {
+    var dx = x2 - x1, dy = y2 - y1;
+    var len = Math.sqrt(dx * dx + dy * dy) || 1;
+    return Math.abs((px - x1) * dy - (py - y1) * dx) / len;
+  }
+
+  var ballX = Formation.BALL_HOME_X, ballY = Formation.BALL_HOME_Y;
+  var topGoalX = Formation.GOAL_X, topGoalY = Formation.TOP_Y;
+  var botGoalX = Formation.GOAL_X, botGoalY = Formation.BOT_Y;
+  var R = Formation.PLAYER_R, minSep = 2 * R;
+  var ballClear = Formation.PLAYER_R + Formation.BALL_R;
+
+  var rand = makeRng(20260802), i, f, all, a, b;
+  var N = 4000;
+  for (i = 0; i < N; i++) {
+    f = Formation.make(rand);
+    ok(f && Array.isArray(f.human) && Array.isArray(f.ai), 'formation has human and ai arrays');
+    eq(f.human.length, 3, 'human formation has 3 players');
+    eq(f.ai.length, 3, 'ai formation has 3 players');
+
+    all = f.human.concat(f.ai);
+
+    // No player on the ball->goal line (either goal), with real margin.
+    for (a = 0; a < all.length; a++) {
+      ok(perpDist(all[a][0], all[a][1], ballX, ballY, topGoalX, topGoalY) > Formation.MIN_LINE_DIST,
+         'player clears the ball->top-goal line');
+      ok(perpDist(all[a][0], all[a][1], ballX, ballY, botGoalX, botGoalY) > Formation.MIN_LINE_DIST,
+         'player clears the ball->bottom-goal line');
+    }
+
+    // No overlaps: player-player, and player-ball.
+    for (a = 0; a < all.length; a++) {
+      var dxb = all[a][0] - ballX, dyb = all[a][1] - ballY;
+      ok(Math.sqrt(dxb * dxb + dyb * dyb) > ballClear, 'player does not overlap the ball');
+      for (b = a + 1; b < all.length; b++) {
+        var dx = all[a][0] - all[b][0], dy = all[a][1] - all[b][1];
+        ok(Math.sqrt(dx * dx + dy * dy) > minSep, 'players do not overlap each other');
+      }
+    }
+
+    // Inside the pitch rectangle.
+    for (a = 0; a < all.length; a++) {
+      ok(all[a][0] - R >= Formation.SIDE_L && all[a][0] + R <= Formation.SIDE_R,
+         'player stays within the side walls');
+      ok(all[a][1] - R >= Formation.TOP_Y && all[a][1] + R <= Formation.BOT_Y,
+         'player stays within the goal lines');
+    }
+
+    // Each team stays in its own half.
+    for (a = 0; a < f.human.length; a++) {
+      ok(f.human[a][1] > Formation.HALF_Y, 'human player stays in the human half');
+    }
+    for (a = 0; a < f.ai.length; a++) {
+      ok(f.ai[a][1] < Formation.HALF_Y, 'ai player stays in the ai half');
+    }
+
+    // Genuinely mirrored: same x, y reflected about the halfway line.
+    for (a = 0; a < 3; a++) {
+      eq(f.ai[a][0], f.human[a][0], 'mirrored player keeps the same x');
+      eq(f.ai[a][1], Formation.H - f.human[a][1], 'mirrored player reflects y about halfway');
+    }
+
+    // Football-ish shape: one player nearer their own goal (bigger |y-450|)
+    // than the other two, for both teams.
+    var hd = Math.abs(f.human[0][1] - Formation.HALF_Y);
+    var hf1 = Math.abs(f.human[1][1] - Formation.HALF_Y);
+    var hf2 = Math.abs(f.human[2][1] - Formation.HALF_Y);
+    ok(hd > hf1 && hd > hf2, 'human formation has one player deeper than the other two');
+  }
+
+  // Sanity: 4000 random formations actually vary, not a constant fallback.
+  var seen = {}, distinctCount = 0;
+  rand = makeRng(555);
+  for (i = 0; i < 200; i++) {
+    f = Formation.make(rand);
+    var key = f.human.map(function (p) { return Math.round(p[0]) + ',' + Math.round(p[1]); }).join('|');
+    if (!seen[key]) { seen[key] = true; distinctCount++; }
+  }
+  ok(distinctCount > 150, 'formations are genuinely varied, not a near-constant fallback');
 })();
 
 done();
