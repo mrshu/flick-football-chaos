@@ -1,13 +1,25 @@
 'use strict';
 var Quiz = (function () {
 
-  var panel, qEl, choicesEl, shownAt = 0, answered = false, done = null, current = null, timer = 0;
+  var panel, prizeEl, qEl, choicesEl, skipBtn;
+  var shownAt = 0, answered = false, done = null, skipDone = null, current = null, timer = 0;
+
+  function onSkipClick() {
+    if (answered) { return; } // an answer was already tapped and is mid-feedback
+    answered = true;
+    var cb = skipDone;
+    hide();
+    if (cb) { cb(); }
+  }
 
   function ready() {
     if (!panel) {
       panel = document.getElementById('quiz');
+      prizeEl = document.getElementById('quizPrize');
       qEl = document.getElementById('quizQ');
       choicesEl = document.getElementById('quizChoices');
+      skipBtn = document.getElementById('quizSkip');
+      skipBtn.addEventListener('click', onSkipClick);
     }
   }
 
@@ -65,12 +77,14 @@ var Quiz = (function () {
     }, correct ? 420 : 1150);
   }
 
-  function show(question, onAnswer) {
+  function show(question, prizeGlyph, onAnswer, onSkip) {
     ready();
     if (timer) { clearTimeout(timer); timer = 0; }
     current = question;
     done = onAnswer;
+    skipDone = onSkip;
     answered = false;
+    prizeEl.textContent = prizeGlyph || '';
     qEl.innerHTML = '';
     choicesEl.innerHTML = '';
     var i, t, btn;
@@ -95,10 +109,12 @@ var Quiz = (function () {
     ready();
     if (timer) { clearTimeout(timer); timer = 0; }
     panel.classList.add('hidden');
+    prizeEl.textContent = '';
     qEl.innerHTML = '';
     choicesEl.innerHTML = '';
     current = null;
     done = null;
+    skipDone = null;
   }
 
   return { show: show, hide: hide, renderToken: renderToken };

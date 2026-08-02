@@ -22,7 +22,6 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const el = id => document.getElementById(id);
 const hudScoreH = el('scoreHuman'), hudScoreA = el('scoreAi'), hudTurn = el('turnMsg');
-const askEl = el('ask'), askQEl = el('askQ'), askChoicesEl = el('askChoices');
 const chaosBanner = el('chaosBanner'), goalFlash = el('goalFlash');
 const overlay = el('overlay'), overTitle = el('overTitle'), overSub = el('overSub');
 
@@ -119,15 +118,15 @@ const MODIFIERS = {
 
 const game = {
   players: [], ball: null, posts: [],
-  state: 'HUMAN_AIM', // HUMAN_AIM | MOVING | AI_WAIT | GOAL_PAUSE | OVER
+  state: 'START', // START | HUMAN_QUESTION | HUMAN_AIM | MOVING | AI_WAIT | GOAL_PAUSE | OVER
   turn: 'human', mover: 'human',
   maths: null, mathsOn: true, startBand: 3,
   turnCount: 0, sinceChaos: 0, modifier: null,
   friction: BASE_FRICTION, powerMult: 1,
-  streak: 0, tripleShot: false,
+  streak: 0, tripleShot: false, pendingPrize: null,
   score: { human: 0, ai: 0 }, lastScorer: null,
   timer: 0, moveTime: 0, ballRot: 0,
-  drag: null, aiChoice: null, pending: null,
+  drag: null, aiChoice: null,
   particles: [], lastHitSfx: 0,
 };
 
@@ -162,7 +161,8 @@ function restart() {
   game.lastScorer = null;
   clearModifier();
   resetPositions();
-  hideAsk();
+  Quiz.hide();
+  game.pendingPrize = null;
   game.streak = 0;
   overlay.classList.add('hidden');
   goalFlash.classList.add('hidden');
@@ -181,6 +181,8 @@ function setTurnMsg(text, team) {
 }
 
 /* ---------- chaos modifiers ---------- */
+function modifierGlyph(id) { return MODIFIERS[id].split(' ')[0]; } // leading emoji only, no words
+
 function activateModifier(id) {
   game.modifier = id;
   if (id === 'giant') game.ball.r = BALL_R * 1.9;
@@ -200,52 +202,37 @@ function clearModifier() {
   chaosBanner.classList.add('hidden');
 }
 
-/* ---------- CPU-turn maths question ---------- */
-// Asked while the CPU plays, never during the human's own turn. There is no
-// timer: the strip just stops being answerable once the child starts a drag
-// (see the pointerdown handler), and an unanswered question never reaches
-// Maths.update — declining to answer is not evidence of ability.
-let askShownAt = 0;
-
-function showAsk() {
+/* ---------- human-turn maths question ---------- */
+// A modal precedes every human turn, advertising one of the chaos modifiers
+// as its prize before the question is even shown — the win must be obvious
+// up front. Answering right fires that exact modifier; answering wrong
+// still hands the player their flick, and skipping is instant and free.
+// Quiz.js owns the cancellable feedback timer, so the flash-then-continue
+// behaviour lives in one place.
+function askQuestion() {
   if (!game.maths) { game.maths = Maths.newState(game.startBand); }
-  const q = Maths.make(game.maths.difficulty, game.maths, Math.random);
-  game.pending = q;
-  askShownAt = Date.now();
-  askQEl.innerHTML = '';
-  askChoicesEl.innerHTML = '';
-  for (const t of q.render) askQEl.appendChild(Quiz.renderToken(t));
-  for (const v of q.choices) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.textContent = v;
-    btn.addEventListener('click', () => answerAsk(v, btn));
-    askChoicesEl.appendChild(btn);
-  }
-  askEl.classList.remove('hidden');
-}
-
-function hideAsk() {
-  game.pending = null;
-  askEl.classList.add('hidden');
-  askQEl.innerHTML = '';
-  askChoicesEl.innerHTML = '';
-}
-
-function answerAsk(chosen, btn) {
-  const q = game.pending;
-  if (!q) return; // already answered, or the strip is stale
-  const correct = chosen === q.answer;
-  btn.className = correct ? 'right' : 'wrong';
-  for (const b of askChoicesEl.children) {
-    b.disabled = true;
-    if (!correct && b.textContent === String(q.answer)) b.className = 'right';
-  }
-  game.maths = Maths.update(game.maths, {
-    correct, elapsedMs: Date.now() - askShownAt, band: q.band, skill: q.skill
+  game.state = 'HUMAN_QUESTION';
+  setTurnMsg('Answer for a prize!', 'human');
+  var q = Maths.make(game.maths.difficulty, game.maths, Math.random);
+  var keys = Object.keys(MODIFIERS);
+  var prizeId = keys[(Math.random() * keys.length) | 0];
+  game.pendingPrize = prizeId;
+  Quiz.show(q, modifierGlyph(prizeId), function (chosen, correct, elapsedMs) {
+    game.maths = Maths.update(game.maths, {
+      correct: correct, elapsedMs: elapsedMs, band: q.band, skill: q.skill
+    });
+    finishQuestion(correct);
+  }, function () {
+    finishQuestion(false); // skip: no penalty, but no prize either
   });
-  game.pending = null; // answered: no longer live, but the strip stays for feedback
-  // Task 3: a correct answer spawns an earned pitch object here.
+}
+
+function finishQuestion(correct) {
+  var prizeId = game.pendingPrize;
+  game.pendingPrize = null;
+  if (correct && prizeId) { activateModifier(prizeId); }
+  game.state = 'HUMAN_AIM';
+  setTurnMsg('Your turn — drag a blue player', 'human');
 }
 
 /* ---------- turn flow ---------- */
@@ -261,15 +248,17 @@ function startTurn(team) {
     game.sinceChaos = 0;
   }
   if (team === 'human') {
-    hideAsk(); // the child's turn starts clean, whether the CPU's question was answered or not
-    game.state = 'HUMAN_AIM';
-    setTurnMsg('Your turn — drag a blue player', 'human');
+    if (game.mathsOn) {
+      askQuestion();
+    } else {
+      game.state = 'HUMAN_AIM';
+      setTurnMsg('Your turn — drag a blue player', 'human');
+    }
   } else {
     game.state = 'AI_WAIT';
     game.timer = 0.9;
     game.aiChoice = pickAiPlayer();
     setTurnMsg('CPU is thinking…', 'ai');
-    if (game.mathsOn) showAsk();
   }
 }
 
@@ -446,7 +435,6 @@ canvas.addEventListener('pointerdown', e => {
     if (d < pl.r + 22 && d < bd) { bd = d; best = pl; }
   }
   if (best) {
-    hideAsk(); // drag begins: any pending question is silently dismissed, no timer needed
     game.drag = { player: best, px: p.x, py: p.y };
     try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
     SFX.select();
@@ -497,30 +485,38 @@ canvas.addEventListener('touchmove', e => e.preventDefault(), { passive: false }
 
 el('again').addEventListener('click', () => { SFX.unlock(); restart(); });
 
-// Provisional band picker — replaced by the wordless setup screen in Phase 3.
+// Start screen: age (and "no maths") is chosen once, before any football is
+// playable. Play hides the overlay and starts the match; the boot sequence
+// never calls restart() on its own, so game.state stays 'START' — which
+// blocks the pointerdown handler — until this fires.
 (function () {
-  var row = el('ageRow'), age;
-  for (age = 5; age <= 12; age++) {
-    (function (a) {
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.textContent = a;
-      b.setAttribute('data-band', a - 4);
-      row.appendChild(b);
-    })(age);
-  }
-  row.addEventListener('click', function (e) {
-    var band = e.target.getAttribute && e.target.getAttribute('data-band');
-    if (band === null) { return; }
-    band = Number(band);
-    var kids = row.childNodes, i;
-    for (i = 0; i < kids.length; i++) {
-      if (kids[i].className !== undefined) { kids[i].className = ''; }
+  var screen = el('startScreen'), ageBtns = screen.querySelectorAll('.ageBtn'), playBtn = el('startPlay');
+  var selectedBand = game.startBand, i;
+
+  function paint() {
+    for (var k = 0; k < ageBtns.length; k++) {
+      var b = Number(ageBtns[k].getAttribute('data-band'));
+      ageBtns[k].className = (b === selectedBand) ? 'ageBtn on' : 'ageBtn';
     }
-    e.target.className = 'on';
-    game.mathsOn = band > 0;
-    game.startBand = band > 0 ? band : 1;
+  }
+  paint();
+
+  for (i = 0; i < ageBtns.length; i++) {
+    (function (btn) {
+      btn.addEventListener('click', function () {
+        selectedBand = Number(btn.getAttribute('data-band'));
+        paint();
+        SFX.select();
+      });
+    })(ageBtns[i]);
+  }
+
+  playBtn.addEventListener('click', function () {
+    SFX.unlock();
+    game.mathsOn = selectedBand > 0;
+    game.startBand = selectedBand > 0 ? selectedBand : 1;
     game.maths = null;
+    screen.classList.add('hidden');
     restart();
   });
 })();
@@ -745,7 +741,9 @@ function frame(now) {
 }
 
 /* ---------- boot ---------- */
+// The pitch renders immediately (as a static backdrop, same trick the win
+// overlay already relies on) but nothing is playable: game.state stays
+// 'START' until the start screen's Play button calls restart().
 init();
 fitCanvas();
-restart();
 requestAnimationFrame(frame);
