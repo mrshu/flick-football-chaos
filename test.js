@@ -425,6 +425,87 @@ checkGenerators(8, true);   // band 8 alone may go negative
   ok(s.mastery.div >= 0 && s.mastery.div < 0.1, 'mastery converges towards 0 without going below');
 })();
 
+// ---- Task 9b: adaptive acceleration ----
+// A misplaced child answering many fast-correct answers in a row is
+// obviously beyond their current band and should climb several bands in a
+// handful of questions, not dozens (owner instruction: "do not hesitate to
+// make them jump even two and more years"). The symmetric safeguard is a
+// child who overshoots and gets stranded too high: a run of wrong answers
+// must fall back quickly rather than grind out of it one -0.300 step at a
+// time.
+(function () {
+  function outcome(correct, ms, band, skill) {
+    return { correct: correct, elapsedMs: ms, band: band || 1, skill: skill || 'x' };
+  }
+
+  // Misplaced-child scenario: a run of fast-correct answers from band 1
+  // reaches roughly band 4-5 within about 6 answers. Assert a real lower
+  // bound, not merely that difficulty increased.
+  (function () {
+    var s = Maths.newState(1), i;
+    for (i = 0; i < 6; i++) { s = Maths.update(s, outcome(true, 1)); }
+    ok(s.difficulty >= 4.0,
+       'six fast-correct answers from band 1 reach at least band 4.0 (got ' +
+       s.difficulty.toFixed(3) + ')');
+    ok(s.difficulty <= 6.0,
+       'acceleration does not blow straight past the target band (got ' +
+       s.difficulty.toFixed(3) + ')');
+  })();
+
+  // Slow-but-correct answers must NOT accelerate: a long run climbs at the
+  // old gentle UP_SLOW rate exactly, however long the run gets. Slowness is
+  // the signal that the child is not beyond this level, so it must never
+  // trigger acceleration the way a fast-correct streak does.
+  (function () {
+    var s = Maths.newState(1), i, n = 20;
+    for (i = 0; i < n; i++) { s = Maths.update(s, outcome(true, 999999, 1)); }
+    eq(Number(s.difficulty.toFixed(6)), Number((1 + n * 0.040).toFixed(6)),
+       'a long run of slow-but-correct answers climbs at the unaccelerated rate');
+  })();
+
+  // A wrong answer resets the fast-correct run: build up a streak past the
+  // acceleration trigger, answer once wrong, then confirm the very next
+  // fast-correct answer steps by the plain UP_FAST amount, not an
+  // accelerated one.
+  (function () {
+    var s = Maths.newState(1), i, before;
+    for (i = 0; i < 4; i++) { s = Maths.update(s, outcome(true, 1)); }
+    ok(s.fastStreak === 4, 'fast streak counts consecutive fast-correct answers');
+    s = Maths.update(s, outcome(false, 1));
+    eq(s.fastStreak, 0, 'a wrong answer resets the fast-correct run');
+    before = s.difficulty;
+    s = Maths.update(s, outcome(true, 1));
+    eq(Number((s.difficulty - before).toFixed(6)), 0.100,
+       'the fast-correct answer right after a reset is not accelerated');
+  })();
+
+  // Descent safeguard: a child stranded high who answers several wrong in a
+  // row must fall back quickly, not merely fall.
+  (function () {
+    var s = { difficulty: 7, mastery: {}, fastStreak: 0, wrongStreak: 0 }, i;
+    for (i = 0; i < 5; i++) { s = Maths.update(s, outcome(false, 9000, 7)); }
+    ok(s.difficulty <= 4.5,
+       'five consecutive wrong answers from band 7 fall back to 4.5 or below (got ' +
+       s.difficulty.toFixed(3) + ')');
+    ok(s.wrongStreak === 5, 'wrong streak counts consecutive wrong answers');
+  })();
+
+  // Difficulty never escapes [1, 8] under any run, including long runs of
+  // accelerated climbs and accelerated descents.
+  (function () {
+    var s = Maths.newState(1), i;
+    for (i = 0; i < 300; i++) {
+      s = Maths.update(s, outcome(true, 1, 1));
+      ok(s.difficulty >= 1 && s.difficulty <= 8, 'accelerated climb stays within [1,8]');
+    }
+    s = Maths.newState(8);
+    for (i = 0; i < 300; i++) {
+      s = Maths.update(s, outcome(false, 9000, 8));
+      ok(s.difficulty >= 1 && s.difficulty <= 8, 'accelerated descent stays within [1,8]');
+    }
+  })();
+})();
+
 // ---- Task 10: invariant sweep (spec 12) ----
 (function () {
   var rand = makeRng(2024), band, i, q, k, tok, nums, ops, failuresBefore = failures;

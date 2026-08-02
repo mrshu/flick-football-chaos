@@ -377,7 +377,7 @@ var Maths = (function () {
     var d = typeof startBand === 'number' ? startBand : 1;
     if (d < 1) { d = 1; }
     if (d > 8) { d = 8; }
-    return { difficulty: d, mastery: {} };
+    return { difficulty: d, mastery: {}, fastStreak: 0, wrongStreak: 0 };
   }
 
   function pickBand(difficulty, rand) {
@@ -438,16 +438,53 @@ var Maths = (function () {
   var UP_FAST = 0.100, UP_MID = 0.075, UP_SLOW = 0.040, DOWN = 0.300;
   var MASTERY_ALPHA = 0.25;
 
+  // Acceleration: a plain random walk needs dozens of correct answers to
+  // climb out of a band a misplaced child has clearly outgrown (12 fast
+  // answers in a row only reaches 2.20 from band 1). ACCEL_TRIGGER lets a
+  // few (3) fast-correct or wrong answers pass unaccelerated — that is
+  // ordinary good/bad play — before every further answer in the same
+  // direction jumps further than the last, up to ACCEL_CAP. Young bands
+  // (<=4) accelerate upward at full strength because their content is
+  // thin and a capable child exhausts it fast; bands 5-8 hold real ground
+  // that still rewards practice, so ACCEL_UP_OLD_RATIO damps the climb
+  // there. The same growing-jump shape mirrors downward off any streak of
+  // wrong answers, with no band damping: an overshoot can strand a child
+  // several bands above their level, and the plain -0.300 step would take
+  // many demoralising failures to climb back down from there, at whatever
+  // band that turns out to be.
+  var ACCEL_TRIGGER = 3;
+  var ACCEL_UP_YOUNG = 0.45;
+  var ACCEL_UP_OLD_RATIO = 0.35;
+  var ACCEL_DOWN = 0.45;
+  var ACCEL_CAP = 1.2;
+
+  function accelExtra(streak, unit) {
+    var extra;
+    if (streak <= ACCEL_TRIGGER) { return 0; }
+    extra = unit * (streak - ACCEL_TRIGGER);
+    return extra > ACCEL_CAP ? ACCEL_CAP : extra;
+  }
+
   function expectedMs(band) { return 2500 + 900 * band; }
 
   function update(state, outcome) {
     var d = state.difficulty, step, exp = expectedMs(outcome.band);
+    var fastStreak = state.fastStreak || 0, wrongStreak = state.wrongStreak || 0;
     if (outcome.correct) {
-      if (outcome.elapsedMs < exp * 0.6) { step = UP_FAST; }
-      else if (outcome.elapsedMs > exp * 1.4) { step = UP_SLOW; }
-      else { step = UP_MID; }
+      if (outcome.elapsedMs < exp * 0.6) {
+        fastStreak += 1;
+        wrongStreak = 0;
+        step = UP_FAST + accelExtra(fastStreak,
+          d <= 4 ? ACCEL_UP_YOUNG : ACCEL_UP_YOUNG * ACCEL_UP_OLD_RATIO);
+      } else {
+        fastStreak = 0;
+        wrongStreak = 0;
+        step = outcome.elapsedMs > exp * 1.4 ? UP_SLOW : UP_MID;
+      }
     } else {
-      step = -DOWN;
+      fastStreak = 0;
+      wrongStreak += 1;
+      step = -DOWN - accelExtra(wrongStreak, ACCEL_DOWN);
     }
     d += step;
     if (d < 1) { d = 1; }
@@ -463,7 +500,7 @@ var Maths = (function () {
     mastery[outcome.skill] =
       prev + MASTERY_ALPHA * ((outcome.correct ? 1 : 0) - prev);
 
-    return { difficulty: d, mastery: mastery };
+    return { difficulty: d, mastery: mastery, fastStreak: fastStreak, wrongStreak: wrongStreak };
   }
 
   return {
