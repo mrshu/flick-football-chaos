@@ -1,8 +1,46 @@
 'use strict';
 var Quiz = (function () {
 
-  var panel, prizeEl, qEl, choicesEl, skipBtn;
+  var panel, prizeGlyphEl, prizePreviewEl, qEl, choicesEl, skipBtn;
   var shownAt = 0, answered = false, done = null, skipDone = null, current = null, timer = 0;
+
+  // The one place that knows what each chaos modifier looks like: its glyph
+  // and a wordless before/after preview built from CSS shapes. game.js only
+  // ever hands us the modifier id — it has its own MODIFIERS map for the
+  // (worded) in-game banner text, but the prize-card glyph/preview mapping
+  // lives here and nowhere else.
+  var PRIZES = {
+    giant:    { glyph: '\u{1F388}', kind: 'dots', from: 'Xs', to: 'Lg', color: '#ffffff' },
+    tiny:     { glyph: '\u{1F41C}', kind: 'dots', from: 'Lg', to: 'Xs', color: '#7db4ff' },
+    super:    { glyph: '\u{1F4A5}', kind: 'bars', from: 'Sm', to: 'Lg', color: '#ffffff' },
+    slippery: { glyph: '\u{1F9CA}', kind: 'trail', color: '#7dd3fc' },
+  };
+
+  function shape(cls, extraCls, color) {
+    var e = document.createElement('span');
+    e.className = extraCls ? cls + ' ' + extraCls : cls;
+    if (color) { e.style.background = color; }
+    return e;
+  }
+
+  function renderPreview(prize) {
+    prizePreviewEl.innerHTML = '';
+    var i;
+    if (prize.kind === 'dots') {
+      prizePreviewEl.appendChild(shape('pvDot', 'sz' + prize.from, prize.color));
+      prizePreviewEl.appendChild(shape('pvArrow'));
+      prizePreviewEl.appendChild(shape('pvDot', 'sz' + prize.to, prize.color));
+    } else if (prize.kind === 'bars') {
+      prizePreviewEl.appendChild(shape('pvBar', 'sz' + prize.from, prize.color));
+      prizePreviewEl.appendChild(shape('pvArrow'));
+      prizePreviewEl.appendChild(shape('pvBar', 'sz' + prize.to, prize.color));
+    } else if (prize.kind === 'trail') {
+      for (i = 3; i >= 1; i--) {
+        prizePreviewEl.appendChild(shape('pvStreak', 'sz' + i, prize.color));
+      }
+      prizePreviewEl.appendChild(shape('pvDot', 'szMd', prize.color));
+    }
+  }
 
   function onSkipClick() {
     if (answered) { return; } // an answer was already tapped and is mid-feedback
@@ -15,7 +53,8 @@ var Quiz = (function () {
   function ready() {
     if (!panel) {
       panel = document.getElementById('quiz');
-      prizeEl = document.getElementById('quizPrize');
+      prizeGlyphEl = document.getElementById('quizPrizeGlyph');
+      prizePreviewEl = document.getElementById('quizPrizePreview');
       qEl = document.getElementById('quizQ');
       choicesEl = document.getElementById('quizChoices');
       skipBtn = document.getElementById('quizSkip');
@@ -77,14 +116,17 @@ var Quiz = (function () {
     }, correct ? 420 : 1150);
   }
 
-  function show(question, prizeGlyph, onAnswer, onSkip) {
+  function show(question, prizeId, onAnswer, onSkip) {
     ready();
     if (timer) { clearTimeout(timer); timer = 0; }
     current = question;
     done = onAnswer;
     skipDone = onSkip;
     answered = false;
-    prizeEl.textContent = prizeGlyph || '';
+    var prize = PRIZES[prizeId];
+    prizeGlyphEl.textContent = prize ? prize.glyph : '';
+    prizePreviewEl.innerHTML = '';
+    if (prize) { renderPreview(prize); }
     qEl.innerHTML = '';
     choicesEl.innerHTML = '';
     var i, t, btn;
@@ -109,7 +151,8 @@ var Quiz = (function () {
     ready();
     if (timer) { clearTimeout(timer); timer = 0; }
     panel.classList.add('hidden');
-    prizeEl.textContent = '';
+    prizeGlyphEl.textContent = '';
+    prizePreviewEl.innerHTML = '';
     qEl.innerHTML = '';
     choicesEl.innerHTML = '';
     current = null;

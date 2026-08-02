@@ -181,8 +181,6 @@ function setTurnMsg(text, team) {
 }
 
 /* ---------- chaos modifiers ---------- */
-function modifierGlyph(id) { return MODIFIERS[id].split(' ')[0]; } // leading emoji only, no words
-
 function activateModifier(id) {
   game.modifier = id;
   if (id === 'giant') game.ball.r = BALL_R * 1.9;
@@ -217,7 +215,7 @@ function askQuestion() {
   var keys = Object.keys(MODIFIERS);
   var prizeId = keys[(Math.random() * keys.length) | 0];
   game.pendingPrize = prizeId;
-  Quiz.show(q, modifierGlyph(prizeId), function (chosen, correct, elapsedMs) {
+  Quiz.show(q, prizeId, function (chosen, correct, elapsedMs) {
     game.maths = Maths.update(game.maths, {
       correct: correct, elapsedMs: elapsedMs, band: q.band, skill: q.skill
     });

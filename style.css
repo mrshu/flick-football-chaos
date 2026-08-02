@@ -234,20 +234,68 @@ canvas {
 }
 
 #quizPrize {
-  font-size: clamp(40px, 9vh, 68px);
-  line-height: 1;
-  margin-bottom: 4px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: 0 auto 8px;
+  padding: 8px 22px 7px;
+  border-radius: 16px;
+  background: linear-gradient(160deg, #ffe27a, #ffb43d 55%, #ff8a3d);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, .4) inset, 0 6px 16px rgba(0, 0, 0, .35);
   /* Not `bannerPop`: that keyframe ends on translateX(-50%), which is the
      centring trick for the absolutely-positioned chaos banner. On a normally
      flowed element with fill-mode `both` it sticks, shifting the prize half
      its own width to the left. */
-  animation: prizePop .35s ease both;
+  animation: prizePop .35s ease both, prizeGlow 1.6s ease-in-out .4s infinite;
 }
 
 @keyframes prizePop {
   from { transform: scale(.4); opacity: 0; }
   to   { transform: scale(1);  opacity: 1; }
 }
+
+@keyframes prizeGlow {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(255, 255, 255, .4) inset, 0 6px 16px rgba(0, 0, 0, .35), 0 0 0 rgba(255, 138, 61, 0); }
+  50%      { box-shadow: 0 0 0 2px rgba(255, 255, 255, .6) inset, 0 6px 16px rgba(0, 0, 0, .35), 0 0 20px 5px rgba(255, 138, 61, .6); }
+}
+
+#quizPrizeGlyph {
+  font-size: clamp(30px, 6.6vh, 52px);
+  line-height: 1;
+}
+
+#quizPrizePreview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: clamp(10px, 2.2vh, 16px);
+}
+
+.pvDot { border-radius: 50%; flex: 0 0 auto; }
+.pvDot.szXs { width: clamp(5px, 1.1vh, 8px);   height: clamp(5px, 1.1vh, 8px); }
+.pvDot.szSm { width: clamp(8px, 1.7vh, 12px);  height: clamp(8px, 1.7vh, 12px); }
+.pvDot.szMd { width: clamp(10px, 2.2vh, 15px); height: clamp(10px, 2.2vh, 15px); }
+.pvDot.szLg { width: clamp(17px, 3.6vh, 26px); height: clamp(17px, 3.6vh, 26px); }
+
+.pvBar { border-radius: 4px; height: clamp(5px, 1.1vh, 8px); flex: 0 0 auto; }
+.pvBar.szSm { width: clamp(12px, 2.4vh, 17px); }
+.pvBar.szLg { width: clamp(28px, 5.6vh, 42px); }
+
+.pvArrow {
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 7px solid rgba(43, 22, 0, .75);
+  flex: 0 0 auto;
+}
+
+.pvStreak { height: clamp(2px, .6vh, 4px); border-radius: 3px; flex: 0 0 auto; }
+.pvStreak.sz3 { width: clamp(5px, 1.1vh, 8px);  opacity: .3; }
+.pvStreak.sz2 { width: clamp(7px, 1.6vh, 11px); opacity: .55; }
+.pvStreak.sz1 { width: clamp(10px, 2vh, 14px);  opacity: .8; }
 
 #quizQ {
   display: flex;
