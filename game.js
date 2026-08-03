@@ -921,37 +921,46 @@ function openTeamEditor() {
   };
 }
 
-// The tournament as its own screen. A row of shields told a child nothing
-// about where they were; this is a route they climb — their own team at the
-// bottom, the trophy at the top, and every country in between.
+// The tournament as its own screen: a bracket read left to right, the child's
+// own team at the start and one stop per opponent. Each stop carries the cup
+// won there above the flag, so the route reads as five prizes on the way to
+// the trophy rather than five interchangeable matches.
+function bracketStop(cls, cup, badge, label) {
+  var stop = document.createElement('div');
+  stop.className = 'stop ' + cls;
+  stop.innerHTML = '<div class="cup"></div><div class="flag"></div><div class="who"></div>';
+  stop.querySelector('.cup').textContent = cup;
+  stop.querySelector('.flag').textContent = badge;
+  // textContent, not innerHTML: the label is a name a child typed.
+  stop.querySelector('.who').textContent = label || '';
+  return stop;
+}
+
 function showBracket() {
-  var view = el('bracket'), ladder = el('bracketLadder');
+  var view = el('bracket'), path = el('bracketPath');
   if (!view || !game.slot) { return false; }
-  var idx = game.slot.cup.index, i;
+  var idx = game.slot.cup.index, i, leg;
 
-  ladder.innerHTML = '';
-
-  // The child's own team is the bottom rung: the route starts with them.
-  var me = document.createElement('div');
-  me.className = 'rung you';
-  me.innerHTML = '<div class="stage">\u{1F3C1}</div>' +
-                 '<div class="who">' + '</div>' +
-                 '<div class="foe">' + (game.slot.emoji || '\u26BD') + '</div>';
-  me.querySelector('.who').textContent = game.slot.name || '';
-  ladder.appendChild(me);
+  path.innerHTML = '';
+  // The route starts with the child: a chequered flag is where they set off.
+  path.appendChild(bracketStop('you', '\u{1F3C1}', game.slot.emoji || '⚽',
+                               game.slot.name || ''));
 
   for (i = 0; i < Tournament.COUNT; i++) {
-    var rung = document.createElement('div');
-    rung.className = 'rung ' + (i < idx ? 'done' : (i === idx ? 'now' : 'later'));
-    var crest = Tournament.crestFor(i);
-    rung.innerHTML = '<div class="stage">' + Tournament.roundIcon(i) + '</div>' +
-                     '<div class="bar"></div>' +
-                     '<div class="foe">' + crest.flag + '</div>';
-    ladder.appendChild(rung);
+    // The leg leading into a stop turns gold once that match has been won.
+    leg = document.createElement('div');
+    leg.className = 'leg' + (i < idx ? ' done' : '');
+    path.appendChild(leg);
+    // A beaten opponent gets a tick where a name would go; the slot is already
+    // reserved on every stop, so nothing shifts when one is won.
+    path.appendChild(bracketStop(i < idx ? 'done' : (i === idx ? 'now' : 'later'),
+                                 Tournament.roundIcon(i),
+                                 Tournament.crestFor(i).flag,
+                                 i < idx ? '✓' : ''));
   }
 
   el('bracketTitle').textContent = game.slot.trophies
-    ? '\u{1F3C6}\u00D7' + game.slot.trophies
+    ? '\u{1F3C6}×' + game.slot.trophies
     : '\u{1F3C6}';
   view.classList.remove('hidden');
   return true;

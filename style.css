@@ -515,48 +515,62 @@ canvas {
 }
 #bracketTitle { font-size: clamp(30px, 6vh, 46px); line-height: 1; }
 
-#bracketLadder {
-  display: flex; flex-direction: column-reverse; gap: 5px;
-  width: min(94%, 380px);
-}
-/* column-reverse so the child climbs from their own team at the bottom up to
-   the trophy: the ladder reads as a route, not a list. */
-
-.rung {
-  display: grid;
-  grid-template-columns: 34px 1fr 46px;
-  align-items: center; gap: 8px;
-  padding: 7px 10px;
-  border-radius: 12px;
-  border: 2px solid rgba(255,255,255,.10);
-  background: rgba(255,255,255,.05);
-}
-.rung .stage { font-size: 20px; line-height: 1; text-align: center; }
-.rung .foe   { font-size: 26px; line-height: 1; text-align: right; }
-.rung .bar   { height: 6px; border-radius: 3px; background: rgba(255,255,255,.13); }
-
-.rung.done { border-color: rgba(46,194,126,.55); background: rgba(46,194,126,.13); }
-.rung.done .bar { background: #2ec27e; }
-.rung.done .foe { opacity: .45; }
-
-.rung.now {
-  border-color: #ffd54a; background: rgba(255,213,74,.16);
-  animation: rungPulse 1.5s ease-in-out infinite;
-}
-.rung.now .bar { background: linear-gradient(90deg, #ffd54a, #ff8a3d); }
-@keyframes rungPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255,213,74,0); }
-  50%      { box-shadow: 0 0 16px 2px rgba(255,213,74,.45); }
+/* A track read left to right: the child's own team at the start, then one stop
+   per opponent with the cup won there above the flag. Left-to-right is how a
+   bracket is drawn everywhere else, and putting the cup on each stop makes the
+   route a series of prizes rather than a series of matches. */
+#bracketPath {
+  display: flex; align-items: stretch; justify-content: center;
+  width: min(96%, 600px);
 }
 
-.rung.later { opacity: .38; }
-
-.rung.you {
-  border-color: rgba(125,180,255,.6); background: rgba(59,130,246,.16);
-  grid-template-columns: 34px 1fr auto;
+/* One card per stop, so the path reads as bracket nodes joined by legs rather
+   than a scattering of loose emoji. */
+.stop {
+  /* Six stops and five legs share the row proportionally rather than claiming
+     fixed widths: the whole path has to fit on one line at any width, because
+     a route whose end is off-screen stops being a goal to aim at. */
+  flex: 1 1 0; min-width: 0; max-width: 74px;
+  padding: 8px 2px 6px;
+  border-radius: 14px;
+  border: 2px solid rgba(255, 255, 255, .12);
+  background: rgba(255, 255, 255, .05);
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
 }
-.rung.you .foe { font-size: 26px; }
-.rung.you .who { font-size: 12px; font-weight: 700; opacity: .85; text-align: left; }
+.stop .cup  { font-size: clamp(13px, 4.2vw, 24px); line-height: 1; }
+.stop .flag { font-size: clamp(18px, 6vw, 34px); line-height: 1; }
+/* Reserved even when empty, so every flag sits on the same line. */
+.stop .who {
+  min-height: 13px; font-size: 10px; font-weight: 700; line-height: 1.2;
+  max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+
+.stop.done { border-color: rgba(46, 194, 126, .55); background: rgba(46, 194, 126, .12); }
+.stop.done .flag { opacity: .45; }
+.stop.done .who  { color: #2ec27e; font-size: 14px; font-weight: 900; }
+
+.stop.now {
+  border-color: #ffd54a; background: rgba(255, 213, 74, .16);
+  animation: stopPulse 1.6s ease-in-out infinite;
+}
+.stop.now .flag { filter: drop-shadow(0 0 8px rgba(255, 213, 74, .9)); }
+@keyframes stopPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 213, 74, 0); }
+  50%      { box-shadow: 0 0 16px 2px rgba(255, 213, 74, .45); }
+}
+
+.stop.later { opacity: .35; }
+
+.stop.you { border-color: rgba(125, 180, 255, .6); background: rgba(59, 130, 246, .16); }
+.stop.you .who { color: #9ec5ff; }
+
+/* The line into a stop: gold once that match has been won. */
+.leg {
+  flex: 0 0 auto; width: 4%; min-width: 4px; max-width: 22px;
+  height: 4px; border-radius: 2px; align-self: center;
+  background: rgba(255, 255, 255, .14);
+}
+.leg.done { background: linear-gradient(90deg, #2ec27e, #ffd54a); }
 
 #roundGo {
   font: inherit; font-size: 22px; font-weight: 800; padding: 10px 34px;
