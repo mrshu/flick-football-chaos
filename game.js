@@ -35,6 +35,12 @@ const STEP = 1 / 120;
 // collideCircles path) but invM 0, like the goalposts, so the ball bounces
 // off it without ever knocking it out of position.
 const KEEPER_R = PLAYER_R;
+// Keepers were invM 0 when they were fixed obstacles. Now that the child can
+// flick them they must have real mass, or two keepers pass straight through
+// each other (collideCircles bails when both masses are infinite) and a flicked
+// keeper ploughs through everything without ever slowing. Slightly heavier than
+// an outfield player, so the ball cannot easily barge it off its line.
+const KEEPER_INV_M = 0.18;
 const KEEPER_Y_INSET = 26; // how far in front of its own goal line it stands
 // How near the goal a shot must come to count as worth defending. Gated only
 // on certain goals, the save question fired on 21% of CPU turns - a mechanic
@@ -180,9 +186,9 @@ function init() {
   // and un-choosable as a shooter, with no extra "is this a keeper" guard
   // needed at either call site.
   game.keepers = [
-    { x: W / 2, y: TOP_Y + KEEPER_Y_INSET, vx: 0, vy: 0, r: KEEPER_R, invM: 0,
+    { x: W / 2, y: TOP_Y + KEEPER_Y_INSET, vx: 0, vy: 0, r: KEEPER_R, invM: KEEPER_INV_M,
       team: 'ai', keeper: true, home: [W / 2, TOP_Y + KEEPER_Y_INSET] },
-    { x: W / 2, y: BOT_Y - KEEPER_Y_INSET, vx: 0, vy: 0, r: KEEPER_R, invM: 0,
+    { x: W / 2, y: BOT_Y - KEEPER_Y_INSET, vx: 0, vy: 0, r: KEEPER_R, invM: KEEPER_INV_M,
       team: 'human', keeper: true, home: [W / 2, BOT_Y - KEEPER_Y_INSET] },
   ];
 }
