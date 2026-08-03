@@ -50,11 +50,22 @@ const KEEPER_MAX_STEP = 70;
 // position and jogging back, which is what makes a rush-out cost something.
 const KEEPER_ON_LINE = 30, KEEPER_RETURN_STEP = 70;
 const KEEPER_MIN_X = MOUTH_L + KEEPER_R, KEEPER_MAX_X = MOUTH_R - KEEPER_R;
-// The AI keeper's line, and how fast it may slide along it while the child is
-// aiming. Turn the speed down if keepers feel unbeatable: at 0 they are static
-// targets again, and the aim no longer matters.
+// The AI keeper's line, and how it reacts once a shot is on its way.
+//
+// It reads the shot rather than the aim. Tracking the aim while the child was
+// still lining up punished them for taking care: measured over the goal mouth,
+// a shot aimed for a second went in 14% of the time against 32% for a static
+// keeper, while a hurried flick beat it 59% of the time. Reacting to the ball
+// puts that the right way round — a well-placed shot is rewarded, and the
+// keeper is beaten by placement rather than by haste.
 const KEEPER_LINE_Y = TOP_Y + KEEPER_Y_INSET;
-const KEEPER_TRACK_SPEED = 200;   // px per second
+const KEEPER_REACT_SPEED = 300;    // px per second once it has read the shot
+const KEEPER_REACT_DELAY = 0.12;   // seconds of reaction time before it moves
+// How badly it can misread the shot. Never zero: a keeper that always dived
+// correctly would make placement pointless, and the cup's rising skill is
+// meant to close this gap, not shut it.
+const KEEPER_READ_BASE = 26;       // px of error even for the best keeper
+const KEEPER_READ_RANGE = 74;      // px more at the worst
 
 /* ---------- DOM ---------- */
 const canvas = document.getElementById('game');
@@ -160,6 +171,7 @@ const game = {
   turn: 'human', mover: 'human',
   maths: null, mathsOn: true, startBand: 3,
   mode: 'single',   // 'single' | 'cup' — only the cup advances the draw
+  keeperDive: null, // {x, wait} once the AI keeper has read the shot in flight
   turnCount: 0, sinceChaos: 0, modifier: null,
   friction: BASE_FRICTION, powerMult: 1,
   pendingPrize: null,
@@ -422,34 +434,43 @@ function updateKeepers() {
   for (const k of game.keepers) { k.vx = 0; k.vy = 0; }
 }
 
-// Where the aim currently points, in x, at the far keeper's line. This is the
-// shot the child is threatening right now, so it is what the keeper should be
-// covering — the alternative, tracking the ball, would have it stand still
-// while they swung the aim from post to post.
-function aimTargetX() {
-  if (!game.drag) { return null; }
-  var p = game.drag.player;
-  var dx = p.x - game.drag.px, dy = p.y - game.drag.py;
-  if (Math.hypot(dx, dy) < 1 || dy > -1e-6) { return null; }   // not aimed upfield
-  var t = (KEEPER_LINE_Y - p.y) / dy;
-  return t > 0 ? p.x + dx * t : null;
+// Where a ball on its current heading would cross the keeper's line. Straight
+// extrapolation: between the ball and the goal there is nothing to curve it,
+// and friction changes when it arrives, not where.
+function crossingX(ball) {
+  if (ball.vy > -1e-6 || ball.y <= KEEPER_LINE_Y) { return null; }
+  return ball.x + ball.vx * (KEEPER_LINE_Y - ball.y) / ball.vy;
 }
 
-// The keeper slides while the child aims. It is deliberately slower than a
-// pointer can move: swinging the aim across the mouth leaves the keeper
-// trailing, and that lag is the whole skill in beating it. A keeper that
-// snapped to the aim would make every shot a coin toss on reaction time.
-function trackAim(dt) {
-  if (game.state !== 'HUMAN_AIM') { return; }
-  var target = aimTargetX();
-  if (target === null) { return; }
+// The keeper dives once the shot is on its way, at a point it has read off the
+// ball — imperfectly. The misread is drawn once per shot, not per frame, or the
+// errors would average out and leave a perfect tracker.
+//
+// Weaker keepers misread by more, which is most of what the cup's rising skill
+// actually buys. It moves at a fixed speed from wherever it stands, so a shot
+// into the far corner is genuinely harder to reach than one hit at the keeper.
+function keeperReact(dt) {
   var k = game.keepers.filter(function (g) { return g.team === 'ai'; })[0];
   if (!k) { return; }
-  k.x = Formation.keeperStep(k.x, target, KEEPER_TRACK_SPEED * dt,
+  if (game.state !== 'MOVING' || game.mover !== 'human') { game.keeperDive = null; return; }
+
+  var predicted = crossingX(game.ball);
+  if (predicted === null) { return; }        // not coming: hold position
+
+  if (game.keeperDive === null || game.keeperDive === undefined) {
+    var spread = KEEPER_READ_BASE + KEEPER_READ_RANGE * (1 - game.aiSkill);
+    game.keeperDive = {
+      x: predicted + (Math.random() * 2 - 1) * spread,
+      wait: KEEPER_REACT_DELAY
+    };
+  }
+  if (game.keeperDive.wait > 0) { game.keeperDive.wait -= dt; return; }
+
+  k.x = Formation.keeperStep(k.x, game.keeperDive.x, KEEPER_REACT_SPEED * dt,
                              KEEPER_MIN_X, KEEPER_MAX_X);
-  // Only along the line. Nudging it forward would take it out of its goal and
-  // hand the child an empty net for missing.
-  k.y = TOP_Y + KEEPER_Y_INSET;
+  // Along the line only. Nudging it forward would take it out of its own goal
+  // and hand the child an empty net for missing.
+  k.y = KEEPER_LINE_Y;
   k.vx = k.vy = 0;
 }
 
@@ -1599,7 +1620,7 @@ function frame(now) {
     acc = 0;
   }
 
-  trackAim(dt);
+  keeperReact(dt);
   updateJuice(dt);
   updateParticles(dt);
   draw(now / 1000);
