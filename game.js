@@ -340,15 +340,13 @@ function updateKeepers() {
     // rushing out costs exactly one turn of cover rather than the whole match.
     k.y = k.home[1];
     k.vx = 0; k.vy = 0;
-    // Each side moves its own keeper. The CPU's tracks the ball because the
-    // CPU is playing it; the child's stays exactly where they left it, because
-    // it is theirs to position - a keeper that both obeys a flick and drifts
-    // on its own belongs to nobody.
-    if (k.team === 'ai') {
-      k.x = Formation.keeperStep(k.x, game.ball.x, KEEPER_MAX_STEP, KEEPER_MIN_X, KEEPER_MAX_X);
-    } else {
-      k.x = Formation.keeperStep(k.x, k.x, KEEPER_MAX_STEP, KEEPER_MIN_X, KEEPER_MAX_X);
-    }
+    // Both keepers follow the ball. Leaving the child's keeper stationary
+    // sounds like giving them control, but a flick is their only action in a
+    // turn and they will always rather attack — so in practice it never moved
+    // at all, and computeAiShot aims at the corner furthest from it, meaning
+    // the CPU would score in the same unguarded corner every time.
+    // Following the ball is instead a rule a child can see and play around.
+    k.x = Formation.keeperStep(k.x, game.ball.x, KEEPER_MAX_STEP, KEEPER_MIN_X, KEEPER_MAX_X);
   }
 }
 
