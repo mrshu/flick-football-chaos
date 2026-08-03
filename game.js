@@ -44,6 +44,9 @@ const THREAT_DY = 150, THREAT_X_SLACK = 55;
 // clamped range, so at 70 it crosses in two turns and barely trails play at
 // all — this is the dial to turn down if keepers feel too hard to beat.
 const KEEPER_MAX_STEP = 70;
+// A keeper only keeps goal while it is on its line; beyond this it is out of
+// position and jogging back, which is what makes a rush-out cost something.
+const KEEPER_ON_LINE = 30, KEEPER_RETURN_STEP = 70;
 const KEEPER_MIN_X = MOUTH_L + KEEPER_R, KEEPER_MAX_X = MOUTH_R - KEEPER_R;
 
 /* ---------- DOM ---------- */
@@ -339,16 +342,17 @@ function saveShot(shot, firstX) {
 // keepers do not stop watching the ball when it is the other side's turn.
 function updateKeepers() {
   for (const k of game.keepers) {
-    // A keeper the child flicked upfield is walked back to its own line, so
-    // rushing out costs exactly one turn of cover rather than the whole match.
-    k.y = k.home[1];
     k.vx = 0; k.vy = 0;
-    // Both keepers follow the ball. Leaving the child's keeper stationary
-    // sounds like giving them control, but a flick is their only action in a
-    // turn and they will always rather attack — so in practice it never moved
-    // at all, and computeAiShot aims at the corner furthest from it, meaning
-    // the CPU would score in the same unguarded corner every time.
-    // Following the ball is instead a rule a child can see and play around.
+    const offLine = Math.abs(k.y - k.home[1]);
+    if (offLine > KEEPER_ON_LINE) {
+      // Flicked upfield. It is genuinely out of position and jogs back over
+      // several turns — snapping it home would erase the child's flick, and
+      // rushing out has to cost something or it is a free extra attacker.
+      k.y = Formation.keeperStep(k.y, k.home[1], KEEPER_RETURN_STEP, TOP_Y, BOT_Y);
+      continue;
+    }
+    // On its line and actually keeping goal: settle onto it and follow the ball.
+    k.y = k.home[1];
     k.x = Formation.keeperStep(k.x, game.ball.x, KEEPER_MAX_STEP, KEEPER_MIN_X, KEEPER_MAX_X);
   }
 }
