@@ -264,6 +264,10 @@ function clearModifier() {
 // still hands the player their flick, and skipping is instant and free.
 // Quiz.js owns the cancellable feedback timer, so the flash-then-continue
 // behaviour lives in one place.
+// Chance of allowing a bonus question on the turn straight after one. 0 gives
+// roughly a question every 4.4 turns, 1 gives every 2.9.
+const BONUS_REPEAT_CHANCE = 0.5;
+
 // A question before every single shot reads as a tax on playing. The save
 // question already only fires when the CPU actually threatens; the bonus
 // question now follows the same rule, so it arrives when a bonus could win
@@ -272,9 +276,14 @@ function worthABonus() {
   // Attacking half only: a giant ball or a super shot is worth something when
   // the ball is up near the CPU's goal, and worth little from your own box.
   if (game.ball.y > H / 2) { return false; }
-  // And never twice running, so a scrappy spell near their goal does not turn
-  // into a quiz.
-  if (game.askedLastTurn) { game.askedLastTurn = false; return false; }
+  // Asking two turns running is allowed only sometimes. A hard "never twice"
+  // rule caps this at half your turns and made questions too sparse; removing
+  // it entirely puts you back to one every turn whenever you camp in their
+  // half, which was too much. This is the dial between those.
+  if (game.askedLastTurn && Math.random() >= BONUS_REPEAT_CHANCE) {
+    game.askedLastTurn = false;
+    return false;
+  }
   game.askedLastTurn = true;
   return true;
 }
