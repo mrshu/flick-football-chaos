@@ -341,20 +341,12 @@ function saveShot(shot, firstX) {
 // track the same ball x regardless of whose turn is starting - real
 // keepers do not stop watching the ball when it is the other side's turn.
 function updateKeepers() {
-  for (const k of game.keepers) {
-    k.vx = 0; k.vy = 0;
-    const offLine = Math.abs(k.y - k.home[1]);
-    if (offLine > KEEPER_ON_LINE) {
-      // Flicked upfield. It is genuinely out of position and jogs back over
-      // several turns — snapping it home would erase the child's flick, and
-      // rushing out has to cost something or it is a free extra attacker.
-      k.y = Formation.keeperStep(k.y, k.home[1], KEEPER_RETURN_STEP, TOP_Y, BOT_Y);
-      continue;
-    }
-    // On its line and actually keeping goal: settle onto it and follow the ball.
-    k.y = k.home[1];
-    k.x = Formation.keeperStep(k.x, game.ball.x, KEEPER_MAX_STEP, KEEPER_MIN_X, KEEPER_MAX_X);
-  }
+  // Deliberately does nothing to a keeper's position. Keepers are ordinary
+  // bodies: they stay where play or the child's flick leaves them, and are put
+  // back on their line by resetPositions() after a goal, exactly like every
+  // outfield player. Anything that repositioned them between turns moved a
+  // piece the child had not touched.
+  for (const k of game.keepers) { k.vx = 0; k.vy = 0; }
 }
 
 // A correct save answer jumps the human keeper straight to the shot's
@@ -460,7 +452,13 @@ function computeAiShot() {
   const b = game.ball;
   const keeper = game.keepers.filter(k => k.team === 'human')[0]; // defends the goal the CPU shoots at
   const margin = KEEPER_R + 4 + Math.random() * 18;
-  const targetX = Formation.farCorner(keeper.x, MOUTH_L, MOUTH_R, margin);
+  // Keepers no longer drift on their own, so always shooting at the corner
+  // furthest from this one would mean scoring in the same unguarded spot every
+  // single time. Go for the open side most of the time, but not always, and
+  // not always to the same depth.
+  const targetX = Math.random() < 0.75
+    ? Formation.farCorner(keeper.x, MOUTH_L, MOUTH_R, margin)
+    : MOUTH_L + margin + Math.random() * (MOUTH_R - MOUTH_L - 2 * margin);
   let dx = targetX - b.x, dy = BACK_BOT - b.y;
   const dl = Math.hypot(dx, dy) || 1;
   dx /= dl; dy /= dl;
