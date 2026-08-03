@@ -8,6 +8,25 @@
 </head>
 <body>
 <div id="wrap">
+  <div id="startScreen">
+    <div id="startCard">
+      <h1 id="startTitle">Flick Football Chaos</h1>
+      <p id="startSub">Pick your age</p>
+      <div id="startAges">
+        <button type="button" class="ageBtn" data-band="1">5</button>
+        <button type="button" class="ageBtn" data-band="2">6</button>
+        <button type="button" class="ageBtn" data-band="3">7</button>
+        <button type="button" class="ageBtn" data-band="4">8</button>
+        <button type="button" class="ageBtn" data-band="5">9</button>
+        <button type="button" class="ageBtn" data-band="6">10</button>
+        <button type="button" class="ageBtn" data-band="7">11</button>
+        <button type="button" class="ageBtn" data-band="8">12</button>
+        <button type="button" class="ageBtn" id="startNoMaths" data-band="0" title="No maths" aria-label="No maths">&#128683;</button>
+      </div>
+      <button id="startPlay" type="button">&#9654; PLAY</button>
+    </div>
+  </div>
+
   <header id="hud">
     <span class="team blue">YOU <b id="scoreHuman">0</b></span>
     <span id="turnMsg" class="human">Your turn</span>
@@ -19,6 +38,16 @@
     <button id="fsBtn" type="button" title="Fullscreen (F)" aria-label="Toggle fullscreen">&#9974;</button>
     <div id="chaosBanner" class="hidden"></div>
     <div id="goalFlash" class="hidden">GOAL!</div>
+    <div id="quiz" class="hidden">
+      <div id="quizLead">Answer for a bonus</div>
+      <div id="quizPrize">
+        <div id="quizPrizeGlyph"></div>
+        <div id="quizPrizePreview"></div>
+      </div>
+      <div id="quizQ"></div>
+      <div id="quizChoices"></div>
+      <button id="quizSkip" type="button" aria-label="Skip">&#8618;</button>
+    </div>
     <div id="overlay" class="hidden">
       <div id="overCard">
         <h1 id="overTitle">You Win!</h1>
@@ -30,6 +59,9 @@
 
   <footer id="hint">Drag a blue player back &amp; release to flick &mdash; first to 3 goals wins!</footer>
 </div>
+<script src="maths.js"></script>
+<script src="quiz.js"></script>
+<script src="formation.js"></script>
 <script src="game.js"></script>
 </body>
 </html>

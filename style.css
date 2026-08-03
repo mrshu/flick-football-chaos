@@ -216,3 +216,213 @@ canvas {
 }
 
 .hidden { display: none !important; }
+
+#quiz {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(92%, 430px);
+  max-height: 92%;
+  overflow: hidden;
+  padding: 16px 16px 12px;
+  border-radius: 18px;
+  background: rgba(6, 20, 44, .95);
+  box-shadow: 0 12px 44px rgba(0, 0, 0, .6);
+  z-index: 6;
+  text-align: center;
+}
+
+/* During a save the child needs to see the goal being attacked and the ball's
+   route into it, so the panel lifts clear of the lower half of the pitch. */
+#quiz.saving { top: 34%; }
+
+#quizLead {
+  font-size: clamp(12px, 2vh, 15px);
+  font-weight: 700;
+  letter-spacing: .4px;
+  opacity: .65;
+  margin-bottom: 6px;
+}
+
+#quizPrize {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: 0 auto 8px;
+  padding: 8px 22px 7px;
+  border-radius: 16px;
+  background: linear-gradient(160deg, #ffe27a, #ffb43d 55%, #ff8a3d);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, .4) inset, 0 6px 16px rgba(0, 0, 0, .35);
+  /* Not `bannerPop`: that keyframe ends on translateX(-50%), which is the
+     centring trick for the absolutely-positioned chaos banner. On a normally
+     flowed element with fill-mode `both` it sticks, shifting the prize half
+     its own width to the left. */
+  animation: prizePop .35s ease both, prizeGlow 1.6s ease-in-out .4s infinite;
+}
+
+@keyframes prizePop {
+  from { transform: scale(.4); opacity: 0; }
+  to   { transform: scale(1);  opacity: 1; }
+}
+
+@keyframes prizeGlow {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(255, 255, 255, .4) inset, 0 6px 16px rgba(0, 0, 0, .35), 0 0 0 rgba(255, 138, 61, 0); }
+  50%      { box-shadow: 0 0 0 2px rgba(255, 255, 255, .6) inset, 0 6px 16px rgba(0, 0, 0, .35), 0 0 20px 5px rgba(255, 138, 61, .6); }
+}
+
+#quizPrizeGlyph {
+  font-size: clamp(30px, 6.6vh, 52px);
+  line-height: 1;
+}
+
+#quizPrizePreview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: clamp(10px, 2.2vh, 16px);
+}
+
+.pvDot { border-radius: 50%; flex: 0 0 auto; }
+.pvDot.szXs { width: clamp(5px, 1.1vh, 8px);   height: clamp(5px, 1.1vh, 8px); }
+.pvDot.szSm { width: clamp(8px, 1.7vh, 12px);  height: clamp(8px, 1.7vh, 12px); }
+.pvDot.szMd { width: clamp(10px, 2.2vh, 15px); height: clamp(10px, 2.2vh, 15px); }
+.pvDot.szLg { width: clamp(17px, 3.6vh, 26px); height: clamp(17px, 3.6vh, 26px); }
+
+.pvBar { border-radius: 4px; height: clamp(5px, 1.1vh, 8px); flex: 0 0 auto; }
+.pvBar.szSm { width: clamp(12px, 2.4vh, 17px); }
+.pvBar.szLg { width: clamp(28px, 5.6vh, 42px); }
+
+.pvArrow {
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 7px solid rgba(43, 22, 0, .75);
+  flex: 0 0 auto;
+}
+
+.pvStreak { height: clamp(2px, .6vh, 4px); border-radius: 3px; flex: 0 0 auto; }
+.pvStreak.sz3 { width: clamp(5px, 1.1vh, 8px);  opacity: .3; }
+.pvStreak.sz2 { width: clamp(7px, 1.6vh, 11px); opacity: .55; }
+.pvStreak.sz1 { width: clamp(10px, 2vh, 14px);  opacity: .8; }
+
+#quizQ {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-height: 50px;
+  font-size: clamp(22px, 4.6vh, 34px);
+  font-weight: 800;
+}
+
+#quizChoices { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
+#quizChoices button {
+  font: inherit;
+  font-weight: 800;
+  font-size: clamp(18px, 3vh, 25px);
+  min-width: 64px;
+  padding: 11px 8px;
+  border: none;
+  border-radius: 14px;
+  background: #3b82f6;
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 5px 0 #1e50b0;
+}
+#quizChoices button:active { transform: translateY(3px); box-shadow: 0 2px 0 #1e50b0; }
+#quizChoices button.right { background: #2ec27e; box-shadow: 0 5px 0 #1a8a55; }
+#quizChoices button.wrong { background: #ef4444; box-shadow: 0 5px 0 #a51f1f; }
+
+#quizSkip {
+  margin-top: 10px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, .1);
+  color: rgba(255, 255, 255, .55);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+#quizSkip:hover { background: rgba(255, 255, 255, .18); color: rgba(255, 255, 255, .85); }
+#quizSkip:active { transform: scale(.92); }
+
+.qBalls { display: flex; gap: 3px; }
+.qBall {
+  width: clamp(16px, 3vh, 24px);
+  height: clamp(16px, 3vh, 24px);
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #222;
+}
+.qBox {
+  min-width: 46px;
+  height: 46px;
+  border: 4px dashed rgba(255, 255, 255, .85);
+  border-radius: 10px;
+}
+.qFrac { display: inline-flex; flex-direction: column; font-size: .6em; line-height: 1.05; }
+.qFrac span:last-child { border-top: 3px solid #fff; }
+
+#startScreen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 10, 25, .88);
+  backdrop-filter: blur(3px);
+  z-index: 20;
+  padding: 16px;
+}
+
+#startCard {
+  text-align: center;
+  padding: 30px 26px;
+  border-radius: 20px;
+  background: linear-gradient(160deg, #1d3b6e, #122347);
+  box-shadow: 0 16px 50px rgba(0, 0, 0, .6);
+  animation: cardPop .4s ease both;
+  width: min(92vw, 420px);
+  max-height: 92vh;
+  overflow: auto;
+}
+
+#startTitle { font-size: clamp(20px, 4.4vh, 30px); margin-bottom: 6px; }
+#startSub   { opacity: .8; margin-bottom: 16px; font-size: clamp(13px, 2.2vh, 16px); }
+
+#startAges { display: flex; gap: 7px; flex-wrap: wrap; justify-content: center; margin-bottom: 22px; }
+.ageBtn {
+  font: inherit;
+  font-weight: 800;
+  font-size: clamp(15px, 2.6vh, 19px);
+  min-width: 42px;
+  padding: 10px 8px;
+  border-radius: 10px;
+  border: 2px solid rgba(255, 255, 255, .22);
+  background: rgba(255, 255, 255, .07);
+  color: #fff;
+  cursor: pointer;
+}
+.ageBtn.on { background: linear-gradient(135deg, #ffd54a, #ff8a3d); color: #2b1600; border-color: transparent; }
+
+#startPlay {
+  font: inherit;
+  font-weight: 800;
+  font-size: clamp(18px, 3vh, 22px);
+  padding: 14px 38px;
+  border: none;
+  border-radius: 999px;
+  color: #06230f;
+  background: linear-gradient(135deg, #57e389, #2ec27e);
+  cursor: pointer;
+  box-shadow: 0 6px 0 #1a8a55, 0 10px 24px rgba(0, 0, 0, .4);
+  transition: transform .08s;
+}
+#startPlay:active { transform: translateY(4px); box-shadow: 0 2px 0 #1a8a55; }

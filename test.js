@@ -1,0 +1,948 @@
+'use strict';
+var Maths = require('./maths.js');
+var Formation = require('./formation.js');
+
+var checks = 0, failures = 0;
+
+function ok(cond, msg) {
+  checks++;
+  if (!cond) { failures++; console.error('FAIL: ' + msg); }
+}
+
+function eq(actual, expected, msg) {
+  ok(actual === expected, msg + ' (got ' + actual + ', want ' + expected + ')');
+}
+
+// Deterministic LCG so every run is reproducible.
+function makeRng(seed) {
+  var s = seed >>> 0;
+  return function () {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
+function done() {
+  console.log(checks + ' checks, ' + failures + ' failures');
+  process.exit(failures ? 1 : 0);
+}
+
+// ---- Task 1 ----
+ok(typeof Maths === 'object' && Maths !== null, 'Maths module loads');
+ok(typeof Maths.make === 'function', 'Maths.make is a function');
+ok(typeof Maths.update === 'function', 'Maths.update is a function');
+ok(typeof Maths.newState === 'function', 'Maths.newState is a function');
+
+var r1 = makeRng(42), r2 = makeRng(42);
+eq(r1(), r2(), 'same seed yields same first value');
+ok(r1() !== r1(), 'successive values differ');
+
+// ---- Task 2 ----
+(function () {
+  var rand = makeRng(7), i, v, seen = {};
+  for (i = 0; i < 300; i++) {
+    v = Maths._randInt(rand, 3, 6);
+    ok(v >= 3 && v <= 6, 'randInt stays in range');
+    ok(v === Math.floor(v), 'randInt returns an integer');
+    seen[v] = true;
+  }
+  ok(seen[3] && seen[4] && seen[5] && seen[6], 'randInt reaches both bounds');
+
+  eq(Maths._randInt(rand, 5, 5), 5, 'randInt with equal bounds returns that value');
+
+  var arr = [1, 2, 3, 4, 5];
+  var sh = Maths._shuffle(makeRng(1), arr);
+  eq(arr.join(','), '1,2,3,4,5', 'shuffle does not mutate its input');
+  eq(sh.slice().sort().join(','), '1,2,3,4,5', 'shuffle preserves elements');
+  eq(Maths._shuffle(makeRng(9), arr).join(','),
+     Maths._shuffle(makeRng(9), arr).join(','), 'shuffle is deterministic per seed');
+
+  ok(arr.indexOf(Maths._pick(makeRng(3), arr)) !== -1, 'pick returns a member');
+
+  var reordered = false, sd;
+  for (sd = 1; sd <= 20 && !reordered; sd++) {
+    if (Maths._shuffle(makeRng(sd), arr).join(',') !== arr.join(',')) { reordered = true; }
+  }
+  ok(reordered, 'shuffle actually reorders elements across seeds');
+})();
+
+// ---- Task 3 ----
+(function () {
+  eq(Maths.choiceCount(1.0), 2, 'floor difficulty gives 2 choices');
+  eq(Maths.choiceCount(1.25), 2, '1.25 boundary gives 2 choices');
+  eq(Maths.choiceCount(1.26), 3, 'just above 1.25 gives 3 choices');
+  eq(Maths.choiceCount(1.75), 3, '1.75 boundary gives 3 choices');
+  eq(Maths.choiceCount(1.76), 4, 'just above 1.75 gives 4 choices');
+  eq(Maths.choiceCount(8.0), 4, 'top difficulty gives 4 choices');
+
+  var rand = makeRng(11), i, c, j;
+
+  for (i = 0; i < 80; i++) {
+    c = Maths.buildChoices(7, 4, [6, 8, 14], rand, 0);
+    ok(c.indexOf(7) !== -1, 'choices contain the answer');
+    eq(c.length, 4, 'choices honour the requested count');
+    for (j = 0; j < c.length; j++) {
+      ok(c.indexOf(c[j]) === j, 'no duplicate choices');
+      ok(c[j] >= 0, 'no choice below min');
+    }
+  }
+
+  // Tiny answer space: padding must not produce duplicates or go below min.
+  for (i = 0; i < 80; i++) {
+    c = Maths.buildChoices(1, 4, [2], rand, 0);
+    ok(c.indexOf(1) !== -1, 'small-space choices contain the answer');
+    eq(c.length, 4, 'small-space choices reach requested count via padding');
+    for (j = 0; j < c.length; j++) {
+      ok(c.indexOf(c[j]) === j, 'small-space choices are unique');
+      ok(c[j] >= 0, 'small-space choices respect min');
+    }
+  }
+
+  // Negative-capable band 8.
+  c = Maths.buildChoices(-2, 4, [-1, -3, 2], rand, -20);
+  ok(c.indexOf(-2) !== -1, 'negative answers are supported');
+  for (j = 0; j < c.length; j++) {
+    ok(c[j] >= -20, 'negative-range choices respect min');
+  }
+
+  // String answers (comparison questions) use `near` verbatim.
+  c = Maths.buildChoices('<', 3, ['>', '='], rand, 0);
+  eq(c.length, 3, 'comparison gives three symbol choices');
+  ok(c.indexOf('<') !== -1 && c.indexOf('>') !== -1 && c.indexOf('=') !== -1,
+     'comparison choices are the three symbols');
+})();
+
+// ---- Band generator shared checks (used by Tasks 4-7) ----
+var TOKEN_TYPES = ['num', 'balls', 'op', 'eq', 'box', 'frac', 'bar', 'sep', 'pct', 'pow'];
+
+function checkGenerators(band, allowNegative) {
+  var gens = Maths._BANDS[band], rand = makeRng(1000 + band), g, q, i, k, tok;
+  ok(gens && gens.length > 0, 'band ' + band + ' has generators');
+  for (g = 0; g < gens.length; g++) {
+    for (i = 0; i < 10; i++) {
+      q = gens[g](rand);
+      ok(!!q && typeof q === 'object', 'band ' + band + ' generator returns an object');
+      ok(typeof q.skill === 'string' && q.skill.length > 0,
+         'band ' + band + ' question has a skill id');
+      ok(q.answer !== undefined && q.answer !== null,
+         'band ' + band + ' question has an answer');
+      if (typeof q.answer === 'number') {
+        ok(isFinite(q.answer), 'band ' + band + ' answer is finite');
+        if (!allowNegative) {
+          ok(q.answer >= 0, 'band ' + band + ' answer is not negative');
+        }
+      }
+      ok(Object.prototype.toString.call(q.render) === '[object Array]' && q.render.length > 0,
+         'band ' + band + ' render is a non-empty array');
+      for (k = 0; k < q.render.length; k++) {
+        tok = q.render[k];
+        ok(TOKEN_TYPES.indexOf(tok.t) !== -1,
+           'band ' + band + ' token type "' + tok.t + '" is known');
+        if (tok.t === 'num' || tok.t === 'balls' || tok.t === 'pct') {
+          ok(typeof tok.v === 'number' && isFinite(tok.v),
+             'band ' + band + ' ' + tok.t + ' token has a finite value');
+          if (!allowNegative) {
+            ok(tok.v >= 0, 'band ' + band + ' displayed value is not negative');
+          }
+        }
+      }
+      ok(Object.prototype.toString.call(q.near) === '[object Array]',
+         'band ' + band + ' provides near-miss candidates');
+      for (k = 0; k < q.near.length; k++) {
+        if (typeof q.near[k] === 'number') {
+          ok(isFinite(q.near[k]),
+             'band ' + band + ' near-miss is finite');
+          if (!allowNegative) {
+            ok(q.near[k] >= 0,
+               'band ' + band + ' near-miss is not negative');
+          }
+        }
+      }
+    }
+  }
+}
+
+// ---- Task 4 ----
+checkGenerators(1, false);
+checkGenerators(2, false);
+
+(function () {
+  // Band 1 must stay within bonds-to-5 and use football pictograms.
+  var rand = makeRng(5), i, q, usedBalls = false;
+  for (i = 0; i < 80; i++) {
+    q = Maths._BANDS[1][0](rand);
+    ok(q.answer <= 5, 'band 1 counting answers stay within 5');
+    for (var k = 0; k < q.render.length; k++) {
+      if (q.render[k].t === 'balls') { usedBalls = true; }
+    }
+  }
+  ok(usedBalls, 'band 1 renders quantities as footballs');
+
+  for (i = 0; i < 80; i++) {
+    q = Maths._BANDS[2][0](rand);
+    ok(q.answer <= 10, 'band 2 addition stays within 10');
+  }
+
+  // Bonds-to-5/10 render as `a + box = target`; recompute independently
+  // from the rendered parts rather than repeating the generator's own
+  // `target - a` formula.
+  for (i = 0; i < 80; i++) {
+    q = Maths._BANDS[1][1](rand);
+    eq(q.answer + q.render[0].v, q.render[4].v,
+       'bond-to-5 recomputes from the rendered parts');
+  }
+  for (i = 0; i < 80; i++) {
+    q = Maths._BANDS[2][2](rand);
+    eq(q.answer + q.render[0].v, q.render[4].v,
+       'bond-to-10 recomputes from the rendered parts');
+  }
+})();
+
+// Sub10's near-miss list clamps `a - b - 1` at 0 (`Math.max(0, ...)`) so a
+// forced a===b draw can't offer -1 as a distractor. This is exactly the
+// coincidence a random sweep might not hit by luck, so force it directly: a
+// fixed rand() near 1 drives both _randInt calls to their top bound,
+// producing a===b deterministically (see genSub10: a = _randInt(2,10),
+// b = _randInt(1,a); a rand() of 0.999999 yields a=10 then b=10).
+(function () {
+  var fixedRand = function () { return 0.999999; };
+  var q = Maths._BANDS[2][1](fixedRand);
+  eq(q.answer, 0, 'sub10 forced equal operands answers zero');
+  ok(q.near.indexOf(-1) === -1, 'sub10 near-miss clamp keeps candidates non-negative');
+})();
+
+// ---- Task 5 ----
+checkGenerators(3, false);
+checkGenerators(4, false);
+
+(function () {
+  var rand = makeRng(31), i, q, k, boxes, terms, gapIdx, step, refIdx, refVal, p;
+  for (i = 0; i < 80; i++) {
+    q = Maths._BANDS[3][0](rand);
+    ok(q.answer <= 20, 'band 3 addition stays within 20');
+  }
+  // The sequence generator must leave exactly one gap.
+  for (i = 0; i < 80; i++) {
+    q = Maths._BANDS[3][3](rand);
+    boxes = 0;
+    for (k = 0; k < q.render.length; k++) { if (q.render[k].t === 'box') { boxes++; } }
+    eq(boxes, 1, 'sequence question has exactly one gap');
+    ok(q.answer > 0, 'sequence answer is positive');
+
+    // Independent recomputation: derive the step from a visible adjacent
+    // pair of terms (separators skipped) and extrapolate to the box.
+    terms = [];
+    for (k = 0; k < q.render.length; k++) {
+      if (q.render[k].t === 'num' || q.render[k].t === 'box') { terms.push(q.render[k]); }
+    }
+    gapIdx = -1;
+    for (p = 0; p < terms.length; p++) { if (terms[p].t === 'box') { gapIdx = p; } }
+    step = undefined;
+    for (p = 0; p < terms.length - 1; p++) {
+      if (terms[p].t === 'num' && terms[p + 1].t === 'num') {
+        step = terms[p + 1].v - terms[p].v;
+        refIdx = p; refVal = terms[p].v;
+        break;
+      }
+    }
+    eq(q.answer, refVal + (gapIdx - refIdx) * step,
+       'sequence gap recomputes from visible terms');
+  }
+  // Halving must always be exact.
+  for (i = 0; i < 80; i++) {
+    q = Maths._BANDS[4][3](rand);
+    eq(q.answer, Math.floor(q.answer), 'halving yields a whole number');
+    eq(q.answer * 2, q.render[2].v,
+       'halving recomputes from the rendered amount');
+  }
+})();
+
+// ---- Task 6 ----
+checkGenerators(5, false);
+checkGenerators(6, false);
+
+(function () {
+  var rand = makeRng(57), i, q;
+
+  // Division must be exact.
+  for (i = 0; i < 100; i++) {
+    q = Maths._BANDS[5][1](rand);
+    eq(q.answer, Math.floor(q.answer), 'division yields a whole number');
+    ok(q.answer > 0, 'division answer is positive');
+  }
+  // Fractions of amounts must be exact.
+  for (i = 0; i < 100; i++) {
+    q = Maths._BANDS[5][2](rand);
+    eq(q.answer, Math.floor(q.answer), 'fraction of amount is a whole number');
+    eq(q.answer * q.render[0].d, q.render[2].v,
+       'fraction of amount recomputes from the rendered fraction');
+  }
+  // Decimals must be multiples of 0.25, so binary representation is exact.
+  for (i = 0; i < 100; i++) {
+    q = Maths._BANDS[6][1](rand);
+    eq(q.answer * 4, Math.round(q.answer * 4), 'decimal answer is a multiple of 0.25');
+    eq(q.answer, Number(q.answer.toFixed(2)), 'decimal answer has no float drift');
+  }
+  // Comparison answers are symbols with all three offered.
+  for (i = 0; i < 80; i++) {
+    q = Maths._BANDS[6][2](rand);
+    ok(q.answer === '<' || q.answer === '>' || q.answer === '=',
+       'fraction comparison answers with a symbol');
+    eq(q.near.length, 2, 'comparison offers the two other symbols');
+  }
+})();
+
+// ---- Task 7 ----
+checkGenerators(7, false);
+checkGenerators(8, true);   // band 8 alone may go negative
+
+(function () {
+  var rand = makeRng(83), i, q, sawNegative = false;
+
+  // Percentages must come out whole.
+  for (i = 0; i < 100; i++) {
+    q = Maths._BANDS[7][0](rand);
+    eq(q.answer, Math.floor(q.answer), 'percentage of amount is a whole number');
+    eq(q.answer * 100, q.render[0].v * q.render[2].v,
+       'percentage recomputes from the rendered percent and amount');
+  }
+  // Order of operations: multiplication binds before addition.
+  for (i = 0; i < 100; i++) {
+    q = Maths._BANDS[7][1](rand);
+    var a = q.render[0].v, b = q.render[2].v, c = q.render[4].v;
+    eq(q.answer, a + b * c, 'order of operations respects precedence');
+  }
+  // Ratio scaling must preserve the proportion: a:b = (a*k):answer, so
+  // cross-multiplying gives an independent check of the scaled term.
+  for (i = 0; i < 100; i++) {
+    q = Maths._BANDS[7][2](rand);
+    eq(q.answer * q.render[0].v, q.render[2].v * q.render[4].v,
+       'ratio recomputes via cross-multiplication');
+  }
+  // Squares and roots are inverse and exact.
+  for (i = 0; i < 80; i++) {
+    q = Maths._BANDS[8][1](rand);
+    eq(q.answer, q.render[0].v * q.render[0].v, 'square is exact');
+    q = Maths._BANDS[8][2](rand);
+    eq(q.answer * q.answer, q.render[1].v, 'root is exact');
+  }
+  // Equation solving: box + b = total, recomputed from the rendered totals.
+  for (i = 0; i < 100; i++) {
+    q = Maths._BANDS[8][3](rand);
+    eq(q.answer + q.render[2].v, q.render[4].v,
+       'equation recomputes from the rendered totals');
+  }
+  // Negative results do occur in band 8.
+  for (i = 0; i < 150; i++) {
+    q = Maths._BANDS[8][0](rand);
+    if (q.answer < 0) { sawNegative = true; }
+  }
+  ok(sawNegative, 'band 8 actually produces negative answers');
+})();
+
+// ---- Task 8 ----
+(function () {
+  var rand = makeRng(101), i, q, counts = { 3: 0, 4: 0 };
+
+  // Band mixing: difficulty 3.4 should draw roughly 40% from band 4. 1000
+  // draws keeps the observed fraction's std dev (~0.015) well inside the
+  // 0.07 margin either side of the 0.40 target.
+  var N_MIX = 800;
+  for (i = 0; i < N_MIX; i++) {
+    q = Maths.make(3.4, Maths.newState(3.4), rand);
+    ok(q.band === 3 || q.band === 4, 'difficulty 3.4 draws from band 3 or 4');
+    counts[q.band]++;
+  }
+  var frac = counts[4] / N_MIX;
+  ok(frac > 0.33 && frac < 0.47, 'band 4 share is near 40% (got ' + frac.toFixed(3) + ')');
+
+  // Integer difficulty draws only that band.
+  for (i = 0; i < 80; i++) {
+    eq(Maths.make(5, Maths.newState(5), rand).band, 5, 'integer difficulty picks that band');
+  }
+  eq(Maths.make(8, Maths.newState(8), rand).band, 8, 'difficulty 8 never overflows to band 9');
+
+  // Shape of the returned question.
+  for (i = 0; i < 200; i++) {
+    q = Maths.make(1 + rand() * 7, Maths.newState(4), rand);
+    ok(q.choices.indexOf(q.answer) !== -1, 'choices always contain the answer');
+    ok(q.choices.length >= 2 && q.choices.length <= 4, 'choice count is 2-4');
+    for (var k = 0; k < q.choices.length; k++) {
+      ok(q.choices.indexOf(q.choices[k]) === k, 'choices are unique');
+    }
+    ok(typeof q.skill === 'string', 'question reports its skill');
+  }
+
+  // Floor support: at the bottom of the scale choices reduce.
+  eq(Maths.make(1.0, Maths.newState(1), rand).choices.length, 2,
+     'difficulty 1.0 offers two choices');
+  eq(Maths.make(1.5, Maths.newState(1.5), rand).choices.length, 3,
+     'difficulty 1.5 offers three choices');
+
+  // Weak-spot weighting: a skill with low mastery is over-sampled.
+  var st = Maths.newState(2);
+  st.mastery = { add10: 0.05, sub10: 0.95, bond10: 0.95 };
+  var weak = 0, total = 2000;
+  for (i = 0; i < total; i++) {
+    if (Maths.make(2, st, rand).skill === 'add10') { weak++; }
+  }
+  ok(weak / total > 0.40,
+     'weak skill is favoured above its uniform 1/3 share (got ' + (weak / total).toFixed(3) + ')');
+})();
+
+// ---- Task 9 ----
+(function () {
+  var base = Maths.newState(4), s;
+
+  function outcome(correct, ms, band, skill) {
+    return { correct: correct, elapsedMs: ms, band: band || 4, skill: skill || 'mul' };
+  }
+
+  // Purity.
+  s = Maths.update(base, outcome(true, 1000));
+  eq(base.difficulty, 4, 'update does not mutate the input state');
+  ok(s !== base, 'update returns a new object');
+
+  // The purity check above only covers `difficulty`. A shallow copy that
+  // aliased `mastery` would pass everything else in this block.
+  var shared = Maths.newState(4);
+  shared.mastery.mul = 0.5;
+  Maths.update(shared, outcome(true, 1000, 4, 'mul'));
+  eq(shared.mastery.mul, 0.5, 'update does not mutate the input mastery object');
+
+  // Step sizes. Expected time at band 4 is 2500 + 3600 = 6100ms.
+  eq(Number((Maths.update(base, outcome(true, 1000)).difficulty - 4).toFixed(3)), 0.100,
+     'correct and fast steps up 0.100');
+  eq(Number((Maths.update(base, outcome(true, 6000)).difficulty - 4).toFixed(3)), 0.075,
+     'correct at expected pace steps up 0.075');
+  eq(Number((Maths.update(base, outcome(true, 20000)).difficulty - 4).toFixed(3)), 0.040,
+     'correct but slow steps up 0.040');
+  eq(Number((Maths.update(base, outcome(false, 1000)).difficulty - 4).toFixed(3)), -0.300,
+     'wrong steps down 0.300');
+
+  // Clamping.
+  s = Maths.newState(1);
+  for (var i = 0; i < 50; i++) { s = Maths.update(s, outcome(false, 1000, 1)); }
+  eq(s.difficulty, 1, 'difficulty never falls below 1');
+  s = Maths.newState(8);
+  for (i = 0; i < 200; i++) { s = Maths.update(s, outcome(true, 100, 8)); }
+  eq(s.difficulty, 8, 'difficulty never rises above 8');
+
+  // Mastery tracking.
+  s = Maths.update(Maths.newState(4), outcome(true, 1000, 4, 'mul'));
+  ok(s.mastery.mul > 0.5, 'a correct answer raises mastery above the 0.5 start');
+  s = Maths.update(Maths.newState(4), outcome(false, 1000, 4, 'mul'));
+  ok(s.mastery.mul < 0.5, 'a wrong answer lowers mastery');
+
+  s = Maths.newState(4);
+  for (i = 0; i < 200; i++) { s = Maths.update(s, outcome(true, 1000, 4, 'div')); }
+  ok(s.mastery.div <= 1 && s.mastery.div > 0.9, 'mastery converges towards 1 without exceeding it');
+  for (i = 0; i < 400; i++) { s = Maths.update(s, outcome(false, 1000, 4, 'div')); }
+  ok(s.mastery.div >= 0 && s.mastery.div < 0.1, 'mastery converges towards 0 without going below');
+})();
+
+// ---- Task 9b: adaptive acceleration ----
+// A misplaced child answering many fast-correct answers in a row is
+// obviously beyond their current band and should climb several bands in a
+// handful of questions, not dozens (owner instruction: "do not hesitate to
+// make them jump even two and more years"). The symmetric safeguard is a
+// child who overshoots and gets stranded too high: a run of wrong answers
+// must fall back quickly rather than grind out of it one -0.300 step at a
+// time.
+(function () {
+  function outcome(correct, ms, band, skill) {
+    return { correct: correct, elapsedMs: ms, band: band || 1, skill: skill || 'x' };
+  }
+
+  // Misplaced-child scenario: a run of fast-correct answers from band 1
+  // reaches roughly band 4-5 within about 6 answers. Assert a real lower
+  // bound, not merely that difficulty increased.
+  (function () {
+    var s = Maths.newState(1), i;
+    for (i = 0; i < 6; i++) { s = Maths.update(s, outcome(true, 1)); }
+    ok(s.difficulty >= 4.0,
+       'six fast-correct answers from band 1 reach at least band 4.0 (got ' +
+       s.difficulty.toFixed(3) + ')');
+    ok(s.difficulty <= 6.0,
+       'acceleration does not blow straight past the target band (got ' +
+       s.difficulty.toFixed(3) + ')');
+  })();
+
+  // Slow-but-correct answers must NOT accelerate: a long run climbs at the
+  // old gentle UP_SLOW rate exactly, however long the run gets. Slowness is
+  // the signal that the child is not beyond this level, so it must never
+  // trigger acceleration the way a fast-correct streak does.
+  (function () {
+    var s = Maths.newState(1), i, n = 20;
+    for (i = 0; i < n; i++) { s = Maths.update(s, outcome(true, 999999, 1)); }
+    eq(Number(s.difficulty.toFixed(6)), Number((1 + n * 0.040).toFixed(6)),
+       'a long run of slow-but-correct answers climbs at the unaccelerated rate');
+  })();
+
+  // A wrong answer resets the fast-correct run: build up a streak past the
+  // acceleration trigger, answer once wrong, then confirm the very next
+  // fast-correct answer steps by the plain UP_FAST amount, not an
+  // accelerated one.
+  (function () {
+    var s = Maths.newState(1), i, before;
+    for (i = 0; i < 4; i++) { s = Maths.update(s, outcome(true, 1)); }
+    ok(s.fastStreak === 4, 'fast streak counts consecutive fast-correct answers');
+    s = Maths.update(s, outcome(false, 1));
+    eq(s.fastStreak, 0, 'a wrong answer resets the fast-correct run');
+    before = s.difficulty;
+    s = Maths.update(s, outcome(true, 1));
+    eq(Number((s.difficulty - before).toFixed(6)), 0.100,
+       'the fast-correct answer right after a reset is not accelerated');
+  })();
+
+  // Descent safeguard: a child stranded high who answers several wrong in a
+  // row must fall back quickly, not merely fall.
+  (function () {
+    var s = { difficulty: 7, mastery: {}, fastStreak: 0, wrongStreak: 0 }, i;
+    for (i = 0; i < 5; i++) { s = Maths.update(s, outcome(false, 9000, 7)); }
+    ok(s.difficulty <= 4.5,
+       'five consecutive wrong answers from band 7 fall back to 4.5 or below (got ' +
+       s.difficulty.toFixed(3) + ')');
+    ok(s.wrongStreak === 5, 'wrong streak counts consecutive wrong answers');
+  })();
+
+  // Difficulty never escapes [1, 8] under any run, including long runs of
+  // accelerated climbs and accelerated descents. One property; track the
+  // extremes across each run and assert once rather than on every step.
+  (function () {
+    var s = Maths.newState(1), i, minD = Infinity, maxD = -Infinity;
+    for (i = 0; i < 300; i++) {
+      s = Maths.update(s, outcome(true, 1, 1));
+      if (s.difficulty < minD) { minD = s.difficulty; }
+      if (s.difficulty > maxD) { maxD = s.difficulty; }
+    }
+    ok(minD >= 1 && maxD <= 8, 'accelerated climb stays within [1,8]');
+    minD = Infinity; maxD = -Infinity;
+    s = Maths.newState(8);
+    for (i = 0; i < 300; i++) {
+      s = Maths.update(s, outcome(false, 9000, 8));
+      if (s.difficulty < minD) { minD = s.difficulty; }
+      if (s.difficulty > maxD) { maxD = s.difficulty; }
+    }
+    ok(minD >= 1 && maxD <= 8, 'accelerated descent stays within [1,8]');
+  })();
+})();
+
+// ---- Task 10: invariant sweep (spec 12) ----
+(function () {
+  var rand = makeRng(2024), band, i, q, k, tok, nums, ops, failuresBefore = failures;
+
+  function numsOf(render) {
+    var out = [], k;
+    for (k = 0; k < render.length; k++) {
+      if (render[k].t === 'num' || render[k].t === 'balls') { out.push(render[k].v); }
+    }
+    return out;
+  }
+
+  for (band = 1; band <= 8; band++) {
+    for (i = 0; i < 25; i++) {
+      q = Maths.make(band, Maths.newState(band), rand);
+
+      // Structural invariants.
+      eq(q.band, band, 'sweep: integer difficulty stays in band');
+      ok(q.choices.indexOf(q.answer) !== -1, 'sweep: answer is among the choices');
+      for (k = 0; k < q.choices.length; k++) {
+        ok(q.choices.indexOf(q.choices[k]) === k, 'sweep: choices are unique');
+        if (typeof q.choices[k] === 'number') {
+          ok(isFinite(q.choices[k]), 'sweep: no NaN or Infinity in choices');
+          if (band < 8) { ok(q.choices[k] >= 0, 'sweep: no negative choice below band 8'); }
+        }
+      }
+      ok(q.choices.length >= 2 && q.choices.length <= 4, 'sweep: 2-4 choices');
+      if (typeof q.answer === 'number') {
+        ok(isFinite(q.answer), 'sweep: answer is finite');
+        if (band < 8) { ok(q.answer >= 0, 'sweep: no negative answer below band 8'); }
+      }
+      for (k = 0; k < q.render.length; k++) {
+        tok = q.render[k];
+        ok(TOKEN_TYPES.indexOf(tok.t) !== -1, 'sweep: token type is known');
+        ok(!(tok.v !== undefined && typeof tok.v === 'number' && !isFinite(tok.v)),
+           'sweep: no non-finite token value');
+      }
+
+      // Independent recomputation for the plain a-op-b-=-box forms. The
+      // guard's real rule is: two numeric operands, one operator, AND the
+      // box in the trailing position — not just "two operands and one
+      // operator", since `3 + box = 10` satisfies that but hides its box
+      // in the middle. Excluded generators, and where each is verified
+      // instead (all added to the main test suite, not left unverified):
+      //   genBond5, genBond10, genEqn - two operands/one operator but the
+      //     box isn't trailing; recomputed from render tokens in Task 4
+      //     (bond5/bond10) and Task 7 (eqn).
+      //   genSeq   - more than two numeric terms; recomputed in Task 5.
+      //   genRatio - three numeric operands; recomputed in Task 7.
+      //   genOrder - three operands, two operators; recomputed above via
+      //     the explicit a + b*c precedence check.
+      //   genHalf, genFracOf, genPct - one numeric operand plus a
+      //     frac/pct token; recomputed in Task 5, Task 6 and Task 7
+      //     respectively.
+      //   genSquare, genRoot - one numeric operand, no "a op b" shape;
+      //     recomputed from render tokens in the band 8 block of Task 7.
+      nums = numsOf(q.render);
+      ops = [];
+      for (k = 0; k < q.render.length; k++) {
+        if (q.render[k].t === 'op') { ops.push(q.render[k].v); }
+      }
+      // The frac/pct check below is redundant today given nums.length === 2
+      // (genHalf, genFracOf, genPct all have nums=1). Keep it anyway: it's
+      // the only thing that would stop a future one-operand branch (added
+      // for genRoot, say) from misreading those three generators as roots,
+      // since they share the same nums=1, ops=1, trailing-box shape.
+      if (nums.length === 2 && ops.length === 1 &&
+          q.render[q.render.length - 1].t === 'box' &&
+          q.render[0].t !== 'frac' && q.render[0].t !== 'pct') {
+        if (ops[0] === '+') {
+          ok(Math.abs(q.answer - (nums[0] + nums[1])) < 1e-9, 'sweep: addition recomputes');
+        } else if (ops[0] === '−') {
+          ok(Math.abs(q.answer - (nums[0] - nums[1])) < 1e-9, 'sweep: subtraction recomputes');
+        } else if (ops[0] === '×') {
+          ok(Math.abs(q.answer - nums[0] * nums[1]) < 1e-9, 'sweep: multiplication recomputes');
+        } else if (ops[0] === '÷') {
+          ok(Math.abs(q.answer - nums[0] / nums[1]) < 1e-9, 'sweep: division recomputes');
+          eq(nums[0] % nums[1], 0, 'sweep: division is exact');
+        }
+      }
+    }
+  }
+  ok(failures === failuresBefore, 'sweep completed with no invariant violations');
+})();
+
+// Fraction comparison is the one question type the sweep above cannot
+// recompute, because its answer is a symbol rather than a number. A sign
+// inversion there would teach children the wrong thing while passing every
+// shape-level assertion, so check the direction directly against known pairs.
+(function () {
+  var rand = makeRng(4242), i, q, left, right, expected, sawLt = 0, sawGt = 0, sawEq = 0;
+  for (i = 0; i < 500; i++) {
+    q = Maths._BANDS[6][2](rand);
+    // Verify by division, NOT by cross-multiplying. Recomputing with the
+    // generator's own formula would let a reversed comparison cancel out and
+    // pass. Denominators here are at most 6, so the smallest real gap between
+    // two distinct fractions is 1/30 — far above any rounding error, making
+    // the epsilon comparison safe.
+    left = q.render[0].n / q.render[0].d;
+    right = q.render[2].n / q.render[2].d;
+    expected = Math.abs(left - right) < 1e-12 ? '=' : (left < right ? '<' : '>');
+    eq(q.answer, expected, 'fraction comparison points the right way');
+    if (q.answer === '<') { sawLt++; } else if (q.answer === '>') { sawGt++; } else { sawEq++; }
+  }
+  // Without this, a generator that always answered '<' would satisfy the loop
+  // above only if the check were also broken — but it would sail through any
+  // test that never looked at the spread.
+  ok(sawLt > 0 && sawGt > 0 && sawEq > 0,
+     'all three comparison outcomes occur (< ' + sawLt + ', > ' + sawGt + ', = ' + sawEq + ')');
+})();
+
+// ---- Task 11: adaptive convergence (spec 8.7) ----
+(function () {
+  // A synthetic learner of fixed ability on the 1-8 band scale. Chance of
+  // knowing the answer falls off as difficulty exceeds ability; whatever is
+  // not known is guessed from the available choices, which is what makes
+  // floor support (spec 8.6) measurable.
+  function simulate(ability, n, seed) {
+    var rand = makeRng(seed), s = Maths.newState(4);
+    var correct = 0, total = 0, sum = 0, i, known, choices, p, ok_, band, ms;
+    // The [1,8] bound is one property of Maths.update; asserting it on every
+    // one of the n simulated answers re-tests the same clamp with different
+    // numbers. Track the extremes across the whole run and assert once -
+    // identical coverage, without a check per answer.
+    var minD = Infinity, maxD = -Infinity;
+    for (i = 0; i < n; i++) {
+      band = Math.round(s.difficulty);
+      known = 1 / (1 + Math.exp(1.6 * (s.difficulty - ability)));
+      choices = Maths.choiceCount(s.difficulty);
+      p = known + (1 - known) / choices;
+      ok_ = rand() < p;
+      ms = ok_ ? (2500 + 900 * band) * (0.4 + rand() * 1.4) : 9000;
+      s = Maths.update(s, { correct: ok_, elapsedMs: ms, band: band, skill: 'x' });
+      if (s.difficulty < minD) { minD = s.difficulty; }
+      if (s.difficulty > maxD) { maxD = s.difficulty; }
+      if (i > n / 2) { total++; sum += s.difficulty; if (ok_) { correct++; } }
+    }
+    ok(minD >= 1 && maxD <= 8,
+       'difficulty stays within [1,8] across the run (min ' + minD.toFixed(3) +
+       ', max ' + maxD.toFixed(3) + ')');
+    return { accuracy: correct / total, band: sum / total };
+  }
+
+  var abilities = [1.5, 3, 4.5, 6, 7.5], i, r;
+  for (i = 0; i < abilities.length; i++) {
+    r = simulate(abilities[i], 40000, 900 + i);
+    ok(r.accuracy > 0.72 && r.accuracy < 0.88,
+       'ability ' + abilities[i] + ' settles near 80% (got ' +
+       (r.accuracy * 100).toFixed(1) + '% at band ' + r.band.toFixed(2) + ')');
+  }
+
+  // A strong learner climbs, a struggling one descends.
+  ok(simulate(8, 4000, 77).band > 6, 'a strong learner climbs the scale');
+  ok(simulate(1, 4000, 78).band < 2.5, 'a struggling learner descends the scale');
+})();
+
+// ---- Distractor plausibility sweep ----
+// A wrong choice should look like a believable mistake, not a value a child
+// can eliminate on sight (e.g. "6 + 6 = box" offering 0 alongside 12).
+// buildChoices filters near-miss candidates against a tolerance that scales
+// with the answer's size - being off by 10 is a real slip on a big sum but
+// not on a small one - and this sweep checks every numeric distractor
+// Maths.make actually hands out, across every band and choice-count tier,
+// against that same rule.
+(function () {
+  function plausible(d, answer) {
+    return Math.abs(d - answer) <= Math.max(3, Math.round(Math.abs(answer) * 0.6));
+  }
+  var band, i, rand, q, k, difficulty, checked = 0;
+  for (band = 1; band <= 8; band++) {
+    rand = makeRng(6060 + band);
+    for (i = 0; i < 100; i++) {
+      // Cycle the fractional part so 2-, 3- and 4-choice layouts (spec 8.6's
+      // floor-support rule) are all exercised, not just the 4-choice case.
+      difficulty = band + (i % 4) * 0.5;
+      if (difficulty > 8) { difficulty = 8; }
+      q = Maths.make(difficulty, Maths.newState(difficulty), rand);
+      if (typeof q.answer !== 'number') { continue; } // fraction comparisons: no numeric band to check
+      for (k = 0; k < q.choices.length; k++) {
+        if (typeof q.choices[k] !== 'number' || q.choices[k] === q.answer) { continue; }
+        checked++;
+        ok(plausible(q.choices[k], q.answer),
+           'distractor is a believable slip, not free to eliminate (band ' + band +
+           ', answer ' + q.answer + ', choice ' + q.choices[k] + ')');
+      }
+    }
+  }
+  ok(checked > 1000, 'plausibility sweep actually exercised numeric distractors (' + checked + ')');
+})();
+
+// ---- Task 12: kickoff formation (playtester defect 1) ----
+// The exploit was a fixed formation where the human centre-forward, the
+// ball, and the CPU goal centre were all on x=300: a dead-straight flick
+// scored every match, forever. These checks recompute every invariant
+// independently of Formation.make's own arithmetic - point-to-line
+// distance via the cross-product formula, not Formation's internal
+// GOAL_X-based subtraction - so a broken generator cannot cancel out
+// against a broken check.
+(function () {
+  // Perpendicular distance from point (px,py) to the infinite line through
+  // (x1,y1)-(x2,y2), computed independently of anything in formation.js.
+  function perpDist(px, py, x1, y1, x2, y2) {
+    var dx = x2 - x1, dy = y2 - y1;
+    var len = Math.sqrt(dx * dx + dy * dy) || 1;
+    return Math.abs((px - x1) * dy - (py - y1) * dx) / len;
+  }
+
+  var ballX = Formation.BALL_HOME_X, ballY = Formation.BALL_HOME_Y;
+  var topGoalX = Formation.GOAL_X, topGoalY = Formation.TOP_Y;
+  var botGoalX = Formation.GOAL_X, botGoalY = Formation.BOT_Y;
+  var R = Formation.PLAYER_R, minSep = 2 * R;
+  var ballClear = Formation.PLAYER_R + Formation.BALL_R;
+
+  var rand = makeRng(20260802), i, f, all, a, b;
+  // Placement zones are constructed so these invariants hold by
+  // construction (see formation.js), not by rejection sampling - a few
+  // hundred draws exercises the zone arithmetic across its random range
+  // thoroughly without re-testing the same guarantee thousands of times.
+  var N = 40;
+  for (i = 0; i < N; i++) {
+    f = Formation.make(rand);
+    ok(f && Array.isArray(f.human) && Array.isArray(f.ai), 'formation has human and ai arrays');
+    eq(f.human.length, 3, 'human formation has 3 players');
+    eq(f.ai.length, 3, 'ai formation has 3 players');
+
+    all = f.human.concat(f.ai);
+
+    // No player on the ball->goal line (either goal), with real margin.
+    for (a = 0; a < all.length; a++) {
+      ok(perpDist(all[a][0], all[a][1], ballX, ballY, topGoalX, topGoalY) > Formation.MIN_LINE_DIST,
+         'player clears the ball->top-goal line');
+      ok(perpDist(all[a][0], all[a][1], ballX, ballY, botGoalX, botGoalY) > Formation.MIN_LINE_DIST,
+         'player clears the ball->bottom-goal line');
+    }
+
+    // No overlaps: player-player, and player-ball.
+    for (a = 0; a < all.length; a++) {
+      var dxb = all[a][0] - ballX, dyb = all[a][1] - ballY;
+      ok(Math.sqrt(dxb * dxb + dyb * dyb) > ballClear, 'player does not overlap the ball');
+      for (b = a + 1; b < all.length; b++) {
+        var dx = all[a][0] - all[b][0], dy = all[a][1] - all[b][1];
+        ok(Math.sqrt(dx * dx + dy * dy) > minSep, 'players do not overlap each other');
+      }
+    }
+
+    // Inside the pitch rectangle.
+    for (a = 0; a < all.length; a++) {
+      ok(all[a][0] - R >= Formation.SIDE_L && all[a][0] + R <= Formation.SIDE_R,
+         'player stays within the side walls');
+      ok(all[a][1] - R >= Formation.TOP_Y && all[a][1] + R <= Formation.BOT_Y,
+         'player stays within the goal lines');
+    }
+
+    // Each team stays in its own half.
+    for (a = 0; a < f.human.length; a++) {
+      ok(f.human[a][1] > Formation.HALF_Y, 'human player stays in the human half');
+    }
+    for (a = 0; a < f.ai.length; a++) {
+      ok(f.ai[a][1] < Formation.HALF_Y, 'ai player stays in the ai half');
+    }
+
+    // Genuinely mirrored: same x, y reflected about the halfway line.
+    for (a = 0; a < 3; a++) {
+      eq(f.ai[a][0], f.human[a][0], 'mirrored player keeps the same x');
+      eq(f.ai[a][1], Formation.H - f.human[a][1], 'mirrored player reflects y about halfway');
+    }
+
+    // Football-ish shape: one player nearer their own goal (bigger |y-450|)
+    // than the other two, for both teams.
+    var hd = Math.abs(f.human[0][1] - Formation.HALF_Y);
+    var hf1 = Math.abs(f.human[1][1] - Formation.HALF_Y);
+    var hf2 = Math.abs(f.human[2][1] - Formation.HALF_Y);
+    ok(hd > hf1 && hd > hf2, 'human formation has one player deeper than the other two');
+  }
+
+  // Sanity: 4000 random formations actually vary, not a constant fallback.
+  var seen = {}, distinctCount = 0;
+  rand = makeRng(555);
+  for (i = 0; i < 200; i++) {
+    f = Formation.make(rand);
+    var key = f.human.map(function (p) { return Math.round(p[0]) + ',' + Math.round(p[1]); }).join('|');
+    if (!seen[key]) { seen[key] = true; distinctCount++; }
+  }
+  ok(distinctCount > 150, 'formations are genuinely varied, not a near-constant fallback');
+})();
+
+// ---- Task 13: AI shooter selection (playtester defect 2) ----
+// pickAiPlayer used to be distance-only with a crude penalty; it often
+// picked a player who would knock the ball sideways or backwards. These
+// scenarios are hand-built so the "obviously correct" pick is unambiguous.
+(function () {
+  var ball = { x: 300, y: 450 };
+
+  // A player dead behind the ball (relative to the target goal) must beat a
+  // nearer player who would only knock it sideways.
+  (function () {
+    var behind = { x: 300, y: 300 };   // 150 above the ball, perfectly aligned
+    var sideways = { x: 340, y: 450 }; // 40 away, but pushes across, not down
+    var chosen = Formation.chooseShooter([sideways, behind], ball, 828);
+    ok(chosen === behind, 'a well-aligned but farther player beats a nearer sideways one');
+  })();
+
+  // A player who would send the ball backwards must lose to one who sends
+  // it goalward, however close the backwards player is.
+  (function () {
+    var goalward = { x: 300, y: 200 };  // far, but perfectly aligned
+    var backwards = { x: 300, y: 470 }; // 20px away, but on the wrong side of the ball
+    var chosen = Formation.chooseShooter([backwards, goalward], ball, 828);
+    ok(chosen === goalward, 'a goalward player beats a nearer player who would shoot backwards');
+  })();
+
+  // Equal alignment: the nearer of two equally well-aligned players wins.
+  (function () {
+    var near = { x: 300, y: 300 };  // 150 above, aligned
+    var far = { x: 300, y: 150 };   // 300 above, equally aligned
+    var chosen = Formation.chooseShooter([far, near], ball, 828);
+    ok(chosen === near, 'ties on alignment are broken by picking the nearer player');
+  })();
+
+  // Direction-agnostic: the same logic works aiming at the top goal too.
+  (function () {
+    var aligned = { x: 300, y: 600 };   // below the ball, aligned toward the top goal
+    var sideways = { x: 260, y: 450 };
+    var chosen = Formation.chooseShooter([sideways, aligned], ball, 72);
+    ok(chosen === aligned, 'alignment scoring works toward either goal');
+  })();
+
+  // Edge cases.
+  eq(Formation.chooseShooter([], ball, 828), null, 'an empty roster has no shooter');
+  var only = { x: 300, y: 300 };
+  ok(Formation.chooseShooter([only], ball, 828) === only, 'a single player is always chosen');
+})();
+
+// ---- Task 14: goalkeeper step function (playtester defect 3) ----
+// game.js owns the keeper's actual bounds (goal-mouth-derived) and calls
+// Formation.keeperStep once per turn; it can't be loaded here (it touches
+// the DOM at import time), so what's testable from node is this pure
+// stepping/clamping rule, which is the part that actually keeps a keeper
+// inside its own goal mouth and stops it teleporting onto the ball's exact
+// x. Drag-immunity (keepers live outside game.players, which is the only
+// array pointerdown and pickAiPlayer scan) is a game.js/DOM property and is
+// checked by hand in the browser instead - see the playtest notes.
+(function () {
+  var rand = makeRng(2026), i, x, target, maxStep, minX, maxX, next;
+
+  // Never exceeds the goal mouth, whatever the inputs.
+  for (i = 0; i < 10; i++) {
+    minX = 220 + rand() * 20;       // e.g. a MOUTH_L-derived bound
+    maxX = minX + 60 + rand() * 60; // always > minX
+    x = minX + rand() * (maxX - minX);
+    target = -50 + rand() * 700;    // may fall well outside the mouth
+    maxStep = 1 + rand() * 150;
+    next = Formation.keeperStep(x, target, maxStep, minX, maxX);
+    ok(next >= minX - 1e-9 && next <= maxX + 1e-9, 'keeper step stays within its goal mouth');
+  }
+
+  // Capped speed: never moves more than maxStep in one call, so it lags
+  // rather than snapping straight to the ball.
+  eq(Formation.keeperStep(200, 500, 70, 100, 400), 270, 'keeper step is capped at maxStep toward the target');
+  eq(Formation.keeperStep(200, 210, 70, 100, 400), 210, 'keeper step does not overshoot a close target');
+  eq(Formation.keeperStep(500, 100, 70, 100, 400), 400, 'keeper step clamps even when the capped move would land outside the mouth');
+
+  // Repeated calls converge on the target without oscillating past it.
+  (function () {
+    var pos = 220, tgt = 380, prevDist = Math.abs(tgt - pos), dist, k;
+    for (k = 0; k < 8; k++) {
+      pos = Formation.keeperStep(pos, tgt, 70, 220, 380);
+      dist = Math.abs(tgt - pos);
+      ok(dist <= prevDist, 'keeper step never moves further from a fixed target');
+      prevDist = dist;
+    }
+    eq(pos, tgt, 'keeper step reaches a reachable target after enough turns');
+  })();
+
+  // keeperStep also does the goalkeeper's "dive" for the save mechanic: a
+  // single jump (maxStep = Infinity) straight to a target x, clamped into
+  // the mouth. Confirms that usage keeps the dive inside the goal mouth
+  // even when the target is the exact post or well outside it.
+  eq(Formation.keeperStep(300, 400, Infinity, 220, 380), 380,
+     'an unlimited dive still clamps to the mouth (target beyond the post)');
+  eq(Formation.keeperStep(300, -50, Infinity, 220, 380), 220,
+     'an unlimited dive still clamps to the mouth (target beyond the other post)');
+  eq(Formation.keeperStep(300, 260, Infinity, 220, 380), 260,
+     'an unlimited dive lands exactly on an in-mouth target');
+})();
+
+// ---- Task 15: farCorner - CPU aims at the open corner (owner instruction:
+// "aim away from the keeper") ----
+(function () {
+  var mouthL = 220, mouthR = 380, i, x, margin, target, rand = makeRng(4242);
+
+  eq(Formation.farCorner(230, mouthL, mouthR, 30), mouthR - 30,
+     'keeper hugging the left post -> aim at the right corner');
+  eq(Formation.farCorner(370, mouthL, mouthR, 30), mouthL + 30,
+     'keeper hugging the right post -> aim at the left corner');
+  eq(Formation.farCorner(300, mouthL, mouthR, 30), mouthR - 30,
+     'a dead-centre keeper is a deterministic tie, broken toward the right corner');
+
+  // An oversized margin (>= half the mouth width) clamps to dead centre
+  // rather than overshooting past the opposite post.
+  eq(Formation.farCorner(230, mouthL, mouthR, 500), (mouthL + mouthR) / 2,
+     'an oversized margin clamps the target to the mouth centre, never past it');
+
+  for (i = 0; i < 20; i++) {
+    x = mouthL + rand() * (mouthR - mouthL);
+    margin = rand() * 79; // kept under half the mouth width (80) so a side is well-defined
+    target = Formation.farCorner(x, mouthL, mouthR, margin);
+    ok(target >= mouthL && target <= mouthR, 'farCorner never aims outside the goal mouth');
+    // The predictor must agree with itself: whichever side it picked must
+    // really be the side further from the keeper (not the near post).
+    var pickedRight = target > (mouthL + mouthR) / 2;
+    var keeperNearRight = x > (mouthL + mouthR) / 2;
+    ok(pickedRight !== keeperNearRight || Math.abs(x - (mouthL + mouthR) / 2) < 1e-9,
+       'farCorner picks the side the keeper is furthest from');
+  }
+})();
+
+done();
