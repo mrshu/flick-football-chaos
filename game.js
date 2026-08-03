@@ -460,7 +460,7 @@ function settle() {
 }
 
 function goalScored(scorer) {
-  addShake(SHAKE_MAX);
+  addShake(SHAKE_GOAL);
   game.slowmo = 0.55;   // a beat of slow motion so the goal lands
   game.trail.length = 0;
   game.score[scorer]++;
@@ -615,7 +615,7 @@ function collideCircles(a, b) {
 let simActive = false;
 
 function hitSfx(impact) {
-  if (impact > 240) { addShake(Math.min(6, impact / 260)); }
+  if (impact > SHAKE_HIT_THRESHOLD) { addShake(Math.min(2, impact / 700)); }
   if (simActive) return;
   const now = performance.now();
   if (impact > 90 && now - game.lastHitSfx > 50) {
@@ -895,7 +895,11 @@ function paintCup() {
 // Screen shake, a ball trail and a brief slow-motion on goals. None of it
 // changes the rules; it exists because a hard collision that registers only as
 // a number is a hard collision the child does not feel.
-const SHAKE_MAX = 9;
+// Kept deliberately small. Shake should register a hard hit at the edge of
+// vision, not make a child track a moving pitch while they are trying to aim.
+const SHAKE_MAX = 3.5;
+const SHAKE_HIT_THRESHOLD = 420;   // only genuinely heavy contact shakes at all
+const SHAKE_GOAL = 3.5;
 
 function addShake(amount) {
   game.shake = Math.min(SHAKE_MAX, game.shake + amount);
