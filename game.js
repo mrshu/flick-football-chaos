@@ -861,7 +861,7 @@ el('again').addEventListener('click', () => {
   // sees who they are facing before play resumes. A friendly just kicks off.
   if (game.mode === 'cup' && game.slot && game.slot.emoji) {
     // A finished cup is drawn one last time with the child in the champion's
-    // place, then the next press starts the new one.
+    // place. From there the button goes home, not into the next season.
     showBracket(game.wonCup ? Tournament.COUNT : undefined);
     game.wonCup = false;
   } else {
@@ -872,8 +872,22 @@ el('again').addEventListener('click', () => {
 el('roundGo').addEventListener('click', () => {
   SFX.unlock();
   hideBracket();
-  restart();
+  if (bracketFinal) { bracketFinal = false; goHome(); } else { restart(); }
 });
+
+// Back to the menu, with the game parked so nothing on the pitch is live.
+// Everything the child might want next — another cup, a friendly, their
+// stats — is a choice on that screen rather than something they are dropped
+// into.
+function goHome() {
+  game.state = 'START';
+  game.drag = null;
+  Quiz.hide();
+  overlay.classList.add('hidden');
+  refreshStart();
+  showStep('team');
+  el('startScreen').classList.remove('hidden');
+}
 
 // A curated grid rather than the system emoji picker: it is tap-only, needs no
 // keyboard, and is not overwhelming for a five-year-old.
@@ -1021,6 +1035,8 @@ function openTeamEditor(returnTo) {
 // `played` overrides how far the draw is resolved. It exists for the moment the
 // cup is won, when the child's own index has already rolled back to zero but
 // they should still get to see themselves lifting it.
+var bracketFinal = false;   // is the draw currently showing a finished cup?
+
 function bracketBox(cell, state) {
   var box = document.createElement('div');
   box.className = 'bx ' + state;
@@ -1032,6 +1048,12 @@ function showBracket(played) {
   var view = el('bracket'), tree = el('bracketTree'), heads = el('bracketRounds');
   if (!view || !game.slot) { return false; }
   if (typeof played !== 'number') { played = game.slot.cup.index; }
+  // Winning the cup has to be an ending. On the champion view this screen's
+  // button goes back to the menu instead of kicking off the next season —
+  // otherwise the child lifts the trophy and is immediately playing again,
+  // which reads as the win not having counted.
+  bracketFinal = played >= Tournament.COUNT;
+  el('roundGo').textContent = bracketFinal ? '\u{1F3E0}' : '▶';
   var mine = game.slot.emoji || '⚽';
   var cols = Tournament.bracket(played, mine), c, i, cell, colEl, head;
   // The child's next opponent is the other half of their pair in this round.
