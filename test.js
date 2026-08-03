@@ -959,7 +959,8 @@ checkGenerators(8, true);   // band 8 alone may go negative
               { slots: [{ maths: { difficulty: NaN } }] },
               { slots: [{ maths: { difficulty: 999 } }] },
               { slots: [{ unlocked: 'gold' }] },
-              { slots: [{ stats: { correct: -5 } }] }];
+              { slots: [{ stats: { correct: -5 } }] },
+              { slots: [{ trophies: -3 }] }, { slots: [{ trophies: 'lots' }] }];
   junk.forEach(function (bad, i) {
     var r = Store.repair(bad);
     ok(r.slots.length === 3, 'repair yields three slots for junk input ' + i);
@@ -968,6 +969,8 @@ checkGenerators(8, true);   // band 8 alone may go negative
       ok(Object.prototype.toString.call(sl.unlocked) === '[object Array]',
          'unlocked is always an array, input ' + i);
       ok(sl.stats.correct >= 0, 'counters never negative, input ' + i);
+      ok(typeof sl.trophies === 'number' && isFinite(sl.trophies) && sl.trophies >= 0,
+         'trophies is always a non-negative number, input ' + i);
       ok(sl.maths === null || (isFinite(sl.maths.difficulty) &&
          sl.maths.difficulty >= 1 && sl.maths.difficulty <= 8),
          'difficulty is null or inside [1,8], input ' + i);
