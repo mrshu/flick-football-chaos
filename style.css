@@ -233,6 +233,10 @@ canvas {
   text-align: center;
 }
 
+/* During a save the child needs to see the goal being attacked and the ball's
+   route into it, so the panel lifts clear of the lower half of the pitch. */
+#quiz.saving { top: 34%; }
+
 #quizLead {
   font-size: clamp(12px, 2vh, 15px);
   font-weight: 700;

@@ -42,10 +42,6 @@ const KEEPER_R = PLAYER_R;
 // an outfield player, so the ball cannot easily barge it off its line.
 const KEEPER_INV_M = 0.18;
 const KEEPER_Y_INSET = 26; // how far in front of its own goal line it stands
-// How near the goal a shot must come to count as worth defending. Gated only
-// on certain goals, the save question fired on 21% of CPU turns - a mechanic
-// the child would rarely meet.
-const THREAT_DY = 150, THREAT_X_SLACK = 55;
 // Per-turn cap on keeper movement. The mouth is only ~108 wide at the keeper's
 // clamped range, so at 70 it crosses in two turns and barely trails play at
 // all — this is the dial to turn down if keepers feel too hard to beat.
@@ -164,7 +160,7 @@ const game = {
   pendingAiShot: null, pendingSaveX: null,
   score: { human: 0, ai: 0 }, lastScorer: null,
   timer: 0, moveTime: 0, ballRot: 0,
-  drag: null, aiChoice: null, askedLastTurn: false,
+  drag: null, aiChoice: null, askedLastTurn: false, threatPath: null,
   particles: [], lastHitSfx: 0,
 };
 
@@ -224,6 +220,7 @@ function restart() {
   game.pendingPrize = null;
   game.pendingAiShot = null;
   game.pendingSaveX = null;
+  game.threatPath = null;
   overlay.classList.add('hidden');
   goalFlash.classList.add('hidden');
   updateScore();
@@ -283,6 +280,7 @@ function worthABonus() {
 }
 
 function askQuestion() {
+  document.getElementById('quiz').classList.remove('saving');
   if (!game.maths) { game.maths = Maths.newState(game.startBand); }
   game.state = 'HUMAN_QUESTION';
   setTurnMsg('Your turn', 'human');
@@ -315,6 +313,7 @@ function finishQuestion(correct) {
 // the pending shot on target. No timer: the game waits for the child, the
 // same as the bonus question.
 function askSaveQuestion() {
+  document.getElementById('quiz').classList.add('saving');
   if (!game.maths) { game.maths = Maths.newState(game.startBand); }
   setTurnMsg('CPU shoots — save it!', 'ai');
   var q = Maths.make(game.maths.difficulty, game.maths, Math.random);
@@ -332,6 +331,7 @@ function finishSaveQuestion(correct) {
   var shot = game.pendingAiShot, saveX = game.pendingSaveX;
   game.pendingAiShot = null;
   game.pendingSaveX = null;
+  game.threatPath = null;
   if (correct) { saveShot(shot, saveX); }
   commitAiShot(shot);
 }
@@ -525,6 +525,7 @@ function aiLaunch() {
   if (!sim.onTarget) { commitAiShot(shot); return; }
   game.pendingAiShot = shot;
   game.pendingSaveX = sim.x;
+  game.threatPath = sim.path;
   game.state = 'AI_SAVE_QUESTION';
   askSaveQuestion();
 }
@@ -652,6 +653,7 @@ function simulateAiShot(shot) {
   simActive = true;
   const maxSteps = Math.ceil(MAX_MOVE_TIME / STEP);
   let scores = false, crossX = null;
+  const path = [];
   // A shot the child never gets to defend is a shot they cannot learn from, so
   // "threatening" is deliberately wider than "certain goal": anything that ends
   // up near the mouth counts, and near-misses are exactly the moments worth
@@ -660,6 +662,7 @@ function simulateAiShot(shot) {
   for (let i = 0; i < maxSteps; i++) {
     advanceBodies(clones, game.friction, STEP);
     resolveCollisions(clones, simBall);
+    if (i % 6 === 0) { path.push(simBall.x, simBall.y); }
     const dy = BOT_Y - simBall.y;
     if (dy < bestDy) { bestDy = dy; bestX = simBall.x; }
     if (simBall.y - simBall.r > BOT_Y) { scores = true; crossX = simBall.x; break; } // would score for ai
@@ -667,9 +670,12 @@ function simulateAiShot(shot) {
     if (clones.every(o => Math.hypot(o.vx, o.vy) < STOP_SPEED)) { break; }            // settled without scoring
   }
   simActive = false;
-  const threatening = scores ||
-    (bestDy < THREAT_DY && Math.abs(bestX - W / 2) < MOUTH_HALF + THREAT_X_SLACK);
-  return { onTarget: threatening, scores: scores, x: scores ? crossX : bestX };
+  // Only a shot that would actually go in. Widening this to near-misses took
+  // the save question to 80% of CPU turns, which with the bonus question meant
+  // roughly one question every turn — the owner playing it reported questions
+  // "all the time". A save is worth asking for when there is a goal to stop.
+  const threatening = scores;
+  return { onTarget: threatening, scores: scores, x: scores ? crossX : bestX, path: path };
 }
 
 
@@ -879,6 +885,41 @@ const KEEPER_KIT = {
   ai:    { body: '#f59e0b', edge: '#b45309', ring: '#ff9e9e' },
 };
 
+// "Answer to save" says nothing about what is coming. The shot has already
+// been simulated, so show the child exactly where the ball is about to go:
+// its route, the spot it will cross the line, and the goal under threat.
+function drawThreat(t) {
+  const path = game.threatPath;
+  if (!path || path.length < 4) return;
+  const pulse = 0.55 + 0.45 * Math.sin(t * 7);
+
+  // the goal mouth being attacked, throbbing red
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,64,64,' + (0.45 + 0.4 * pulse) + ')';
+  ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.moveTo(MOUTH_L, BOT_Y); ctx.lineTo(MOUTH_R, BOT_Y); ctx.stroke();
+
+  // the ball's predicted route
+  ctx.setLineDash([12, 10]);
+  ctx.lineDashOffset = -t * 90;
+  ctx.strokeStyle = 'rgba(255,90,90,0.85)';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(path[0], path[1]);
+  for (let i = 2; i < path.length; i += 2) ctx.lineTo(path[i], path[i + 1]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // where it will cross the line
+  if (game.pendingSaveX !== null && game.pendingSaveX !== undefined) {
+    ctx.beginPath();
+    ctx.arc(game.pendingSaveX, BOT_Y, 13 + 5 * pulse, 0, 6.29);
+    ctx.strokeStyle = 'rgba(255,64,64,0.95)';
+    ctx.lineWidth = 4; ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawKeeper(p) {
   const kit = KEEPER_KIT[p.team] || KEEPER_KIT.human;
 
@@ -986,6 +1027,7 @@ function draw(t) {
   ctx.clearRect(0, 0, W, H);
   drawPitch();
   for (const k of game.keepers) drawKeeper(k);
+  drawThreat(t);
   for (const p of game.players) drawPlayer(p, t);
   drawBall(game.ball);
   drawAim();
