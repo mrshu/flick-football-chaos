@@ -10,7 +10,7 @@ const BACK_TOP = 18, BACK_BOT = H - 18;      // back of the nets
 // pitch and made direct shots too forgiving). 80 keeps a generous target
 // for a five-year-old while giving the keeper a mouth it can meaningfully
 // cover without spanning it end to end.
-const MOUTH_HALF = 80;
+const MOUTH_HALF = 95;
 const MOUTH_L = W / 2 - MOUTH_HALF, MOUTH_R = W / 2 + MOUTH_HALF;
 
 const PLAYER_R = 26, BALL_R = 13, POST_R = 7;
@@ -313,6 +313,10 @@ function finishSaveQuestion(correct) {
 function updateKeepers() {
   const targetX = game.ball.x;
   for (const k of game.keepers) {
+    // A keeper the child flicked upfield is walked back to its own line, so
+    // rushing out costs exactly one turn of cover rather than the whole match.
+    k.y = k.home[1];
+    k.vx = 0; k.vy = 0;
     k.x = Formation.keeperStep(k.x, targetX, KEEPER_MAX_STEP, KEEPER_MIN_X, KEEPER_MAX_X);
   }
 }
@@ -616,7 +620,9 @@ canvas.addEventListener('pointerdown', e => {
   if (game.state !== 'HUMAN_AIM') return;
   const p = ptFromEvent(e);
   let best = null, bd = Infinity;
-  for (const pl of game.players) {
+  // Keepers are draggable too: rushing yours out is a real clearance, at the
+  // real cost of leaving the goal empty for the CPU's next shot.
+  for (const pl of game.players.concat(game.keepers)) {
     if (pl.team !== 'human') continue;
     const d = Math.hypot(pl.x - p.x, pl.y - p.y);
     if (d < pl.r + 22 && d < bd) { bd = d; best = pl; }
