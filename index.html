@@ -42,9 +42,16 @@
     <div id="teamEditor" class="hidden">
       <div id="teamCard">
         <div id="badgeGrid"></div>
-        <input id="teamName" type="text" maxlength="12" placeholder="&#9917;" aria-label="Team name">
+        <div id="teamNameRow">
+          <input id="teamName" type="text" maxlength="12" placeholder="&#9917;" aria-label="Team name">
+          <button id="teamDice" type="button" title="Another name" aria-label="Another name">&#127922;</button>
+        </div>
+        <div id="agePanel">
+        <div id="ageLead" title="Age">
+          <span class="cake">&#127874;</span>
+          <span id="ageValue">7</span>
+        </div>
         <div id="teamAges" title="Age">
-          <div class="rowIcon">&#127874;</div>
           <button type="button" class="ageBtn" data-band="1">5</button>
           <button type="button" class="ageBtn" data-band="2">6</button>
           <button type="button" class="ageBtn" data-band="3">7</button>
@@ -55,6 +62,7 @@
           <button type="button" class="ageBtn" data-band="8">12</button>
           <button type="button" class="ageBtn" data-band="0" title="No maths" aria-label="No maths">&#128683;</button>
         </div>
+        </div>
         <div id="teamButtons">
           <button id="teamDelete" type="button" aria-label="Delete team">&#128465;</button>
           <button id="teamOk" type="button">&#10004;</button>
@@ -63,9 +71,17 @@
     </div>
 
     <div id="bracket" class="hidden">
-      <div id="bracketTitle">&#127942;</div>
-      <div id="bracketPath"></div>
-      <button id="roundGo" type="button">&#9654;</button>
+      <div id="bracketCard">
+        <div id="bracketTitle">&#127942;</div>
+        <div id="bracketTie">
+          <div class="side"><span class="bdg" id="tieMe"></span><span class="nm" id="tieMeName"></span></div>
+          <div class="vs"><span id="tieRound">&#127942;</span></div>
+          <div class="side"><span class="bdg" id="tieFoe"></span><span class="nm" id="tieFoeName"></span></div>
+        </div>
+        <div id="bracketRounds"></div>
+        <div id="bracketTree"></div>
+        <button id="roundGo" type="button">&#9654;</button>
+      </div>
     </div>
 
     <div id="overlay" class="hidden">
@@ -80,6 +96,7 @@
   <footer id="hint">Drag a blue player back &amp; release to flick &mdash; first to 3 goals wins!</footer>
 </div>
 <script src="maths.js"></script>
+<script src="names.js"></script>
 <script src="store.js"></script>
 <script src="tournament.js"></script>
 <script src="quiz.js"></script>

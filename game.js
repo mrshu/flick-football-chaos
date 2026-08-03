@@ -492,6 +492,9 @@ function gameOver(winner) {
     const before = game.slot.cup.index;
     game.slot.cup = Tournament.recordResult(game.slot.cup, winner === 'human');
     if (Tournament.isComplete(game.slot.cup, before)) { game.slot.trophies += 1; trophyWon = true; }
+    // The index has already rolled back to zero, so remember that this cup was
+    // finished: the bracket owes the child the sight of themselves lifting it.
+    game.wonCup = trophyWon;
     game.aiSkill = Tournament.skillFor(game.slot.cup.index, game.slot.cup.season);
     persist();
   }
@@ -801,7 +804,10 @@ el('again').addEventListener('click', () => {
   // Next opponent, or the same one again after a loss — either way the child
   // sees who they are facing before play resumes.
   if (game.mathsOn && game.slot && game.slot.emoji) {
-    showBracket();
+    // A finished cup is drawn one last time with the child in the champion's
+    // place, then the next press starts the new one.
+    showBracket(game.wonCup ? Tournament.COUNT : undefined);
+    game.wonCup = false;
   } else {
     restart();
   }
@@ -878,6 +884,8 @@ function refreshStart() {
 function openTeamEditor() {
   var ed = el('teamEditor'), grid = el('badgeGrid'), nameInput = el('teamName');
   var chosen = game.slot.emoji || BADGES[0];
+  // Once the child edits the name it is theirs; picking badges stops rewriting it.
+  var typed = !!game.slot.name;
   var band = paintAges(game.slot.band, function (b) { band = b; });
   grid.innerHTML = '';
   BADGES.forEach(function (b) {
@@ -887,17 +895,29 @@ function openTeamEditor() {
     btn.addEventListener('click', function () {
       chosen = b;
       [].forEach.call(grid.children, function (c) { c.className = (c.textContent === b) ? 'on' : ''; });
+      // A badge the child has not overtyped renames the team with it, so
+      // picking a flag gives you that country rather than a stray invention.
+      if (!typed) { nameInput.value = Names.forBadge(b, Math.random); }
       SFX.select();
     });
     grid.appendChild(btn);
   });
-  nameInput.value = game.slot.name || '';
+
+  // Never open on an empty field. A child who will not type still leaves with
+  // a team that is called something.
+  nameInput.value = game.slot.name || Names.forBadge(chosen, Math.random);
+  nameInput.oninput = function () { typed = true; };
+  el('teamDice').onclick = function () {
+    typed = false;
+    nameInput.value = Names.make(Math.random);
+    SFX.select();
+  };
   el('teamDelete').className = '';
   ed.classList.remove('hidden');
 
   el('teamOk').onclick = function () {
     game.slot.emoji = chosen;
-    // The name is optional and may stay empty: it needs a keyboard, and a
+    // The name may still be cleared by hand: it needs a keyboard, and a
     // five-year-old may not type. The badge alone is a complete team.
     game.slot.name = nameInput.value.slice(0, 12);
     // Changing the age is the child telling us the old level was wrong, so the
@@ -921,42 +941,69 @@ function openTeamEditor() {
   };
 }
 
-// The tournament as its own screen: a bracket read left to right, the child's
-// own team at the start and one stop per opponent. Each stop carries the cup
-// won there above the flag, so the route reads as five prizes on the way to
-// the trophy rather than five interchangeable matches.
-function bracketStop(cls, cup, badge, label) {
-  var stop = document.createElement('div');
-  stop.className = 'stop ' + cls;
-  stop.innerHTML = '<div class="cup"></div><div class="flag"></div><div class="who"></div>';
-  stop.querySelector('.cup').textContent = cup;
-  stop.querySelector('.flag').textContent = badge;
-  // textContent, not innerHTML: the label is a name a child typed.
-  stop.querySelector('.who').textContent = label || '';
-  return stop;
+// The tournament as its own screen: the whole sixteen-team draw, read left to
+// right, collapsing into one champion. A list of the child's own four matches
+// told them where they were but not what they were in; this shows them the
+// other half of the draw, who is still alive in it, and who is waiting.
+//
+// `played` overrides how far the draw is resolved. It exists for the moment the
+// cup is won, when the child's own index has already rolled back to zero but
+// they should still get to see themselves lifting it.
+function bracketBox(cell, state) {
+  var box = document.createElement('div');
+  box.className = 'bx ' + state;
+  box.textContent = cell ? (cell.you ? (game.slot.emoji || '⚽') : cell.flag) : '';
+  return box;
 }
 
-function showBracket() {
-  var view = el('bracket'), path = el('bracketPath');
+function showBracket(played) {
+  var view = el('bracket'), tree = el('bracketTree'), heads = el('bracketRounds');
   if (!view || !game.slot) { return false; }
-  var idx = game.slot.cup.index, i, leg;
+  if (typeof played !== 'number') { played = game.slot.cup.index; }
+  var mine = game.slot.emoji || '⚽';
+  var cols = Tournament.bracket(played, mine), c, i, cell, colEl, head;
+  // The child's next opponent is the other half of their pair in this round.
+  var foeRow = played < Tournament.COUNT ? (Tournament.youAt(cols, played) ^ 1) : -1;
+  var foe = foeRow >= 0 ? cols[played][foeRow] : null;
 
-  path.innerHTML = '';
-  // The route starts with the child: a chequered flag is where they set off.
-  path.appendChild(bracketStop('you', '\u{1F3C1}', game.slot.emoji || '⚽',
-                               game.slot.name || ''));
+  // The one thing they need off this screen is who they play next, so it is
+  // stated once at full size; the draw behind it is context for that tie.
+  el('tieMe').textContent = mine;
+  el('tieMeName').textContent = game.slot.name || '';
+  el('tieFoe').textContent = foe ? foe.flag : '\u{1F3C6}';
+  el('tieFoeName').textContent = foe ? (Names.country(foe.flag) || '') : '';
+  el('tieRound').textContent = foe ? Tournament.roundIcon(played) : '\u{1F389}';
 
-  for (i = 0; i < Tournament.COUNT; i++) {
-    // The leg leading into a stop turns gold once that match has been won.
-    leg = document.createElement('div');
-    leg.className = 'leg' + (i < idx ? ' done' : '');
-    path.appendChild(leg);
-    // A beaten opponent gets a tick where a name would go; the slot is already
-    // reserved on every stop, so nothing shifts when one is won.
-    path.appendChild(bracketStop(i < idx ? 'done' : (i === idx ? 'now' : 'later'),
-                                 Tournament.roundIcon(i),
-                                 Tournament.crestFor(i).flag,
-                                 i < idx ? '✓' : ''));
+  tree.innerHTML = '';
+  for (c = 0; c < cols.length; c++) {
+    colEl = document.createElement('div');
+    colEl.className = 'col';
+    // Two boxes to a tie. Wrapping each pair is what makes the draw read as
+    // eight matches rather than a list of sixteen countries; the wrapper holds
+    // the same height its two cells did, so the elbows still line up.
+    var tie = null;
+    for (i = 0; i < cols[c].length; i++) {
+      if (i % 2 === 0) {
+        tie = document.createElement('div');
+        tie.className = 'match';
+        colEl.appendChild(tie);
+      }
+      cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.appendChild(bracketBox(cols[c][i], boxState(cols[c][i], c, i, played, foeRow)));
+      tie.appendChild(cell);
+    }
+    tree.appendChild(colEl);
+  }
+
+  // One cup per round, over the column of that round's winners. Column 0 is the
+  // entrants, so it has nothing at stake and gets a blank.
+  heads.innerHTML = '';
+  for (c = 0; c <= Tournament.COUNT; c++) {
+    head = document.createElement('div');
+    head.className = (c === played + 1) ? 'on' : '';
+    head.textContent = c === 0 ? '' : Tournament.roundIcon(c - 1);
+    heads.appendChild(head);
   }
 
   el('bracketTitle').textContent = game.slot.trophies
@@ -964,6 +1011,14 @@ function showBracket() {
     : '\u{1F3C6}';
   view.classList.remove('hidden');
   return true;
+}
+
+function boxState(cell, col, row, played, foeRow) {
+  if (!cell) { return 'tbd'; }
+  if (cell.you) { return 'you'; }
+  if (cell.out) { return 'out'; }
+  if (col === played && row === foeRow) { return 'foe'; }
+  return 'live';
 }
 
 function hideBracket() { el('bracket').classList.add('hidden'); }
@@ -976,7 +1031,7 @@ function paintCup() {
     var f = document.createElement('div');
     f.className = 'cupFlag ' +
       (i < game.slot.cup.index ? 'done' : (i === game.slot.cup.index ? 'now' : 'later'));
-    f.textContent = Tournament.crestFor(i).flag;
+    f.textContent = Tournament.crestFor(i, game.slot.emoji).flag;
     row.appendChild(f);
   }
   var n = Math.min(12, game.slot.trophies);
@@ -992,8 +1047,11 @@ function paintAges(current, onPick) {
 
   function paint() {
     for (var k = 0; k < btns.length; k++) {
-      btns[k].className = (Number(btns[k].getAttribute('data-band')) === band)
-        ? 'ageBtn on' : 'ageBtn';
+      var b = Number(btns[k].getAttribute('data-band'));
+      btns[k].className = (b === band) ? 'ageBtn on' : 'ageBtn';
+      // Echo the chosen button next to the cake, so the row is unmistakably
+      // an age and the current answer is readable without hunting for it.
+      if (b === band) { el('ageValue').textContent = btns[k].textContent; }
     }
   }
   for (i = 0; i < btns.length; i++) {

@@ -397,11 +397,33 @@ canvas {
 #startTitle { font-size: clamp(20px, 4.4vh, 30px); margin-bottom: 14px; }
 
 /* Age belongs to the child, not to the session, so it is set once while making
-   a team rather than being re-asked on every visit to the start screen. */
+   a team rather than being re-asked on every visit to the start screen.
+
+   A row of numbers on its own does not say "age" to anyone, so the cake and the
+   chosen number are shown together above it: the cake gives the meaning and the
+   big number confirms the choice without a word of text. */
+/* Its own panel, so the age reads as a separate question from the badge and the
+   name rather than a third row of buttons. */
+#agePanel {
+  margin-top: 14px; padding: 10px 8px 9px;
+  border-radius: 14px;
+  border: 2px solid rgba(255, 213, 74, .28);
+  background: rgba(255, 213, 74, .07);
+}
+#ageLead {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  margin-bottom: 9px;
+}
+#ageLead .cake { font-size: 30px; line-height: 1; }
+#ageLead #ageValue {
+  font-size: 38px; font-weight: 900; line-height: 1;
+  min-width: 52px; text-align: left; color: #ffd54a;
+  text-shadow: 0 2px 10px rgba(255, 213, 74, .45);
+}
+
 /* A nine-column grid rather than a flex row: the ages must stay on one line at
    any card width, and wrapping would strand the no-maths button on its own. */
-#teamAges { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; margin-top: 12px; }
-#teamAges .rowIcon { grid-column: 1 / -1; font-size: 16px; line-height: 1; margin-bottom: 2px; }
+#teamAges { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; }
 .ageBtn {
   font: inherit;
   font-weight: 800;
@@ -413,7 +435,23 @@ canvas {
   color: #fff;
   cursor: pointer;
 }
-.ageBtn.on { background: linear-gradient(135deg, #ffd54a, #ff8a3d); color: #2b1600; border-color: transparent; }
+.ageBtn.on {
+  background: linear-gradient(135deg, #ffd54a, #ff8a3d);
+  color: #2b1600; border-color: #fff;
+  transform: scale(1.18);
+  box-shadow: 0 0 0 3px rgba(255, 213, 74, .35);
+}
+
+/* The name is optional, so it sits behind a dice: a child who will not type
+   still gets a team called something. */
+#teamNameRow { display: flex; gap: 6px; align-items: stretch; }
+#teamDice {
+  font: inherit; font-size: 20px; line-height: 1;
+  flex: 0 0 auto; width: 44px;
+  border-radius: 10px; border: 2px solid rgba(255, 255, 255, .2);
+  background: rgba(255, 255, 255, .08); cursor: pointer;
+}
+#teamDice:active { transform: scale(.92); }
 
 #startPlay {
   font: inherit;
@@ -482,15 +520,26 @@ canvas {
   background: linear-gradient(160deg, #1d3b6e, #122347);
   box-shadow: 0 16px 50px rgba(0,0,0,.6);
 }
+/* Its own panel, and the same selected treatment as the age row, so the two
+   questions on this card look like questions of the same kind. */
 #badgeGrid {
-  display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; margin-bottom: 12px;
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px;
+  margin-bottom: 12px; padding: 8px;
+  border-radius: 14px;
+  border: 2px solid rgba(255, 255, 255, .09);
+  background: rgba(255, 255, 255, .04);
 }
 #badgeGrid button {
-  font: inherit; font-size: 22px; line-height: 1;
-  padding: 5px 0; border-radius: 10px; cursor: pointer;
-  border: 2px solid transparent; background: rgba(255,255,255,.07);
+  font: inherit; font-size: 24px; line-height: 1;
+  padding: 7px 0; border-radius: 10px; cursor: pointer;
+  border: 2px solid transparent; background: rgba(255, 255, 255, .06);
 }
-#badgeGrid button.on { border-color: #ffd54a; background: rgba(255,213,74,.2); }
+#badgeGrid button.on {
+  border-color: #fff;
+  background: linear-gradient(135deg, #ffd54a, #ff8a3d);
+  transform: scale(1.12);
+  box-shadow: 0 0 0 3px rgba(255, 213, 74, .35);
+}
 #teamName {
   font: inherit; font-size: 16px; font-weight: 700; text-align: center;
   width: 100%; padding: 8px; border-radius: 10px; border: 2px solid rgba(255,255,255,.2);
@@ -506,71 +555,150 @@ canvas {
 #teamDelete { color: #fff; background: rgba(255,255,255,.1); }
 #teamDelete.arm { background: #ef4444; }
 
-/* ---- the tournament path: its own screen ---- */
+/* ---- the tournament: its own screen ---- */
 #bracket {
   position: absolute; inset: 0; z-index: 7;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 8px; padding: 12px;
+  display: flex; align-items: center; justify-content: center; padding: 10px;
   background: rgba(4, 9, 22, .93); backdrop-filter: blur(4px);
 }
-#bracketTitle { font-size: clamp(30px, 6vh, 46px); line-height: 1; }
 
-/* A track read left to right: the child's own team at the start, then one stop
-   per opponent with the cup won there above the flag. Left-to-right is how a
-   bracket is drawn everywhere else, and putting the cup on each stop makes the
-   route a series of prizes rather than a series of matches. */
-#bracketPath {
-  display: flex; align-items: stretch; justify-content: center;
-  width: min(96%, 600px);
+/* A sheet, not a scattering. The card gives the draw an edge to sit inside, so
+   it reads as the tournament's own document rather than emoji over a pitch. */
+#bracketCard {
+  width: min(96%, 560px); max-height: 94%;
+  padding: 12px 14px 14px;
+  border-radius: 18px;
+  background: linear-gradient(160deg, #1d3b6e, #101f3f);
+  border: 1px solid rgba(255, 255, 255, .1);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .6);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  overflow: hidden;
 }
 
-/* One card per stop, so the path reads as bracket nodes joined by legs rather
-   than a scattering of loose emoji. */
-.stop {
-  /* Six stops and five legs share the row proportionally rather than claiming
-     fixed widths: the whole path has to fit on one line at any width, because
-     a route whose end is off-screen stops being a goal to aim at. */
-  flex: 1 1 0; min-width: 0; max-width: 74px;
-  padding: 8px 2px 6px;
-  border-radius: 14px;
-  border: 2px solid rgba(255, 255, 255, .12);
+#bracketTitle { font-size: 22px; line-height: 1; font-weight: 900; }
+
+/* The one thing the child needs off this screen is who they play next, so the
+   tie is stated once at full size and the draw behind it is context. */
+#bracketTie {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; padding: 7px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .06);
+  border: 1px solid rgba(255, 255, 255, .1);
+}
+#bracketTie .side {
+  flex: 1 1 0; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+}
+#bracketTie .bdg { font-size: 34px; line-height: 1; }
+#bracketTie .nm {
+  font-size: 11px; font-weight: 700; opacity: .8; max-width: 100%;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+#bracketTie .vs { flex: 0 0 auto; font-size: 26px; line-height: 1; }
+
+/* One cup per column of winners, so it is clear what each round is worth. */
+#bracketRounds { display: flex; width: 100%; }
+#bracketRounds div {
+  flex: 1 1 0; min-width: 0; text-align: center;
+  font-size: 15px; line-height: 1; opacity: .45;
+}
+#bracketRounds div.on {
+  opacity: 1; transform: scale(1.25);
+  filter: drop-shadow(0 0 6px rgba(255, 213, 74, .95));
+}
+
+/* Five columns — sixteen entrants, then the winners of each round — collapsing
+   into one champion. Every column is a flex box of equal-height cells, so a
+   column with half as many cells has cells twice as tall and its boxes land
+   exactly level with the midpoint of the pair that feeds them. That is what
+   draws the tree: no measuring, no absolute rows. */
+#bracketTree {
+  display: flex; width: 100%; height: min(52vh, 380px);
+}
+.col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
+.col + .col { padding-left: 12px; }
+
+/* One tie: the two places that meet. */
+.match { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+
+/* Only the entrants get a plate behind them. Sixteen evenly spaced boxes read
+   as a list, and the plate is what makes them eight ties instead. Later rounds
+   need no help — their pairs are drawn apart and joined by an elbow, and a
+   plate spanning that gap would just be a large empty rectangle. */
+#bracketTree .col:first-child .match {
+  border-radius: 7px;
   background: rgba(255, 255, 255, .05);
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
-}
-.stop .cup  { font-size: clamp(13px, 4.2vw, 24px); line-height: 1; }
-.stop .flag { font-size: clamp(18px, 6vw, 34px); line-height: 1; }
-/* Reserved even when empty, so every flag sits on the same line. */
-.stop .who {
-  min-height: 13px; font-size: 10px; font-weight: 700; line-height: 1.2;
-  max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .05);
 }
 
-.stop.done { border-color: rgba(46, 194, 126, .55); background: rgba(46, 194, 126, .12); }
-.stop.done .flag { opacity: .45; }
-.stop.done .who  { color: #2ec27e; font-size: 14px; font-weight: 900; }
-
-.stop.now {
-  border-color: #ffd54a; background: rgba(255, 213, 74, .16);
-  animation: stopPulse 1.6s ease-in-out infinite;
+.cell {
+  flex: 1 1 0; min-height: 0; position: relative;
+  display: flex; align-items: center; padding: 2px 0;
 }
-.stop.now .flag { filter: drop-shadow(0 0 8px rgba(255, 213, 74, .9)); }
-@keyframes stopPulse {
+
+.bx {
+  /* Capped, and centred by the cell: a later column has taller cells, and a box
+     that stretched to fill one would be a wall rather than a name-plate. */
+  flex: 1 1 auto; min-width: 0;
+  height: 100%; max-height: 20px;
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 4px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .08), rgba(255, 255, 255, .03));
+  font-size: 15px; line-height: 1;
+}
+
+/* The elbow into a box: a vertical line joining the midpoints of the two cells
+   that feed it — which sit at 25% and 75% of this cell's height — and a stub
+   from that line to the box. */
+.col + .col .cell::before {
+  content: ''; position: absolute; left: -8px; top: 25%; bottom: 25%;
+  border-left: 1px solid rgba(255, 255, 255, .2);
+}
+.col + .col .cell::after {
+  content: ''; position: absolute; left: -8px; width: 8px; top: 50%;
+  border-top: 1px solid rgba(255, 255, 255, .2);
+}
+/* And the stub out of every box that feeds one. */
+.col:not(:last-child) .bx::after {
+  content: ''; position: absolute; left: 100%; width: 4px; top: 50%;
+  border-top: 1px solid rgba(255, 255, 255, .2);
+}
+
+.bx.live {
+  border-color: rgba(150, 195, 255, .3);
+  background: linear-gradient(180deg, rgba(120, 180, 255, .16), rgba(120, 180, 255, .05));
+}
+/* Beaten, but still legible. Fading a loser to a smudge loses the one thing a
+   draw is for: seeing who played whom. So the flag stays readable and the box
+   is marked instead. */
+.bx.out {
+  opacity: .6;
+  border-color: rgba(255, 255, 255, .07);
+  background: rgba(255, 255, 255, .02);
+}
+.bx.out::before {
+  content: '\2715'; position: absolute; right: 3px; top: 50%;
+  transform: translateY(-50%);
+  font-size: 9px; font-weight: 900; color: #f87171;
+}
+.bx.tbd  { border-color: rgba(255, 255, 255, .07); background: rgba(255, 255, 255, .02); }
+.bx.you  {
+  border-color: #93c5fd;
+  background: linear-gradient(180deg, #3b82f6, #1d4ed8);
+  box-shadow: 0 0 10px rgba(59, 130, 246, .55);
+}
+.bx.foe  {
+  border-color: #fde68a;
+  background: linear-gradient(180deg, #f59e0b, #d97706);
+  animation: foePulse 1.6s ease-in-out infinite;
+}
+@keyframes foePulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(255, 213, 74, 0); }
-  50%      { box-shadow: 0 0 16px 2px rgba(255, 213, 74, .45); }
+  50%      { box-shadow: 0 0 12px 2px rgba(255, 213, 74, .6); }
 }
-
-.stop.later { opacity: .35; }
-
-.stop.you { border-color: rgba(125, 180, 255, .6); background: rgba(59, 130, 246, .16); }
-.stop.you .who { color: #9ec5ff; }
-
-/* The line into a stop: gold once that match has been won. */
-.leg {
-  flex: 0 0 auto; width: 4%; min-width: 4px; max-width: 22px;
-  height: 4px; border-radius: 2px; align-self: center;
-  background: rgba(255, 255, 255, .14);
-}
-.leg.done { background: linear-gradient(90deg, #2ec27e, #ffd54a); }
 
 #roundGo {
   font: inherit; font-size: 22px; font-weight: 800; padding: 10px 34px;

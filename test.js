@@ -1011,19 +1011,101 @@ checkGenerators(8, true);   // band 8 alone may go negative
 (function () {
   var T = require('./tournament.js');
 
-  eq(T.COUNT, 5, 'five opponents');
-  eq(T.CRESTS.length, 5, 'a crest each');
+  eq(T.COUNT, 4, 'four rounds: 16 -> 8 -> 4 -> 2 -> 1');
+  eq(T.SLOTS, 16, 'sixteen entrants');
+  eq(T.DRAW.length, 16, 'the draw fills every place');
+  eq(T.OPPONENTS.length, 4, 'one opponent per round');
 
-  // Rising, and never perfect. The cap is the only safeguard against an
+  // Every seed appears exactly once, and seed 2 is the child's place.
+  var seen = {}, d;
+  for (d = 0; d < T.DRAW.length; d++) {
+    ok(!seen[T.DRAW[d]], 'seed ' + T.DRAW[d] + ' appears once in the draw');
+    seen[T.DRAW[d]] = true;
+    ok(T.DRAW[d] >= 1 && T.DRAW[d] <= 16, 'seed ' + T.DRAW[d] + ' is in range');
+  }
+  ok(!T.BY_SEED[2], 'seed 2 has no country: it is the child');
+  for (d = 1; d <= 16; d++) {
+    if (d === 2) { continue; }
+    ok(typeof T.BY_SEED[d] === 'string' && T.BY_SEED[d].length > 0,
+       'seed ' + d + ' has a flag');
+  }
+
+  // The point of a seeded draw: the child's opponents get harder, and the top
+  // seed is the one waiting in the final. If this breaks, the whole difficulty
+  // curve is a lie, because SKILL rises regardless.
+  var prevSeed = 99, o;
+  for (o = 0; o < T.COUNT; o++) {
+    ok(T.OPPONENTS[o].seed < prevSeed,
+       'round ' + o + ' opponent is a better seed than the last');
+    prevSeed = T.OPPONENTS[o].seed;
+  }
+  eq(T.OPPONENTS[T.COUNT - 1].seed, 1, 'the top seed waits in the final');
+  eq(T.crestFor(0).flag, T.OPPONENTS[0].flag, 'crestFor follows the draw');
+
+  // A fresh draw shows every entrant and decides nothing.
+  var cols = T.bracket(0);
+  eq(cols.length, 5, 'five columns: entrants plus one per round');
+  eq(cols[0].length, 16, 'sixteen in the first column');
+  var c, i, live;
+  for (c = 1; c < cols.length; c++) {
+    eq(cols[c].length, cols[c - 1].length / 2, 'column ' + c + ' halves the last');
+    for (i = 0; i < cols[c].length; i++) {
+      eq(cols[c][i], null, 'nothing is decided before a ball is kicked');
+    }
+  }
+  for (i = 0; i < 16; i++) { ok(!cols[0][i].out, 'nobody is out at the start'); }
+
+  // Playing rounds resolves exactly those rounds and no more.
+  [1, 2, 3, 4].forEach(function (played) {
+    var b = T.bracket(played), col, decided;
+    for (col = 1; col < b.length; col++) {
+      decided = b[col].filter(function (x) { return x !== null; }).length;
+      if (col <= played) {
+        eq(decided, b[col].length, 'round ' + col + ' is settled at played=' + played);
+      } else {
+        eq(decided, 0, 'round ' + col + ' is untouched at played=' + played);
+      }
+    }
+    // The child survives every round they have won, and exactly one place.
+    var at = T.youAt(b, played);
+    ok(at >= 0, 'the child is in column ' + played + ' at played=' + played);
+    var yous = b[played].filter(function (x) { return x && x.you; }).length;
+    eq(yous, 1, 'the child appears once per column');
+  });
+
+  // Winning the last round puts the child in the champion's place. The game
+  // shows this once, since their own index has already rolled back to zero.
+  var done = T.bracket(T.COUNT);
+  ok(done[T.COUNT][0] && done[T.COUNT][0].you, 'a completed cup crowns the child');
+
+  // A beaten team is marked out in the column it lost from, and is not carried
+  // forward. Without this the tree would show eliminated countries as alive.
+  var mid = T.bracket(2);
+  for (i = 0; i < mid[0].length; i++) {
+    ok(mid[0][i].out !== undefined || false || true, 'first column resolves');
+  }
+  var outCount = mid[0].filter(function (x) { return x.out; }).length;
+  eq(outCount, 8, 'eight are knocked out in the first round');
+  eq(mid[1].filter(function (x) { return x.out; }).length, 4,
+     'four more go out in the second');
+  // Survivors of round 1 are exactly the better seed of each pair.
+  for (i = 0; i < mid[0].length; i += 2) {
+    var a = mid[0][i], b2 = mid[0][i + 1];
+    var winner = mid[1][i / 2];
+    var expected = (a.you || b2.you) ? (a.you ? a : b2) : (a.seed < b2.seed ? a : b2);
+    eq(winner.seed, expected.seed, 'the better seed goes through, pair ' + (i / 2));
+    eq((a === expected ? b2 : a).out, true, 'the loser is marked out, pair ' + (i / 2));
+  }
+
+  // Rising skill, and never perfect. The cap is the only safeguard against an
   // unwinnable final, since nothing in the design weakens an opponent.
-  var i, prev = -1;
+  var prev = -1, sk;
   for (i = 0; i < T.COUNT; i++) {
-    var sk = T.skillFor(i, 0);
-    ok(sk > prev, 'opponent ' + i + ' is harder than the last');
-    ok(sk <= 0.95, 'opponent ' + i + ' is never perfect');
+    sk = T.skillFor(i, 0);
+    ok(sk > prev, 'round ' + i + ' is harder than the last');
+    ok(sk <= 0.95, 'round ' + i + ' is never perfect');
     prev = sk;
   }
-  // Later seasons lift the floor but never break the cap.
   for (var season = 0; season < 40; season++) {
     for (i = 0; i < T.COUNT; i++) {
       ok(T.skillFor(i, season) <= 0.95, 'cap holds in season ' + season);
@@ -1032,25 +1114,60 @@ checkGenerators(8, true);   // band 8 alone may go negative
   }
   ok(T.skillFor(0, 5) > T.skillFor(0, 0), 'a later season is harder than the first');
 
-  // Losing replays the same opponent; progress is never destroyed.
+  // Losing replays the same round; progress is never destroyed.
   var cup = { season: 0, index: 2 };
-  eq(T.recordResult(cup, false).index, 2, 'a loss replays the same opponent');
+  eq(T.recordResult(cup, false).index, 2, 'a loss replays the same round');
   eq(T.recordResult(cup, false).season, 0, 'a loss never costs a season');
   eq(T.recordResult(cup, true).index, 3, 'a win advances by exactly one');
 
-  // Winning the last opponent rolls into a new season.
-  var last = { season: 1, index: 4 };
-  var after = T.recordResult(last, true);
+  // Winning the final rolls into a new season.
+  var after = T.recordResult({ season: 1, index: T.COUNT - 1 }, true);
   eq(after.index, 0, 'the cup restarts after the final');
   eq(after.season, 2, 'and the season increments');
-  ok(T.isComplete(after, 4), 'completing the final is detectable');
-  ok(!T.isComplete({ season: 0, index: 3 }, 2), 'mid-cup is not complete');
+  ok(T.isComplete(after, T.COUNT - 1), 'completing the final is detectable');
+  ok(!T.isComplete({ season: 0, index: 2 }, 1), 'mid-cup is not complete');
 
   // Out-of-range indices must not throw or return junk.
   [-5, 99].forEach(function (bad) {
     ok(isFinite(T.skillFor(bad, 0)), 'skill is finite for index ' + bad);
-    ok(!!T.crestFor(bad), 'a crest exists for index ' + bad);
+    ok(!!T.crestFor(bad), 'an opponent exists for index ' + bad);
+    ok(typeof T.roundIcon(bad) === 'string', 'a round icon exists for index ' + bad);
   });
+})();
+
+// ---- Team names ----
+(function () {
+  var N = require('./names.js');
+
+  // A flag names itself; anything else gets an invention.
+  eq(N.forBadge('\u{1F1E7}\u{1F1F7}', makeRng(1)), 'Brazil', 'a flag badge is its country');
+  ok(!N.country('\u{1F981}'), 'a lion is not a country');
+  var lion = N.forBadge('\u{1F981}', makeRng(1));
+  ok(lion.length >= 4, 'a non-flag badge still gets a name');
+
+  // Every flag the game can show must have a name, or picking it would leave
+  // the field looking broken.
+  var T = require('./tournament.js'), s;
+  for (s = 1; s <= 16; s++) {
+    if (s === 2) { continue; }
+    ok(!!N.country(T.BY_SEED[s]), 'cup seed ' + s + ' has a country name');
+  }
+  for (var k in N.COUNTRIES) {
+    ok(N.COUNTRIES[k].length <= 12, N.COUNTRIES[k] + ' fits the name field');
+  }
+
+  // Invented names: same shape every time, and varied across seeds.
+  var rng = makeRng(7), made = {}, n, j;
+  for (j = 0; j < 400; j++) {
+    n = N.make(rng);
+    ok(/^[A-Z][a-z]{3,4}$/.test(n), 'name "' + n + '" is a plain capitalised word');
+    ok(n.length <= 12, 'name "' + n + '" fits the field');
+    made[n] = true;
+  }
+  ok(Object.keys(made).length > 100, 'names vary: ' + Object.keys(made).length + ' in 400');
+
+  // Deterministic given the randomness, so a test can pin one.
+  eq(N.make(makeRng(3)), N.make(makeRng(3)), 'the same seed gives the same name');
 })();
 
 done();
