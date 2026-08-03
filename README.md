@@ -165,6 +165,21 @@ The suite is deliberately small for what it covers. It has been checked by
 mutation testing: breaking a constant or flipping a comparison in the maths
 engine makes it fail. A test that cannot fail is not a test.
 
+### Maths lab
+
+Open `maths-lab.html` to see what `maths.js` actually produces. The tests prove
+the generators are correct; this is for judging whether the questions are any
+good — which is not something an assertion can tell you.
+
+<p align="center">
+  <img src="docs/img/08-maths-lab.jpg" width="560" alt="Sample questions per band, and the adaptive engine settling six learners near 80%">
+</p>
+
+It renders questions with the game's own renderer, so a question here looks
+exactly like a question in a match, and it runs the adaptive engine against the
+same synthetic learner `test.js` asserts against — so the lab and the suite
+cannot quietly disagree.
+
 ---
 
 ## How it is put together

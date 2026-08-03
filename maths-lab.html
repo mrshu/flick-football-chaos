@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maths lab — Flick Football Chaos</title>
+<!-- The game's own stylesheet, so a question here looks exactly like a question
+     in a match. A preview drawn a second way would be a preview of the preview. -->
+<link rel="stylesheet" href="style.css">
+<style>
+  body { overflow: auto; padding: 20px 16px 60px; }
+  .lab { max-width: 780px; margin: 0 auto; }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  h2 { font-size: 17px; margin: 26px 0 10px; opacity: .85; }
+  .sub { opacity: .6; font-size: 14px; margin-bottom: 18px; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+  .row label { font-size: 13px; opacity: .7; margin-right: 4px; }
+  button.lab, select.lab, input.lab {
+    font: inherit; font-size: 14px; font-weight: 700; color: #fff;
+    padding: 7px 12px; border-radius: 9px; cursor: pointer;
+    border: 2px solid rgba(255,255,255,.22); background: rgba(255,255,255,.07);
+  }
+  button.lab.on { background: linear-gradient(135deg,#ffd54a,#ff8a3d); color: #2b1600; border-color: transparent; }
+  input.lab { cursor: text; width: 74px; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+  .card {
+    padding: 12px; border-radius: 12px;
+    background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1);
+  }
+  .card .meta { font-size: 11px; opacity: .5; margin-bottom: 8px; letter-spacing: .3px; }
+  /* #quizQ's own rules give the tokens their in-game look; the size is dialled
+     down here because a dozen of them share a screen. */
+  .card .q { display: flex; align-items: center; justify-content: center; gap: 6px;
+             flex-wrap: wrap; font-size: 24px; font-weight: 800; min-height: 42px; }
+  .card .opts { display: flex; gap: 5px; justify-content: center; flex-wrap: wrap; margin-top: 9px; }
+  .card .opts span {
+    font-size: 14px; font-weight: 800; padding: 5px 9px; border-radius: 8px;
+    background: #3b82f6;
+  }
+  .card .opts span.right { background: #2ec27e; }
+
+  table.lab { border-collapse: collapse; width: 100%; font-size: 14px; }
+  table.lab th, table.lab td { padding: 6px 8px; text-align: right; border-bottom: 1px solid rgba(255,255,255,.1); }
+  table.lab th:first-child, table.lab td:first-child { text-align: left; }
+  table.lab th { opacity: .6; font-size: 12px; font-weight: 700; }
+  td.good { color: #57e389; } td.bad { color: #ff9e9e; }
+  .note { font-size: 13px; opacity: .6; margin-top: 10px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="lab">
+  <h1>Maths lab</h1>
+  <p class="sub">
+    A window on <code>maths.js</code>. <code>test.js</code> checks that every
+    generator is correct; this is for looking at what a child actually sees.
+  </p>
+
+  <h2>Questions</h2>
+  <div class="row" id="bandRow"><label>Band</label></div>
+  <div class="row">
+    <button class="lab" id="roll">Roll 12 more</button>
+    <label style="margin-left:10px">Difficulty</label>
+    <input class="lab" id="diff" type="number" min="1" max="8" step="0.25" value="3">
+    <span class="sub" style="margin:0">— fractional values mix two bands, and set the number of choices</span>
+  </div>
+  <div class="cards" id="cards"></div>
+
+  <h2>Adaptive engine</h2>
+  <div class="row">
+    <label>Answers each</label>
+    <input class="lab" id="simN" type="number" min="200" max="60000" step="200" value="4000">
+    <button class="lab" id="sim">Simulate learners</button>
+  </div>
+  <table class="lab" id="simOut"></table>
+  <p class="note">
+    Six children of fixed ability on the same 1&ndash;8 scale, each starting at
+    band&nbsp;4. Their chance of knowing an answer falls off as the difficulty
+    passes their ability, and whatever they do not know they guess from the
+    choices on offer &mdash; which is what makes the two- and three-choice
+    floor at the bottom of the scale do any work.
+  </p>
+  <p class="note">
+    The engine should park each of them near <strong>80% correct</strong>, at a
+    band close to their ability. This is the same learner model
+    <code>test.js</code> asserts against, so the two cannot disagree; the lab
+    just lets you watch it rather than take its word.
+  </p>
+</div>
+
+<script src="maths.js"></script>
+<script src="quiz.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var band = 3;
+
+  function el(id) { return document.getElementById(id); }
+
+  // Sample questions from one band, or across a fractional difficulty.
+  function roll() {
+    var diff = Number(el('diff').value) || band;
+    var state = Maths.newState(Math.round(diff));
+    var box = el('cards'), i, k, q, card, qEl, opts, opt;
+    box.innerHTML = '';
+    for (i = 0; i < 12; i++) {
+      q = Maths.make(diff, state, Math.random);
+      card = document.createElement('div');
+      card.className = 'card';
+
+      card.innerHTML = '<div class="meta"></div><div class="q"></div><div class="opts"></div>';
+      card.querySelector('.meta').textContent = 'band ' + q.band + ' · ' + q.skill;
+
+      qEl = card.querySelector('.q');
+      for (k = 0; k < q.render.length; k++) {
+        // The game's own renderer, so this is not a second opinion on the markup.
+        qEl.appendChild(Quiz.renderToken(q.render[k]));
+      }
+
+      opts = card.querySelector('.opts');
+      for (k = 0; k < q.choices.length; k++) {
+        opt = document.createElement('span');
+        opt.textContent = q.choices[k];
+        if (q.choices[k] === q.answer) { opt.className = 'right'; }
+        opts.appendChild(opt);
+      }
+      box.appendChild(card);
+    }
+  }
+
+  // Band buttons set both the band and the difficulty, since a whole number
+  // difficulty is exactly that band.
+  (function () {
+    var row = el('bandRow'), b, btn;
+    for (b = 1; b <= 8; b++) {
+      btn = document.createElement('button');
+      btn.className = 'lab' + (b === band ? ' on' : '');
+      btn.textContent = b;
+      btn.setAttribute('data-band', b);
+      btn.addEventListener('click', function () {
+        band = Number(this.getAttribute('data-band'));
+        el('diff').value = band;
+        [].forEach.call(row.querySelectorAll('button'), function (x) {
+          x.className = 'lab' + (Number(x.getAttribute('data-band')) === band ? ' on' : '');
+        });
+        roll();
+      });
+      row.appendChild(btn);
+    }
+  })();
+
+  el('roll').addEventListener('click', roll);
+  el('diff').addEventListener('change', roll);
+
+  // A synthetic learner of fixed ability on the same 1-8 scale. Their chance of
+  // knowing an answer falls off as difficulty passes their ability, and what
+  // they do not know they guess from the choices on offer.
+  //
+  // Copied deliberately from test.js rather than invented: a lab that modelled
+  // the learner differently would give a different answer to the same question,
+  // and there would be no way to tell which one was lying.
+  function simulate(ability, n) {
+    var s = Maths.newState(4);
+    var correct = 0, total = 0, sum = 0, i, known, choices, p, ok_, at, ms;
+    for (i = 0; i < n; i++) {
+      at = Math.round(s.difficulty);         // not `band`: that is the preview's
+      known = 1 / (1 + Math.exp(1.6 * (s.difficulty - ability)));
+      choices = Maths.choiceCount(s.difficulty);
+      p = known + (1 - known) / choices;
+      ok_ = Math.random() < p;
+      ms = ok_ ? (2500 + 900 * at) * (0.4 + Math.random() * 1.4) : 9000;
+      s = Maths.update(s, { correct: ok_, elapsedMs: ms, band: at, skill: 'x' });
+      // Measure the second half only: the first is the climb to their level.
+      if (i > n / 2) { total++; sum += s.difficulty; if (ok_) { correct++; } }
+    }
+    return { band: sum / total, accuracy: correct / total };
+  }
+
+  el('sim').addEventListener('click', function () {
+    var n = Number(el('simN').value) || 4000;
+    var html = '<tr><th>Ability</th><th>Settles at band</th><th>Correct</th></tr>';
+    [1.5, 3, 4.5, 6, 7.5, 8.5].forEach(function (ability) {
+      var r = simulate(ability, n);
+      // The band should land near their ability, and accuracy near 80%.
+      var bandOk = Math.abs(r.band - Math.min(8, ability)) < 1.2;
+      var accOk = r.accuracy > 0.72 && r.accuracy < 0.88;
+      html += '<tr><td>' + ability.toFixed(1) + '</td>' +
+              '<td class="' + (bandOk ? 'good' : 'bad') + '">' + r.band.toFixed(2) + '</td>' +
+              '<td class="' + (accOk ? 'good' : 'bad') + '">' +
+              (r.accuracy * 100).toFixed(0) + '%</td></tr>';
+    });
+    el('simOut').innerHTML = html;
+  });
+
+  roll();
+})();
+</script>
+</body>
+</html>
