@@ -40,7 +40,10 @@ const KEEPER_Y_INSET = 26; // how far in front of its own goal line it stands
 // on certain goals, the save question fired on 21% of CPU turns - a mechanic
 // the child would rarely meet.
 const THREAT_DY = 150, THREAT_X_SLACK = 55;
-const KEEPER_MAX_STEP = 70; // per-turn cap - the lag that keeps it beatable
+// Per-turn cap on keeper movement. The mouth is only ~108 wide at the keeper's
+// clamped range, so at 70 it crosses in two turns and barely trails play at
+// all — this is the dial to turn down if keepers feel too hard to beat.
+const KEEPER_MAX_STEP = 70;
 const KEEPER_MIN_X = MOUTH_L + KEEPER_R, KEEPER_MAX_X = MOUTH_R - KEEPER_R;
 
 /* ---------- DOM ---------- */
