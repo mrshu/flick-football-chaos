@@ -164,7 +164,7 @@ const game = {
   pendingAiShot: null, pendingSaveX: null,
   score: { human: 0, ai: 0 }, lastScorer: null,
   timer: 0, moveTime: 0, ballRot: 0,
-  drag: null, aiChoice: null,
+  drag: null, aiChoice: null, askedLastTurn: false,
   particles: [], lastHitSfx: 0,
 };
 
@@ -267,6 +267,21 @@ function clearModifier() {
 // still hands the player their flick, and skipping is instant and free.
 // Quiz.js owns the cancellable feedback timer, so the flash-then-continue
 // behaviour lives in one place.
+// A question before every single shot reads as a tax on playing. The save
+// question already only fires when the CPU actually threatens; the bonus
+// question now follows the same rule, so it arrives when a bonus could win
+// something rather than on every turn.
+function worthABonus() {
+  // Attacking half only: a giant ball or a super shot is worth something when
+  // the ball is up near the CPU's goal, and worth little from your own box.
+  if (game.ball.y > H / 2) { return false; }
+  // And never twice running, so a scrappy spell near their goal does not turn
+  // into a quiz.
+  if (game.askedLastTurn) { game.askedLastTurn = false; return false; }
+  game.askedLastTurn = true;
+  return true;
+}
+
 function askQuestion() {
   if (!game.maths) { game.maths = Maths.newState(game.startBand); }
   game.state = 'HUMAN_QUESTION';
@@ -381,7 +396,7 @@ function startTurn(team) {
     game.sinceChaos = 0;
   }
   if (team === 'human') {
-    if (game.mathsOn) {
+    if (game.mathsOn && worthABonus()) {
       askQuestion();
     } else {
       game.state = 'HUMAN_AIM';
