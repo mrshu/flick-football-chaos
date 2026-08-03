@@ -394,17 +394,20 @@ canvas {
   overflow: auto;
 }
 
-#startTitle { font-size: clamp(20px, 4.4vh, 30px); margin-bottom: 6px; }
-#startSub   { opacity: .8; margin-bottom: 16px; font-size: clamp(13px, 2.2vh, 16px); }
+#startTitle { font-size: clamp(20px, 4.4vh, 30px); margin-bottom: 14px; }
 
-#startAges { display: flex; gap: 7px; flex-wrap: wrap; justify-content: center; margin-bottom: 22px; }
+/* Age belongs to the child, not to the session, so it is set once while making
+   a team rather than being re-asked on every visit to the start screen. */
+/* A nine-column grid rather than a flex row: the ages must stay on one line at
+   any card width, and wrapping would strand the no-maths button on its own. */
+#teamAges { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; margin-top: 12px; }
+#teamAges .rowIcon { grid-column: 1 / -1; font-size: 16px; line-height: 1; margin-bottom: 2px; }
 .ageBtn {
   font: inherit;
   font-weight: 800;
-  font-size: clamp(15px, 2.6vh, 19px);
-  min-width: 42px;
-  padding: 10px 8px;
-  border-radius: 10px;
+  font-size: 14px;
+  padding: 7px 0;
+  border-radius: 9px;
   border: 2px solid rgba(255, 255, 255, .22);
   background: rgba(255, 255, 255, .07);
   color: #fff;
@@ -427,20 +430,22 @@ canvas {
 }
 #startPlay:active { transform: translateY(4px); box-shadow: 0 2px 0 #1a8a55; }
 
-/* Cup progress and trophies on the start screen. Crests are colour plus a
-   pattern and carry no names, so the cup reads the same in any language. */
+/* Cup progress and trophies on the start screen. Opponents are flags and carry
+   no names, so the cup reads the same in any language. */
 #cupRow { display: flex; gap: 7px; justify-content: center; margin: 2px 0 10px; }
-#cupRow canvas { border-radius: 6px; }
-#cupRow .cupCrest { position: relative; width: 30px; height: 36px; }
-#cupRow .cupCrest.done::after {
-  content: '\2713';
-  position: absolute; inset: 0;
+#cupRow .cupFlag { font-size: 24px; line-height: 1; position: relative; }
+#cupRow .cupFlag.done { opacity: .4; }
+#cupRow .cupFlag.done::after {
+  content: '\2713'; position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
-  font-size: 20px; font-weight: 900; color: #fff;
-  text-shadow: 0 2px 3px rgba(0,0,0,.6);
+  font-size: 17px; font-weight: 900; color: #2ec27e;
+  text-shadow: 0 1px 3px rgba(0,0,0,.8);
 }
-#cupRow .cupCrest.now { transform: scale(1.22); }
-#cupRow .cupCrest.later { opacity: .32; }
+#cupRow .cupFlag.now { transform: scale(1.3); filter: drop-shadow(0 0 6px rgba(255,213,74,.85)); }
+#cupRow .cupFlag.later { opacity: .3; }
+
+/* The badge grid holds flags as well as animals, so rows stay even. */
+#badgeGrid { grid-template-columns: repeat(6, 1fr); }
 
 #trophyShelf { min-height: 22px; font-size: 18px; letter-spacing: 2px; margin-bottom: 6px; }
 
@@ -464,8 +469,10 @@ canvas {
 .slotCard.empty .badge { opacity: .45; font-weight: 800; }
 
 /* ---- team editor ---- */
+/* Fixed and above the start screen: the editor is opened from there, so an
+   absolute box inside #stage would sit behind it and only cover the pitch. */
 #teamEditor {
-  position: absolute; inset: 0; z-index: 7;
+  position: fixed; inset: 0; z-index: 30;
   display: flex; align-items: center; justify-content: center;
   background: rgba(5,10,25,.8);
 }
@@ -499,19 +506,61 @@ canvas {
 #teamDelete { color: #fff; background: rgba(255,255,255,.1); }
 #teamDelete.arm { background: #ef4444; }
 
-/* ---- between-match card ---- */
-#roundCard {
+/* ---- the tournament path: its own screen ---- */
+#bracket {
   position: absolute; inset: 0; z-index: 7;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 14px; background: rgba(5,10,25,.82); backdrop-filter: blur(3px);
+  gap: 8px; padding: 12px;
+  background: rgba(4, 9, 22, .93); backdrop-filter: blur(4px);
 }
-#roundVs { display: flex; align-items: center; gap: 18px; font-size: 40px; font-weight: 900; }
-#roundVs .side { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-#roundVs .side small { font-size: 12px; opacity: .8; font-weight: 700; }
-#roundCrests { display: flex; gap: 7px; }
+#bracketTitle { font-size: clamp(30px, 6vh, 46px); line-height: 1; }
+
+#bracketLadder {
+  display: flex; flex-direction: column-reverse; gap: 5px;
+  width: min(94%, 380px);
+}
+/* column-reverse so the child climbs from their own team at the bottom up to
+   the trophy: the ladder reads as a route, not a list. */
+
+.rung {
+  display: grid;
+  grid-template-columns: 34px 1fr 46px;
+  align-items: center; gap: 8px;
+  padding: 7px 10px;
+  border-radius: 12px;
+  border: 2px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.05);
+}
+.rung .stage { font-size: 20px; line-height: 1; text-align: center; }
+.rung .foe   { font-size: 26px; line-height: 1; text-align: right; }
+.rung .bar   { height: 6px; border-radius: 3px; background: rgba(255,255,255,.13); }
+
+.rung.done { border-color: rgba(46,194,126,.55); background: rgba(46,194,126,.13); }
+.rung.done .bar { background: #2ec27e; }
+.rung.done .foe { opacity: .45; }
+
+.rung.now {
+  border-color: #ffd54a; background: rgba(255,213,74,.16);
+  animation: rungPulse 1.5s ease-in-out infinite;
+}
+.rung.now .bar { background: linear-gradient(90deg, #ffd54a, #ff8a3d); }
+@keyframes rungPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,213,74,0); }
+  50%      { box-shadow: 0 0 16px 2px rgba(255,213,74,.45); }
+}
+
+.rung.later { opacity: .38; }
+
+.rung.you {
+  border-color: rgba(125,180,255,.6); background: rgba(59,130,246,.16);
+  grid-template-columns: 34px 1fr auto;
+}
+.rung.you .foe { font-size: 26px; }
+.rung.you .who { font-size: 12px; font-weight: 700; opacity: .85; text-align: left; }
+
 #roundGo {
   font: inherit; font-size: 22px; font-weight: 800; padding: 10px 34px;
-  border: none; border-radius: 999px; cursor: pointer;
+  border: none; border-radius: 999px; cursor: pointer; margin-top: 6px;
   color: #06230f; background: linear-gradient(135deg, #57e389, #2ec27e);
   box-shadow: 0 6px 0 #1a8a55;
 }

@@ -801,7 +801,7 @@ el('again').addEventListener('click', () => {
   // Next opponent, or the same one again after a loss — either way the child
   // sees who they are facing before play resumes.
   if (game.mathsOn && game.slot && game.slot.emoji) {
-    showRoundCard('\u2694');
+    showBracket();
   } else {
     restart();
   }
@@ -809,54 +809,21 @@ el('again').addEventListener('click', () => {
 
 el('roundGo').addEventListener('click', () => {
   SFX.unlock();
-  hideRoundCard();
+  hideBracket();
   restart();
 });
-
-// Start screen: age (and "no maths") is chosen once, before any football is
-// playable. Play hides the overlay and starts the match; the boot sequence
-// never calls restart() on its own, so game.state stays 'START' — which
-// blocks the pointerdown handler — until this fires.
-// Draw one crest: a shield in the opponent's colour with its own pattern, so
-// the five are told apart by shape as well as hue.
-function crestCanvas(index, size) {
-  var c = document.createElement('canvas'), g = c.getContext('2d');
-  var crest = Tournament.crestFor(index), w = size, h = size * 1.2;
-  c.width = w * 2; c.height = h * 2; c.style.width = w + 'px'; c.style.height = h + 'px';
-  g.scale(2, 2);
-  g.beginPath();
-  g.moveTo(2, 2); g.lineTo(w - 2, 2); g.lineTo(w - 2, h * 0.62);
-  g.quadraticCurveTo(w / 2, h - 1, 2, h * 0.62);
-  g.closePath();
-  g.fillStyle = crest.fill; g.fill();
-  g.save(); g.clip();
-  g.fillStyle = crest.ink;
-  if (crest.pattern === 'stripes') {
-    for (var x = 0; x < w; x += 9) { g.fillRect(x, 0, 4, h); }
-  } else if (crest.pattern === 'halves') {
-    g.fillRect(w / 2, 0, w / 2, h);
-  } else if (crest.pattern === 'sash') {
-    g.save(); g.rotate(-0.7); g.fillRect(-h, h * 0.35, w * 3, 7); g.restore();
-  } else if (crest.pattern === 'quarters') {
-    g.fillRect(0, 0, w / 2, h / 2); g.fillRect(w / 2, h / 2, w / 2, h / 2);
-  } else {
-    for (var y = 0; y < h; y += 9) { g.fillRect(0, y, w, 4); }
-  }
-  g.restore();
-  g.lineWidth = 2; g.strokeStyle = 'rgba(255,255,255,.75)';
-  g.beginPath();
-  g.moveTo(2, 2); g.lineTo(w - 2, 2); g.lineTo(w - 2, h * 0.62);
-  g.quadraticCurveTo(w / 2, h - 1, 2, h * 0.62);
-  g.closePath(); g.stroke();
-  return c;
-}
 
 // A curated grid rather than the system emoji picker: it is tap-only, needs no
 // keyboard, and is not overwhelming for a five-year-old.
 var BADGES = ['\u{1F981}','\u{1F42F}','\u{1F438}','\u{1F984}','\u{1F996}','\u{1F419}',
               '\u{1F41D}','\u{1F98A}','\u{1F43C}','\u{1F992}','\u{1F988}','\u{1F985}',
               '\u26BD','\u{1F525}','\u26A1','\u2B50','\u{1F308}','\u{1F680}',
-              '\u{1F451}','\u{1F48E}','\u{1F340}','\u{1F3B8}','\u{1F36A}','\u{1F47D}'];
+              '\u{1F451}','\u{1F48E}','\u{1F340}','\u{1F3B8}','\u{1F36A}','\u{1F47D}',
+              // Countries, so a child can play as their own — the opponents are
+              // countries too, which is what makes the cup read as a World Cup.
+              '\u{1F1EC}\u{1F1E7}','\u{1F1FA}\u{1F1F8}','\u{1F1E9}\u{1F1EA}','\u{1F1EE}\u{1F1F9}',
+              '\u{1F1F5}\u{1F1F9}','\u{1F1E6}\u{1F1F7}','\u{1F1F2}\u{1F1FD}','\u{1F1F0}\u{1F1F7}',
+              '\u{1F1F5}\u{1F1F1}','\u{1F1E8}\u{1F1FF}','\u{1F1F8}\u{1F1F0}','\u{1F1FA}\u{1F1E6}'];
 
 function slotLabel(slot) { return slot.emoji || '\uFF0B'; }
 
@@ -904,9 +871,14 @@ function refreshStart() {
   }
 }
 
+// Making a team is where a child says who they are: badge, name, and age. Age
+// used to sit on the start screen, which re-asked it on every visit and applied
+// it to whichever slot happened to be active — wrong on a shared tablet, where
+// each slot is a different child.
 function openTeamEditor() {
   var ed = el('teamEditor'), grid = el('badgeGrid'), nameInput = el('teamName');
   var chosen = game.slot.emoji || BADGES[0];
+  var band = paintAges(game.slot.band, function (b) { band = b; });
   grid.innerHTML = '';
   BADGES.forEach(function (b) {
     var btn = document.createElement('button');
@@ -928,6 +900,10 @@ function openTeamEditor() {
     // The name is optional and may stay empty: it needs a keyboard, and a
     // five-year-old may not type. The badge alone is a complete team.
     game.slot.name = nameInput.value.slice(0, 12);
+    // Changing the age is the child telling us the old level was wrong, so the
+    // adaptive state it produced is thrown away with it.
+    if (band !== game.slot.band) { game.slot.maths = null; game.maths = null; }
+    game.slot.band = band;
     persist();
     ed.classList.add('hidden');
     refreshStart();
@@ -945,111 +921,102 @@ function openTeamEditor() {
   };
 }
 
-// Shown before each cup match and after each result. A tournament the child
-// only experiences as a progress bar is not a tournament; this is where they
-// see who they are about to play and how far they have come.
-function showRoundCard(headline) {
-  var card = el('roundCard'), vs = el('roundVs'), crests = el('roundCrests');
-  if (!card || !game.slot) { return false; }
-  var idx = game.slot.cup.index;
+// The tournament as its own screen. A row of shields told a child nothing
+// about where they were; this is a route they climb — their own team at the
+// bottom, the trophy at the top, and every country in between.
+function showBracket() {
+  var view = el('bracket'), ladder = el('bracketLadder');
+  if (!view || !game.slot) { return false; }
+  var idx = game.slot.cup.index, i;
 
-  vs.innerHTML = '';
-  var mine = document.createElement('div');
-  mine.className = 'side';
-  mine.innerHTML = '<span>' + (game.slot.emoji || '\u26BD') + '</span>';
-  if (game.slot.name) {
-    var lbl = document.createElement('small');
-    lbl.textContent = game.slot.name;
-    mine.appendChild(lbl);
+  ladder.innerHTML = '';
+
+  // The child's own team is the bottom rung: the route starts with them.
+  var me = document.createElement('div');
+  me.className = 'rung you';
+  me.innerHTML = '<div class="stage">\u{1F3C1}</div>' +
+                 '<div class="who">' + '</div>' +
+                 '<div class="foe">' + (game.slot.emoji || '\u26BD') + '</div>';
+  me.querySelector('.who').textContent = game.slot.name || '';
+  ladder.appendChild(me);
+
+  for (i = 0; i < Tournament.COUNT; i++) {
+    var rung = document.createElement('div');
+    rung.className = 'rung ' + (i < idx ? 'done' : (i === idx ? 'now' : 'later'));
+    var crest = Tournament.crestFor(i);
+    rung.innerHTML = '<div class="stage">' + Tournament.roundIcon(i) + '</div>' +
+                     '<div class="bar"></div>' +
+                     '<div class="foe">' + crest.flag + '</div>';
+    ladder.appendChild(rung);
   }
-  vs.appendChild(mine);
 
-  var mid = document.createElement('div');
-  mid.textContent = headline;
-  mid.style.fontSize = '22px';
-  vs.appendChild(mid);
-
-  var theirs = document.createElement('div');
-  theirs.className = 'side';
-  theirs.appendChild(crestCanvas(idx, 46));
-  vs.appendChild(theirs);
-
-  crests.innerHTML = '';
-  for (var i = 0; i < Tournament.COUNT; i++) {
-    var w = document.createElement('div');
-    w.className = 'cupCrest ' + (i < idx ? 'done' : (i === idx ? 'now' : 'later'));
-    w.appendChild(crestCanvas(i, 22));
-    crests.appendChild(w);
-  }
-  card.classList.remove('hidden');
+  el('bracketTitle').textContent = game.slot.trophies
+    ? '\u{1F3C6}\u00D7' + game.slot.trophies
+    : '\u{1F3C6}';
+  view.classList.remove('hidden');
   return true;
 }
 
-function hideRoundCard() { el('roundCard').classList.add('hidden'); }
+function hideBracket() { el('bracket').classList.add('hidden'); }
 
 function paintCup() {
   var row = el('cupRow'), shelf = el('trophyShelf');
   if (!row || !game.slot) { return; }
   row.innerHTML = '';
   for (var i = 0; i < Tournament.COUNT; i++) {
-    var wrap = document.createElement('div');
-    wrap.className = 'cupCrest ' +
+    var f = document.createElement('div');
+    f.className = 'cupFlag ' +
       (i < game.slot.cup.index ? 'done' : (i === game.slot.cup.index ? 'now' : 'later'));
-    wrap.appendChild(crestCanvas(i, 30));
-    row.appendChild(wrap);
+    f.textContent = Tournament.crestFor(i).flag;
+    row.appendChild(f);
   }
-  // One trophy per completed cup, capped so a long-running shelf cannot
-  // overflow the card.
   var n = Math.min(12, game.slot.trophies);
   shelf.textContent = n ? new Array(n + 1).join('\u{1F3C6}') : '';
 }
 
-(function () {
-  var screen = el('startScreen'), ageBtns = screen.querySelectorAll('.ageBtn'), playBtn = el('startPlay');
-  // Resume where the child left off rather than making them re-pick every time.
-  var selectedBand = (game.slot && game.slot.maths)
-    ? Math.max(1, Math.round(game.slot.maths.difficulty))
-    : game.startBand;
-  var i;
+
+// Wire the age row inside the team editor. Returns the band it starts on and
+// reports every change back, so the caller keeps a single source of truth.
+function paintAges(current, onPick) {
+  var btns = el('teamAges').querySelectorAll('.ageBtn'), i;
+  var band = (typeof current === 'number') ? current : Store.DEFAULT_BAND;
 
   function paint() {
-    for (var k = 0; k < ageBtns.length; k++) {
-      var b = Number(ageBtns[k].getAttribute('data-band'));
-      ageBtns[k].className = (b === selectedBand) ? 'ageBtn on' : 'ageBtn';
+    for (var k = 0; k < btns.length; k++) {
+      btns[k].className = (Number(btns[k].getAttribute('data-band')) === band)
+        ? 'ageBtn on' : 'ageBtn';
     }
+  }
+  for (i = 0; i < btns.length; i++) {
+    (function (btn) {
+      btn.onclick = function () {
+        band = Number(btn.getAttribute('data-band'));
+        paint();
+        onPick(band);
+        SFX.select();
+      };
+    })(btns[i]);
   }
   paint();
-  refreshStart();
+  return band;
+}
 
-  for (i = 0; i < ageBtns.length; i++) {
-    (function (btn) {
-      btn.addEventListener('click', function () {
-        selectedBand = Number(btn.getAttribute('data-band'));
-        paint();
-        SFX.select();
-      });
-    })(ageBtns[i]);
-  }
-
-  playBtn.addEventListener('click', function () {
-    SFX.unlock();
-    game.mathsOn = selectedBand > 0;
-    game.startBand = selectedBand > 0 ? selectedBand : 1;
-    // Keep the slot's adaptive state unless the child picked a different age,
-    // in which case they are telling us the old level was wrong.
-    var saved = game.slot && game.slot.maths;
-    var sameBand = saved && Math.abs(saved.difficulty - selectedBand) < 1.5;
-    game.maths = sameBand ? saved : null;
-    screen.classList.add('hidden');
-    // A named team entering a cup meets its first opponent on a card, not by
-    // being dropped straight onto the pitch.
-    if (game.mathsOn && game.slot && game.slot.emoji) {
-      showRoundCard('\u2694');
-    } else {
-      restart();
-    }
-  });
-})();
+// PLAY reads the active team rather than any start-screen control: a slot
+// carries its own age, cup progress and adaptive state. The boot sequence never
+// calls restart(), so game.state stays 'START' — which blocks the pointerdown
+// handler — until this fires.
+el('startPlay').addEventListener('click', function () {
+  SFX.unlock();
+  // An empty slot has nobody to play as. Make the team first.
+  if (!game.slot || !game.slot.emoji) { openTeamEditor(); return; }
+  game.mathsOn = game.slot.band > 0;
+  game.startBand = game.slot.band > 0 ? game.slot.band : 1;
+  game.maths = game.slot.maths || null;
+  el('startScreen').classList.add('hidden');
+  // A team entering a cup meets its next opponent on the ladder, not by being
+  // dropped straight onto the pitch.
+  if (game.mathsOn) { showBracket(); } else { restart(); }
+});
 
 /* ---------- juice ---------- */
 // Screen shake, a ball trail and a brief slow-motion on goals. None of it

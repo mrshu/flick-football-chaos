@@ -15,6 +15,10 @@ var Store = (function () {
 
   var KEY = 'ffc.v1';
   var SLOTS = 3;
+  var DEFAULT_BAND = 3;          // age 7: the middle of the range, so a slot
+                                 // made without touching the age row still asks
+                                 // maths rather than silently switching it off
+
   var memory = null;             // used when localStorage is unavailable
   var available = null;          // cached probe result
 
@@ -33,6 +37,7 @@ var Store = (function () {
   function emptySlot() {
     return {
       emoji: '', name: '',
+      band: DEFAULT_BAND,        // age band 1-8, or 0 for "no maths"
       maths: null,               // {difficulty, mastery} once they have played
       cup: { season: 0, index: 0 },
       stats: { correct: 0, answered: 0 },
@@ -53,6 +58,11 @@ var Store = (function () {
     if (!raw || typeof raw !== 'object') { return base; }
     if (typeof raw.emoji === 'string') { base.emoji = raw.emoji.slice(0, 4); }
     if (typeof raw.name === 'string') { base.name = raw.name.slice(0, 12); }
+    // A save written before ages moved into the team editor has no band; it
+    // keeps the default rather than being read as "no maths".
+    if (typeof raw.band === 'number' && isFinite(raw.band)) {
+      base.band = Math.max(0, Math.min(8, raw.band | 0));
+    }
     if (raw.maths && typeof raw.maths.difficulty === 'number' &&
         isFinite(raw.maths.difficulty)) {
       base.maths = {
@@ -123,7 +133,7 @@ var Store = (function () {
   }
 
   return {
-    KEY: KEY, SLOTS: SLOTS,
+    KEY: KEY, SLOTS: SLOTS, DEFAULT_BAND: DEFAULT_BAND,
     emptySlot: emptySlot, emptyState: emptyState,
     repair: repair, repairSlot: repairSlot,
     load: load, save: save,

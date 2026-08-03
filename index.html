@@ -11,21 +11,9 @@
   <div id="startScreen">
     <div id="startCard">
       <h1 id="startTitle">Flick Football Chaos</h1>
-      <p id="startSub">Pick your age</p>
       <div id="slotRow"></div>
       <div id="cupRow" title="Cup progress"></div>
       <div id="trophyShelf"></div>
-      <div id="startAges">
-        <button type="button" class="ageBtn" data-band="1">5</button>
-        <button type="button" class="ageBtn" data-band="2">6</button>
-        <button type="button" class="ageBtn" data-band="3">7</button>
-        <button type="button" class="ageBtn" data-band="4">8</button>
-        <button type="button" class="ageBtn" data-band="5">9</button>
-        <button type="button" class="ageBtn" data-band="6">10</button>
-        <button type="button" class="ageBtn" data-band="7">11</button>
-        <button type="button" class="ageBtn" data-band="8">12</button>
-        <button type="button" class="ageBtn" id="startNoMaths" data-band="0" title="No maths" aria-label="No maths">&#128683;</button>
-      </div>
       <button id="startPlay" type="button">&#9654; PLAY</button>
     </div>
   </div>
@@ -55,6 +43,18 @@
       <div id="teamCard">
         <div id="badgeGrid"></div>
         <input id="teamName" type="text" maxlength="12" placeholder="&#9917;" aria-label="Team name">
+        <div id="teamAges" title="Age">
+          <div class="rowIcon">&#127874;</div>
+          <button type="button" class="ageBtn" data-band="1">5</button>
+          <button type="button" class="ageBtn" data-band="2">6</button>
+          <button type="button" class="ageBtn" data-band="3">7</button>
+          <button type="button" class="ageBtn" data-band="4">8</button>
+          <button type="button" class="ageBtn" data-band="5">9</button>
+          <button type="button" class="ageBtn" data-band="6">10</button>
+          <button type="button" class="ageBtn" data-band="7">11</button>
+          <button type="button" class="ageBtn" data-band="8">12</button>
+          <button type="button" class="ageBtn" data-band="0" title="No maths" aria-label="No maths">&#128683;</button>
+        </div>
         <div id="teamButtons">
           <button id="teamDelete" type="button" aria-label="Delete team">&#128465;</button>
           <button id="teamOk" type="button">&#10004;</button>
@@ -62,9 +62,9 @@
       </div>
     </div>
 
-    <div id="roundCard" class="hidden">
-      <div id="roundVs"></div>
-      <div id="roundCrests"></div>
+    <div id="bracket" class="hidden">
+      <div id="bracketTitle">&#127942;</div>
+      <div id="bracketLadder"></div>
       <button id="roundGo" type="button">&#9654;</button>
     </div>
 

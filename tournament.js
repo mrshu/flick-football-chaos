@@ -11,15 +11,22 @@ var Tournament = (function () {
 
   var COUNT = 5;
 
-  // Each opponent is one colour plus one pattern, drawn from primitives. No
-  // names anywhere, so the cup reads the same in any language.
+  // Opponents are countries. Abstract shields told a child nothing; a flag is
+  // recognisable on sight and turns five arbitrary opponents into a World Cup
+  // run. Flags are emoji, so they still need no image assets.
+  //
+  // Ordered so the toughest reputations arrive last, matching the skill curve.
   var CRESTS = [
-    { fill: '#4ade80', ink: '#14532d', pattern: 'stripes' },
-    { fill: '#60a5fa', ink: '#1e3a8a', pattern: 'halves' },
-    { fill: '#c084fc', ink: '#4c1d95', pattern: 'sash' },
-    { fill: '#fb923c', ink: '#7c2d12', pattern: 'quarters' },
-    { fill: '#f87171', ink: '#7f1d1d', pattern: 'hoops' }
+    { flag: '\u{1F1EF}\u{1F1F5}', tint: '#f87171' },   // Japan
+    { flag: '\u{1F1F3}\u{1F1F1}', tint: '#fb923c' },   // Netherlands
+    { flag: '\u{1F1EA}\u{1F1F8}', tint: '#fbbf24' },   // Spain
+    { flag: '\u{1F1EB}\u{1F1F7}', tint: '#60a5fa' },   // France
+    { flag: '\u{1F1E7}\u{1F1F7}', tint: '#4ade80' }    // Brazil
   ];
+
+  // The five rounds of a knockout, so the cup has a shape a child recognises
+  // rather than being five interchangeable matches.
+  var ROUNDS = ['\u{1F3DF}', '\u{1F949}', '\u{1F948}', '\u{1F947}', '\u{1F3C6}'];
 
   // Rising, and deliberately capped below 1. The child cannot be given a
   // perfect opponent: with no dynamic mercy anywhere in the design, this curve
@@ -52,8 +59,10 @@ var Tournament = (function () {
     return cup.index === 0 && previousIndex === COUNT - 1;
   }
 
+  function roundIcon(i) { return ROUNDS[Math.max(0, Math.min(COUNT - 1, i))]; }
+
   return {
-    COUNT: COUNT, CRESTS: CRESTS, SKILL: SKILL,
+    COUNT: COUNT, CRESTS: CRESTS, SKILL: SKILL, ROUNDS: ROUNDS, roundIcon: roundIcon,
     skillFor: skillFor, crestFor: crestFor,
     recordResult: recordResult, isComplete: isComplete
   };

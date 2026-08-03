@@ -960,7 +960,8 @@ checkGenerators(8, true);   // band 8 alone may go negative
               { slots: [{ maths: { difficulty: 999 } }] },
               { slots: [{ unlocked: 'gold' }] },
               { slots: [{ stats: { correct: -5 } }] },
-              { slots: [{ trophies: -3 }] }, { slots: [{ trophies: 'lots' }] }];
+              { slots: [{ trophies: -3 }] }, { slots: [{ trophies: 'lots' }] },
+              { slots: [{ band: 99 }] }, { slots: [{ band: 'seven' }] }];
   junk.forEach(function (bad, i) {
     var r = Store.repair(bad);
     ok(r.slots.length === 3, 'repair yields three slots for junk input ' + i);
@@ -974,8 +975,17 @@ checkGenerators(8, true);   // band 8 alone may go negative
       ok(sl.maths === null || (isFinite(sl.maths.difficulty) &&
          sl.maths.difficulty >= 1 && sl.maths.difficulty <= 8),
          'difficulty is null or inside [1,8], input ' + i);
+      ok(sl.band >= 0 && sl.band <= 8, 'band is inside [0,8], input ' + i);
     });
   });
+
+  // A save written before ages moved into the team editor has no band. Reading
+  // that as 0 would silently switch maths off for every existing child.
+  eq(Store.repair({ slots: [{ emoji: '⚽' }] }).slots[0].band, Store.DEFAULT_BAND,
+     'a bandless legacy slot keeps the default rather than becoming no-maths');
+  eq(Store.repair({ slots: [{ band: 0 }] }).slots[0].band, 0,
+     'an explicit no-maths choice survives');
+  eq(Store.repair({ slots: [{ band: 6 }] }).slots[0].band, 6, 'a chosen band survives');
 
   // A slot round-trips, including an emoji and an empty name.
   var st = Store.emptyState();
