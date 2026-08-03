@@ -377,7 +377,10 @@ var Maths = (function () {
     var d = typeof startBand === 'number' ? startBand : 1;
     if (d < 1) { d = 1; }
     if (d > 8) { d = 8; }
-    return { difficulty: d, mastery: {}, fastStreak: 0, wrongStreak: 0 };
+    // `home` is the band an adult chose for this child, and it is the single
+    // most reliable thing the engine is ever told. Acceleration is allowed to
+    // roam a few bands either side of it and no further; see update().
+    return { difficulty: d, home: d, mastery: {}, fastStreak: 0, wrongStreak: 0 };
   }
 
   function pickBand(difficulty, rand) {
@@ -452,17 +455,63 @@ var Maths = (function () {
   // several bands above their level, and the plain -0.300 step would take
   // many demoralising failures to climb back down from there, at whatever
   // band that turns out to be.
-  var ACCEL_TRIGGER = 3;
+  // A climb has to be earned over more answers than a fall. The asymmetry is
+  // deliberate: being stuck too high means sitting through questions you
+  // cannot read, and a wrong answer costing nothing in the game does not make
+  // it free — it costs a bonus, a turn's attention, and some of a child's
+  // willingness to keep trying.
+  //
+  // Doubting on the third wrong rather than the fourth gets a stranded child
+  // home one question sooner. Doubting on the second was tried and moved the
+  // settled accuracy from 81% to 84%: eager descent is itself a bias, and it
+  // parks children on easier questions than the 80% target intends.
+  var ACCEL_TRIGGER_UP = 3;
+  var ACCEL_TRIGGER_DOWN = 2;
   var ACCEL_UP_YOUNG = 0.45;
   var ACCEL_UP_OLD_RATIO = 0.35;
   var ACCEL_DOWN = 0.45;
-  var ACCEL_CAP = 1.2;
 
-  function accelExtra(streak, unit) {
+  // The two directions are capped separately, and deliberately unequally.
+  //
+  // A shared cap of 1.2 let a run of ten fast-correct answers carry a child
+  // from band 1 to band 8 — counting footballs to solving equations — with
+  // single steps of 1.3 bands near the end. At band 1 there are only two
+  // answers to choose from, so a few of those "correct" answers can be luck,
+  // and the child who gets flung there then needed seven wrong answers in a
+  // row to climb back down. Seven failures is not a correction, it is a
+  // reason to stop playing.
+  //
+  // Capping the climb at 0.40 holds the largest up-step to half a band, so an
+  // unbroken hot streak still clears two bands in about seven answers — fast
+  // enough for the child who has plainly outgrown their level — but crossing
+  // the whole scale takes a sustained run rather than one lucky afternoon.
+  // The fall keeps the old cap: an overshoot has to be cheaper to undo than
+  // it was to make.
+  var ACCEL_CAP_UP = 0.25;
+  var ACCEL_CAP_DOWN = 1.2;
+
+  // How far from the chosen band acceleration is willing to travel. Two years
+  // was the brief ("do not hesitate to make them jump even two and more
+  // years"); three is that, with room. Past it a child still climbs, at the
+  // ordinary +0.100 a fast-correct answer earns — which takes a sustained run
+  // across sessions rather than one lucky afternoon. Being genuinely four
+  // years ahead of your age is rare enough to be worth proving slowly.
+  var ACCEL_REACH = 3;
+
+  // A correct answer is weaker evidence when there were fewer wrong answers to
+  // avoid. At the bottom of the scale only two choices are offered, so half of
+  // those "correct" answers are a coin landing the right way up: four lucky
+  // taps is a 1-in-16 event, and that used to be enough to arm the
+  // accelerator. Weighting the streak by 1 - 1/choices means a child on
+  // two-choice questions needs six good answers to start climbing fast, and a
+  // child on four-choice questions needs four.
+  function evidence(choices) { return 1 - 1 / choices; }
+
+  function accelExtra(streak, unit, cap, trigger) {
     var extra;
-    if (streak <= ACCEL_TRIGGER) { return 0; }
-    extra = unit * (streak - ACCEL_TRIGGER);
-    return extra > ACCEL_CAP ? ACCEL_CAP : extra;
+    if (streak <= trigger) { return 0; }
+    extra = unit * (streak - trigger);
+    return extra > cap ? cap : extra;
   }
 
   function expectedMs(band) { return 2500 + 900 * band; }
@@ -470,12 +519,21 @@ var Maths = (function () {
   function update(state, outcome) {
     var d = state.difficulty, step, exp = expectedMs(outcome.band);
     var fastStreak = state.fastStreak || 0, wrongStreak = state.wrongStreak || 0;
+    var home = typeof state.home === 'number' ? state.home : d;
+    // Beyond a few bands from where an adult placed them, the climb loses its
+    // accelerator. A hard ceiling would be wrong — advanced children and
+    // mis-set ages are both real — so this only slows the ascent, it does not
+    // stop it.
+    var mayAccelerate = d <= home + ACCEL_REACH;
     if (outcome.correct) {
       if (outcome.elapsedMs < exp * 0.6) {
-        fastStreak += 1;
+        // The streak counts evidence, not answers: a two-choice question is
+        // worth half of a four-choice one.
+        fastStreak += evidence(choiceCount(d));
         wrongStreak = 0;
-        step = UP_FAST + accelExtra(fastStreak,
-          d <= 4 ? ACCEL_UP_YOUNG : ACCEL_UP_YOUNG * ACCEL_UP_OLD_RATIO);
+        step = UP_FAST + (mayAccelerate ? accelExtra(fastStreak,
+          d <= 4 ? ACCEL_UP_YOUNG : ACCEL_UP_YOUNG * ACCEL_UP_OLD_RATIO,
+          ACCEL_CAP_UP, ACCEL_TRIGGER_UP) : 0);
       } else {
         fastStreak = 0;
         wrongStreak = 0;
@@ -484,7 +542,10 @@ var Maths = (function () {
     } else {
       fastStreak = 0;
       wrongStreak += 1;
-      step = -DOWN - accelExtra(wrongStreak, ACCEL_DOWN);
+      // Falling is never gated by reach: a child who has ended up too high
+      // must be able to get back down from wherever that is.
+      step = -DOWN - accelExtra(wrongStreak, ACCEL_DOWN, ACCEL_CAP_DOWN,
+                                ACCEL_TRIGGER_DOWN);
     }
     d += step;
     if (d < 1) { d = 1; }
@@ -500,7 +561,8 @@ var Maths = (function () {
     mastery[outcome.skill] =
       prev + MASTERY_ALPHA * ((outcome.correct ? 1 : 0) - prev);
 
-    return { difficulty: d, mastery: mastery, fastStreak: fastStreak, wrongStreak: wrongStreak };
+    return { difficulty: d, home: home, mastery: mastery,
+             fastStreak: fastStreak, wrongStreak: wrongStreak };
   }
 
   return {

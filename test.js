@@ -442,30 +442,85 @@ checkGenerators(8, true);   // band 8 alone may go negative
 })();
 
 // ---- Task 9b: adaptive acceleration ----
-// A misplaced child answering many fast-correct answers in a row is
-// obviously beyond their current band and should climb several bands in a
-// handful of questions, not dozens (owner instruction: "do not hesitate to
-// make them jump even two and more years"). The symmetric safeguard is a
-// child who overshoots and gets stranded too high: a run of wrong answers
-// must fall back quickly rather than grind out of it one -0.300 step at a
-// time.
+// A misplaced child answering many fast-correct answers in a row is beyond
+// their current band and should climb without grinding through dozens of
+// questions (owner instruction: "do not hesitate to make them jump even two
+// and more years"). But the climb needs a ceiling as much as a floor: with
+// only a lower bound asserted here, ten fast-correct answers used to carry a
+// five-year-old from counting footballs to solving equations, in steps of up
+// to 1.3 bands, on questions that offer two choices and are therefore half
+// guessable. Both ends are bounded below.
+//
+// The symmetric safeguard is a child who overshoots and gets stranded too
+// high: a run of wrong answers must fall back without a long march of -0.300
+// steps.
 (function () {
   function outcome(correct, ms, band, skill) {
     return { correct: correct, elapsedMs: ms, band: band || 1, skill: skill || 'x' };
   }
 
-  // Misplaced-child scenario: a run of fast-correct answers from band 1
-  // reaches roughly band 4-5 within about 6 answers. Assert a real lower
-  // bound, not merely that difficulty increased.
+  // Misplaced-child scenario, both ends. A perfect fast run from band 1 must
+  // clear two bands within a dozen answers — and must not have reached the top
+  // of the scale in that time.
   (function () {
-    var s = Maths.newState(1), i;
-    for (i = 0; i < 6; i++) { s = Maths.update(s, outcome(true, 1)); }
-    ok(s.difficulty >= 4.0,
-       'six fast-correct answers from band 1 reach at least band 4.0 (got ' +
+    var s = Maths.newState(1), i, at, prev, maxStep = 0, hit8 = -1;
+    for (i = 0; i < 40; i++) {
+      at = Math.round(s.difficulty);
+      prev = s.difficulty;
+      s = Maths.update(s, outcome(true, 1, at));
+      if (s.difficulty - prev > maxStep) { maxStep = s.difficulty - prev; }
+      if (hit8 < 0 && s.difficulty >= 8) { hit8 = i + 1; }
+      if (i === 11) {
+        ok(s.difficulty >= 3.0,
+           'twelve fast-correct answers from band 1 clear two bands (got ' +
+           s.difficulty.toFixed(3) + ')');
+        ok(s.difficulty <= 4.5,
+           'and do not carry a five-year-old most of the way up the scale (got ' +
+           s.difficulty.toFixed(3) + ')');
+      }
+    }
+    ok(maxStep <= 0.40,
+       'no single answer moves a child half a band or more (largest was ' +
+       maxStep.toFixed(3) + ')');
+    ok(hit8 < 0,
+       'a perfect 40-answer run from band 1 does not reach band 8' +
+       (hit8 < 0 ? '' : ' (reached it after ' + hit8 + ')'));
+  })();
+
+  // Acceleration is bounded by the band an adult chose, not by the band the
+  // child has drifted to: past `home + reach` a fast-correct answer is worth
+  // the plain UP_FAST step. Without this, one hot streak compounds into the
+  // next and the reach never binds.
+  (function () {
+    // 30 answers puts them well past the reach (home 1 + 3 = 4) while staying
+    // clear of the ceiling at 8, where every step would read as zero.
+    var s = Maths.newState(1), i, prev;
+    for (i = 0; i < 30; i++) { s = Maths.update(s, outcome(true, 1, Math.round(s.difficulty))); }
+    ok(s.difficulty > 4 && s.difficulty < 8,
+       'a sustained perfect run climbs past the accelerated reach (got ' +
        s.difficulty.toFixed(3) + ')');
-    ok(s.difficulty <= 6.0,
-       'acceleration does not blow straight past the target band (got ' +
-       s.difficulty.toFixed(3) + ')');
+    prev = s.difficulty;
+    s = Maths.update(s, outcome(true, 1, Math.round(s.difficulty)));
+    eq(Number((s.difficulty - prev).toFixed(6)), 0.100,
+       'beyond the reach, even a long fast run steps by the plain UP_FAST');
+  })();
+
+  // A two-choice question is half guessable, so it must not buy a full share
+  // of a fast-correct streak. Four lucky taps at band 1 used to be enough to
+  // arm the accelerator; it now takes six.
+  (function () {
+    var s = Maths.newState(1), i, prev, firstAccelerated = -1;
+    eq(Maths.choiceCount(1), 2, 'band 1 offers two choices');
+    for (i = 0; i < 8; i++) {
+      prev = s.difficulty;
+      s = Maths.update(s, outcome(true, 1, 1));
+      if (firstAccelerated < 0 && s.difficulty - prev > 0.100 + 1e-9) {
+        firstAccelerated = i + 1;
+      }
+    }
+    ok(firstAccelerated >= 6,
+       'two-choice answers need six in a row before accelerating (first was ' +
+       firstAccelerated + ')');
   })();
 
   // Slow-but-correct answers must NOT accelerate: a long run climbs at the
@@ -485,8 +540,13 @@ checkGenerators(8, true);   // band 8 alone may go negative
   // accelerated one.
   (function () {
     var s = Maths.newState(1), i, before;
-    for (i = 0; i < 4; i++) { s = Maths.update(s, outcome(true, 1)); }
-    ok(s.fastStreak === 4, 'fast streak counts consecutive fast-correct answers');
+    // Weighted by evidence, not answers. Three answers is as far as this can
+    // go while every one of them is still a two-choice question: difficulty
+    // 1.3 offers three choices, and the weight would change mid-count.
+    for (i = 0; i < 3; i++) { s = Maths.update(s, outcome(true, 1)); }
+    eq(Maths.choiceCount(s.difficulty - 0.1), 2, 'those three were two-choice questions');
+    eq(s.fastStreak, 1.5, 'three two-choice answers are worth 3 x (1 - 1/2)');
+    s = Maths.update(s, outcome(true, 1));
     s = Maths.update(s, outcome(false, 1));
     eq(s.fastStreak, 0, 'a wrong answer resets the fast-correct run');
     before = s.difficulty;
@@ -498,10 +558,10 @@ checkGenerators(8, true);   // band 8 alone may go negative
   // Descent safeguard: a child stranded high who answers several wrong in a
   // row must fall back quickly, not merely fall.
   (function () {
-    var s = { difficulty: 7, mastery: {}, fastStreak: 0, wrongStreak: 0 }, i;
+    var s = { difficulty: 7, home: 7, mastery: {}, fastStreak: 0, wrongStreak: 0 }, i;
     for (i = 0; i < 5; i++) { s = Maths.update(s, outcome(false, 9000, 7)); }
-    ok(s.difficulty <= 4.5,
-       'five consecutive wrong answers from band 7 fall back to 4.5 or below (got ' +
+    ok(s.difficulty <= 4.0,
+       'five consecutive wrong answers from band 7 fall back to 4.0 or below (got ' +
        s.difficulty.toFixed(3) + ')');
     ok(s.wrongStreak === 5, 'wrong streak counts consecutive wrong answers');
   })();
@@ -1014,6 +1074,16 @@ checkGenerators(8, true);   // band 8 alone may go negative
   eq(back.slots[1].emoji, st.slots[1].emoji, 'emoji survives a round trip');
   eq(back.slots[1].name, '', 'an empty name stays empty');
   eq(back.slots[1].maths.difficulty, 4.25, 'difficulty survives');
+
+  // `home` bounds how far acceleration may carry a child, so it has to survive
+  // a reload; a save written before it existed falls back to where it sits.
+  st.slots[1].maths.home = 2;
+  eq(Store.repair(JSON.parse(JSON.stringify(st))).slots[1].maths.home, 2, 'home survives');
+  eq(Store.repairSlot({ maths: { difficulty: 5.5, mastery: {} } }).maths.home, 5.5,
+     'a save predating home falls back to its own difficulty');
+  eq(Store.repairSlot({ maths: { difficulty: 3, home: 99 } }).maths.home, 8, 'home is clamped');
+  eq(Store.repairSlot({ maths: { difficulty: 3, home: 'x' } }).maths.home, 3,
+     'a junk home falls back rather than poisoning the reach');
   eq(back.slots[1].trophies, 2, 'trophies survive');
 
   // Slots are isolated: siblings must not drag each other's difficulty around.

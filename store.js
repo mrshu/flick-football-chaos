@@ -74,6 +74,13 @@ var Store = (function () {
         isFinite(raw.maths.difficulty)) {
       base.maths = {
         difficulty: Math.min(8, Math.max(1, raw.maths.difficulty)),
+        // The band an adult chose. It bounds how far a hot streak may carry a
+        // child, so losing it on reload would quietly let the reach drift up
+        // with them, one session at a time. A save from before this existed
+        // falls back to the band it is sitting at.
+        home: Math.min(8, Math.max(1,
+          (typeof raw.maths.home === 'number' && isFinite(raw.maths.home))
+            ? raw.maths.home : raw.maths.difficulty)),
         mastery: (raw.maths.mastery && typeof raw.maths.mastery === 'object') ? raw.maths.mastery : {}
       };
     }
