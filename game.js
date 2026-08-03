@@ -847,23 +847,37 @@ function drawPlayer(p, t) {
 // (neither team's blue/red) with an outer ring, so it reads as "the keeper"
 // at a glance without any label - and is never mistaken for a draggable
 // blue player.
+// Both keepers used to be the same gold, so a child could not tell which one
+// was theirs. Each now wears a keeper kit tinted to its own side, while the
+// outer ring stays the shared shape language that says "this is a keeper".
+const KEEPER_KIT = {
+  human: { body: '#14b8a6', edge: '#0f766e', ring: '#7db4ff' },
+  ai:    { body: '#f59e0b', edge: '#b45309', ring: '#ff9e9e' },
+};
+
 function drawKeeper(p) {
+  const kit = KEEPER_KIT[p.team] || KEEPER_KIT.human;
+
   ctx.beginPath();
   ctx.ellipse(p.x + 3, p.y + 4, p.r, p.r * 0.92, 0, 0, 6.29);
   ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fill();
 
   ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.29);
-  ctx.fillStyle = '#eab308'; ctx.fill();
+  ctx.fillStyle = kit.body; ctx.fill();
   ctx.lineWidth = 3.5;
-  ctx.strokeStyle = '#854d0e'; ctx.stroke();
+  ctx.strokeStyle = kit.edge; ctx.stroke();
 
   ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 0.45, 0, 6.29);
   ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fill();
   ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 0.45, 0, 6.29);
-  ctx.lineWidth = 2; ctx.strokeStyle = '#854d0e'; ctx.stroke();
+  ctx.lineWidth = 2; ctx.strokeStyle = kit.edge; ctx.stroke();
 
-  ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 6, 0, 6.29);
-  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.stroke();
+  // The gloves: two small arcs either side, so a keeper reads as a keeper even
+  // in a still frame, not just by its colour.
+  ctx.lineWidth = 3.5;
+  ctx.strokeStyle = kit.ring;
+  ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 6, Math.PI * 0.62, Math.PI * 1.38); ctx.stroke();
+  ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 6, Math.PI * 1.62, Math.PI * 0.38); ctx.stroke();
 }
 
 function drawBall(b) {
