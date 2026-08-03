@@ -111,9 +111,28 @@ var Formation = (function () {
     return best;
   }
 
+  // Pure step function for the goalkeepers (playtester defect 3): slide a
+  // keeper's x toward the ball's x by at most maxStep, then clamp to the
+  // patrol range. Capping the step (rather than snapping straight to the
+  // target) is what makes the keeper lag instead of teleporting, and the
+  // clamp is what keeps it from wandering out of its own goal mouth. Kept
+  // here, not in game.js, purely so `node test.js` can exercise it without
+  // a DOM - game.js supplies the real bounds (goal-mouth-derived) and calls
+  // this once per turn, never mid-flight.
+  function keeperStep(x, targetX, maxStep, minX, maxX) {
+    var dx = targetX - x;
+    if (dx > maxStep) { dx = maxStep; }
+    else if (dx < -maxStep) { dx = -maxStep; }
+    var next = x + dx;
+    if (next < minX) { next = minX; }
+    else if (next > maxX) { next = maxX; }
+    return next;
+  }
+
   return {
     make: make,
     chooseShooter: chooseShooter,
+    keeperStep: keeperStep,
     // Geometry exposed so tests can check placement without duplicating
     // (and risking drift from) these numbers.
     W: W, H: H, SIDE_L: SIDE_L, SIDE_R: SIDE_R, TOP_Y: TOP_Y, BOT_Y: BOT_Y,

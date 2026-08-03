@@ -861,4 +861,46 @@ checkGenerators(8, true);   // band 8 alone may go negative
   ok(Formation.chooseShooter([only], ball, 828) === only, 'a single player is always chosen');
 })();
 
+// ---- Task 14: goalkeeper step function (playtester defect 3) ----
+// game.js owns the keeper's actual bounds (goal-mouth-derived) and calls
+// Formation.keeperStep once per turn; it can't be loaded here (it touches
+// the DOM at import time), so what's testable from node is this pure
+// stepping/clamping rule, which is the part that actually keeps a keeper
+// inside its own goal mouth and stops it teleporting onto the ball's exact
+// x. Drag-immunity (keepers live outside game.players, which is the only
+// array pointerdown and pickAiPlayer scan) is a game.js/DOM property and is
+// checked by hand in the browser instead - see the playtest notes.
+(function () {
+  var rand = makeRng(2026), i, x, target, maxStep, minX, maxX, next;
+
+  // Never exceeds the goal mouth, whatever the inputs.
+  for (i = 0; i < 10; i++) {
+    minX = 220 + rand() * 20;       // e.g. a MOUTH_L-derived bound
+    maxX = minX + 60 + rand() * 60; // always > minX
+    x = minX + rand() * (maxX - minX);
+    target = -50 + rand() * 700;    // may fall well outside the mouth
+    maxStep = 1 + rand() * 150;
+    next = Formation.keeperStep(x, target, maxStep, minX, maxX);
+    ok(next >= minX - 1e-9 && next <= maxX + 1e-9, 'keeper step stays within its goal mouth');
+  }
+
+  // Capped speed: never moves more than maxStep in one call, so it lags
+  // rather than snapping straight to the ball.
+  eq(Formation.keeperStep(200, 500, 70, 100, 400), 270, 'keeper step is capped at maxStep toward the target');
+  eq(Formation.keeperStep(200, 210, 70, 100, 400), 210, 'keeper step does not overshoot a close target');
+  eq(Formation.keeperStep(500, 100, 70, 100, 400), 400, 'keeper step clamps even when the capped move would land outside the mouth');
+
+  // Repeated calls converge on the target without oscillating past it.
+  (function () {
+    var pos = 220, tgt = 380, prevDist = Math.abs(tgt - pos), dist, k;
+    for (k = 0; k < 8; k++) {
+      pos = Formation.keeperStep(pos, tgt, 70, 220, 380);
+      dist = Math.abs(tgt - pos);
+      ok(dist <= prevDist, 'keeper step never moves further from a fixed target');
+      prevDist = dist;
+    }
+    eq(pos, tgt, 'keeper step reaches a reachable target after enough turns');
+  })();
+})();
+
 done();

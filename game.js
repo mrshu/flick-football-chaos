@@ -6,16 +6,38 @@ const W = 600, H = 900;
 const SIDE_L = 22, SIDE_R = W - 22;          // side walls
 const TOP_Y = 72, BOT_Y = H - 72;            // goal lines
 const BACK_TOP = 18, BACK_BOT = H - 18;      // back of the nets
-const MOUTH_HALF = 100;
+// Narrowed from 100 (playtester defect: a 200-wide mouth is 36% of the
+// pitch and made direct shots too forgiving). 80 keeps a generous target
+// for a five-year-old while giving the keeper a mouth it can meaningfully
+// cover without spanning it end to end.
+const MOUTH_HALF = 80;
 const MOUTH_L = W / 2 - MOUTH_HALF, MOUTH_R = W / 2 + MOUTH_HALF;
 
 const PLAYER_R = 26, BALL_R = 13, POST_R = 7;
 const BASE_FRICTION = 0.982, SLIPPERY_FRICTION = 0.992; // per 1/60 s
-const WALL_REST = 0.8, BODY_REST = 0.9;
+// WALL_REST lowered from 0.8 (playtester defect: a side-wall ricochet kept
+// 80% of its speed and regularly funnelled wildly-mis-aimed shots into the
+// goal). 0.6 was tuned against the measurement harness in the plan doc - it
+// kills the wall-bounce-then-score pattern without making the side walls
+// feel dead for ordinary play. BODY_REST (player/ball hits) is untouched -
+// the flick must stay springy.
+const WALL_REST = 0.6, BODY_REST = 0.9;
 const MAX_DRAG = 170, MAX_LAUNCH = 1500, SPEED_CAP = 2100;
 const STOP_SPEED = 13, MAX_MOVE_TIME = 9;
 const WIN_SCORE = 3;
 const STEP = 1 / 120;
+
+// ---- goalkeepers (playtester defect: direct shots scored too easily) ----
+// One extra, unflickable body per side. It moves only horizontally, along
+// its own goal mouth, sliding toward the ball's x between turns (never
+// mid-flight) at a capped speed so it lags rather than snaps to cover a
+// shot. It is a plain physics body (BODY_REST applies via the normal
+// collideCircles path) but invM 0, like the goalposts, so the ball bounces
+// off it without ever knocking it out of position.
+const KEEPER_R = PLAYER_R;
+const KEEPER_Y_INSET = 26; // how far in front of its own goal line it stands
+const KEEPER_MAX_STEP = 70; // per-turn cap - the lag that keeps it beatable
+const KEEPER_MIN_X = MOUTH_L + KEEPER_R, KEEPER_MAX_X = MOUTH_R - KEEPER_R;
 
 /* ---------- DOM ---------- */
 const canvas = document.getElementById('game');
@@ -113,7 +135,7 @@ const MODIFIERS = {
 };
 
 const game = {
-  players: [], ball: null, posts: [],
+  players: [], ball: null, posts: [], keepers: [],
   state: 'START', // START | HUMAN_QUESTION | HUMAN_AIM | MOVING | AI_WAIT | GOAL_PAUSE | OVER
   turn: 'human', mover: 'human',
   maths: null, mathsOn: true, startBand: 3,
@@ -138,9 +160,20 @@ function init() {
     }
   }
   game.ball = { x: W / 2, y: H / 2, vx: 0, vy: 0, r: BALL_R, invM: 1, team: null, home: [W / 2, H / 2] };
+  // Kept out of game.players on purpose: that array is what pointerdown
+  // scans for a draggable human player and what pickAiPlayer scans for a
+  // CPU shooter, so keeping keepers separate is what makes them unflickable
+  // and un-choosable as a shooter, with no extra "is this a keeper" guard
+  // needed at either call site.
+  game.keepers = [
+    { x: W / 2, y: TOP_Y + KEEPER_Y_INSET, vx: 0, vy: 0, r: KEEPER_R, invM: 0,
+      team: 'ai', keeper: true, home: [W / 2, TOP_Y + KEEPER_Y_INSET] },
+    { x: W / 2, y: BOT_Y - KEEPER_Y_INSET, vx: 0, vy: 0, r: KEEPER_R, invM: 0,
+      team: 'human', keeper: true, home: [W / 2, BOT_Y - KEEPER_Y_INSET] },
+  ];
 }
 
-const movers = () => [...game.players, game.ball];
+const movers = () => [...game.players, ...game.keepers, game.ball];
 const opp = t => (t === 'human' ? 'ai' : 'human');
 
 // A fresh random formation (mirrored, exploit-free per Formation.make) is
@@ -238,8 +271,21 @@ function finishQuestion(correct) {
   setTurnMsg('Your turn — drag a blue player', 'human');
 }
 
+/* ---------- goalkeepers ---------- */
+// Repositioned once per turn setup (never mid-flight, never as part of
+// either side's move) so it can never cost the CPU its turn. Both keepers
+// track the same ball x regardless of whose turn is starting - real
+// keepers do not stop watching the ball when it is the other side's turn.
+function updateKeepers() {
+  const targetX = game.ball.x;
+  for (const k of game.keepers) {
+    k.x = Formation.keeperStep(k.x, targetX, KEEPER_MAX_STEP, KEEPER_MIN_X, KEEPER_MAX_X);
+  }
+}
+
 /* ---------- turn flow ---------- */
 function startTurn(team) {
+  updateKeepers();
   game.turn = team;
   game.turnCount++;
   game.sinceChaos++;
@@ -611,6 +657,29 @@ function drawPlayer(p, t) {
   }
 }
 
+// Goalkeeper: same silhouette as an outfield player but in its own colour
+// (neither team's blue/red) with an outer ring, so it reads as "the keeper"
+// at a glance without any label - and is never mistaken for a draggable
+// blue player.
+function drawKeeper(p) {
+  ctx.beginPath();
+  ctx.ellipse(p.x + 3, p.y + 4, p.r, p.r * 0.92, 0, 0, 6.29);
+  ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fill();
+
+  ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.29);
+  ctx.fillStyle = '#eab308'; ctx.fill();
+  ctx.lineWidth = 3.5;
+  ctx.strokeStyle = '#854d0e'; ctx.stroke();
+
+  ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 0.45, 0, 6.29);
+  ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 0.45, 0, 6.29);
+  ctx.lineWidth = 2; ctx.strokeStyle = '#854d0e'; ctx.stroke();
+
+  ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 6, 0, 6.29);
+  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.stroke();
+}
+
 function drawBall(b) {
   ctx.beginPath();
   ctx.ellipse(b.x + 2, b.y + 3, b.r, b.r * 0.92, 0, 0, 6.29);
@@ -692,6 +761,7 @@ function drawParticles() {
 function draw(t) {
   ctx.clearRect(0, 0, W, H);
   drawPitch();
+  for (const k of game.keepers) drawKeeper(k);
   for (const p of game.players) drawPlayer(p, t);
   drawBall(game.ball);
   drawAim();
