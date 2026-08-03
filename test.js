@@ -945,4 +945,53 @@ checkGenerators(8, true);   // band 8 alone may go negative
   }
 })();
 
+// ---- Storage: a corrupt save must never brick the game ----
+(function () {
+  var Store = require('./store.js');
+
+  var fresh = Store.emptyState();
+  eq(fresh.slots.length, 3, 'three slots');
+  eq(fresh.active, 0, 'first slot active by default');
+
+  // Every one of these has bricked a game somewhere. None may throw.
+  var junk = [null, undefined, 0, 'not json', [], {}, { slots: 'nope' },
+              { slots: [null, 5, 'x'] }, { active: 99, slots: [] },
+              { slots: [{ maths: { difficulty: NaN } }] },
+              { slots: [{ maths: { difficulty: 999 } }] },
+              { slots: [{ unlocked: 'gold' }] },
+              { slots: [{ stats: { correct: -5 } }] }];
+  junk.forEach(function (bad, i) {
+    var r = Store.repair(bad);
+    ok(r.slots.length === 3, 'repair yields three slots for junk input ' + i);
+    ok(r.active >= 0 && r.active <= 2, 'repair yields a valid active slot for input ' + i);
+    r.slots.forEach(function (sl) {
+      ok(Object.prototype.toString.call(sl.unlocked) === '[object Array]',
+         'unlocked is always an array, input ' + i);
+      ok(sl.stats.correct >= 0, 'counters never negative, input ' + i);
+      ok(sl.maths === null || (isFinite(sl.maths.difficulty) &&
+         sl.maths.difficulty >= 1 && sl.maths.difficulty <= 8),
+         'difficulty is null or inside [1,8], input ' + i);
+    });
+  });
+
+  // A slot round-trips, including an emoji and an empty name.
+  var st = Store.emptyState();
+  st.slots[1].emoji = '\uD83E\uDD81'; st.slots[1].name = '';
+  st.slots[1].maths = { difficulty: 4.25, mastery: { mul: 0.7 } };
+  st.slots[1].trophies = 2;
+  var back = Store.repair(JSON.parse(JSON.stringify(st)));
+  eq(back.slots[1].emoji, st.slots[1].emoji, 'emoji survives a round trip');
+  eq(back.slots[1].name, '', 'an empty name stays empty');
+  eq(back.slots[1].maths.difficulty, 4.25, 'difficulty survives');
+  eq(back.slots[1].trophies, 2, 'trophies survive');
+
+  // Slots are isolated: siblings must not drag each other's difficulty around.
+  st = Store.emptyState();
+  st.slots[0].maths = { difficulty: 2, mastery: {} };
+  st.slots[2].maths = { difficulty: 7, mastery: {} };
+  Store.clearSlot(st, 0);
+  eq(st.slots[0].maths, null, 'clearing a slot empties it');
+  eq(st.slots[2].maths.difficulty, 7, 'clearing one slot leaves the others alone');
+})();
+
 done();
