@@ -578,6 +578,9 @@ function gameOver(winner) {
   game.state = 'OVER';
   overTitle.textContent = winner === 'human' ? 'You Win! \u{1F3C6}' : 'CPU Wins \u{1F916}';
   overSub.textContent = `Final score ${game.score.human} – ${game.score.ai}`;
+  // The button does different things per mode, so it should not promise the
+  // same one: in the cup it goes to the next round, in a friendly it finishes.
+  el('again').textContent = game.mode === 'cup' ? 'Next round' : 'Finish';
   overlay.classList.remove('hidden');
   setTurnMsg(winner === 'human' ? 'Champion!' : 'Better luck next time!', winner);
   SFX.win(winner === 'human');
@@ -885,6 +888,11 @@ el('again').addEventListener('click', () => {
     // place. From there the button goes home, not into the next season.
     showBracket(game.wonCup ? Tournament.COUNT : undefined);
     game.wonCup = false;
+  } else if (game.slot && game.slot.emoji) {
+    // A friendly finishes: show what it added to the record, then go home.
+    // Kicking straight into another match made the result meaningless — there
+    // was nothing between one game and the next.
+    showStats(true);
   } else {
     restart();
   }
@@ -949,21 +957,38 @@ function paintSlots() {
       who.className = 'who'; who.textContent = slot.name;
       card.appendChild(who);
     }
-    if (slot.emoji) {
-      var pen = document.createElement('div');
-      pen.className = 'pencil'; pen.textContent = '\u270E';
-      card.appendChild(pen);
-    }
-    card.addEventListener('click', function () {
-      // Selecting an empty slot goes straight to making a team; selecting the
-      // one already active means the child wants to change it.
-      var was = game.save.active, wasActive = (was === i);
+    // Select this slot, and say where to go back to if the editor is cancelled.
+    function choose() {
+      var was = game.save.active;
       game.save.active = i;
       game.slot = Store.activeSlot(game.save);
       persist();
-      // Backing out of a slot the child only opened to look at must not leave
-      // that slot selected, so the editor is told where to return to.
-      if (!game.slot.emoji || wasActive) { openTeamEditor(was); }
+      return was;
+    }
+
+    if (slot.emoji) {
+      // A real button, not a decoration. Editing used to need a second click on
+      // an already-selected card, which is a gesture nothing on screen taught
+      // and which does nothing at all the first time you try it.
+      var pen = document.createElement('button');
+      pen.type = 'button';
+      pen.className = 'pencil';
+      pen.textContent = '\u270E';
+      pen.setAttribute('aria-label', 'Edit team');
+      pen.addEventListener('click', function (e) {
+        e.stopPropagation();       // editing is not also "just select this"
+        var was = choose();
+        refreshStart();
+        openTeamEditor(was);
+        SFX.select();
+      });
+      card.appendChild(pen);
+    }
+    card.addEventListener('click', function () {
+      // Tapping a card only ever picks that team. An empty one has no team to
+      // pick, so it goes straight to making one.
+      var was = choose();
+      if (!game.slot.emoji) { openTeamEditor(was); }
       refreshStart();
       SFX.select();
     });
@@ -1178,9 +1203,15 @@ function fmtTime(ms) {
   return Math.floor(mins / 60) + ':' + ('0' + (mins % 60)).slice(-2);
 }
 
-function showStats() {
+// Where the stats panel's close button leads. From the menu it just closes;
+// after a friendly it carries on home, so the match ends somewhere rather than
+// dropping the child back on a dead pitch.
+var statsThenHome = false;
+
+function showStats(thenHome) {
   var grid = el('statsGrid'), s = game.slot && game.slot.stats;
   if (!s) { return; }
+  statsThenHome = !!thenHome;
   var pct = s.answered ? Math.round(s.correct * 100 / s.answered) : 0;
   var rows = [
     ['⏱', 'Time played', fmtTime(s.ms)],
@@ -1215,6 +1246,7 @@ el('startStats').addEventListener('click', function () {
 el('statsClose').addEventListener('click', function () {
   SFX.select();
   el('statsPanel').classList.add('hidden');
+  if (statsThenHome) { statsThenHome = false; goHome(); }
 });
 
 // Wire the age row inside the team editor. Returns the band it starts on and
