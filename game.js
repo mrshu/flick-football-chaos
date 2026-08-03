@@ -154,6 +154,7 @@ const game = {
   state: 'START', // START | HUMAN_QUESTION | HUMAN_AIM | MOVING | AI_WAIT | AI_SAVE_QUESTION | GOAL_PAUSE | OVER
   turn: 'human', mover: 'human',
   maths: null, mathsOn: true, startBand: 3,
+  mode: 'single',   // 'single' | 'cup' — only the cup advances the draw
   turnCount: 0, sinceChaos: 0, modifier: null,
   friction: BASE_FRICTION, powerMult: 1,
   pendingPrize: null,
@@ -211,6 +212,9 @@ function resetPositions() {
 }
 
 function restart() {
+  // Time on a pitch, measured from kickoff to full time. Wall-clock from the
+  // start screen would count a tablet left face-up on a sofa as practice.
+  game.kickoffAt = Date.now();
   game.score.human = game.score.ai = 0;
   game.turnCount = 0;
   game.sinceChaos = 0;
@@ -465,6 +469,11 @@ function goalScored(scorer) {
   game.trail.length = 0;
   game.score[scorer]++;
   game.lastScorer = scorer;
+  // Counted for every goal in every mode: the record is of what the child did,
+  // not of what the cup made of it.
+  if (game.slot) {
+    game.slot.stats[scorer === 'human' ? 'goalsFor' : 'goalsAgainst'] += 1;
+  }
   updateScore();
   goalFlash.textContent = scorer === 'human' ? 'GOAL!' : 'CPU SCORES!';
   goalFlash.classList.remove('hidden');
@@ -489,6 +498,15 @@ function afterGoal() {
 function gameOver(winner) {
   var trophyWon = false;
   if (game.slot) {
+    game.slot.stats.matches += 1;
+    if (winner === 'human') { game.slot.stats.wins += 1; }
+    if (game.kickoffAt) { game.slot.stats.ms += Date.now() - game.kickoffAt; }
+    game.kickoffAt = 0;
+  }
+  // A single match is a friendly: it costs nothing and wins nothing. Only the
+  // cup moves the draw on, or a child could lose their place in it by asking
+  // for a kickabout.
+  if (game.slot && game.mode === 'cup') {
     const before = game.slot.cup.index;
     game.slot.cup = Tournament.recordResult(game.slot.cup, winner === 'human');
     if (Tournament.isComplete(game.slot.cup, before)) { game.slot.trophies += 1; trophyWon = true; }
@@ -496,8 +514,10 @@ function gameOver(winner) {
     // finished: the bracket owes the child the sight of themselves lifting it.
     game.wonCup = trophyWon;
     game.aiSkill = Tournament.skillFor(game.slot.cup.index, game.slot.cup.season);
-    persist();
   }
+  // After both branches: a friendly still moves the counters above, and losing
+  // those on a refresh would make the record quietly wrong.
+  if (game.slot) { persist(); }
   game.state = 'OVER';
   overTitle.textContent = winner === 'human' ? 'You Win! \u{1F3C6}' : 'CPU Wins \u{1F916}';
   overSub.textContent = `Final score ${game.score.human} – ${game.score.ai}`;
@@ -802,8 +822,8 @@ el('again').addEventListener('click', () => {
   SFX.unlock();
   overlay.classList.add('hidden');
   // Next opponent, or the same one again after a loss — either way the child
-  // sees who they are facing before play resumes.
-  if (game.mathsOn && game.slot && game.slot.emoji) {
+  // sees who they are facing before play resumes. A friendly just kicks off.
+  if (game.mode === 'cup' && game.slot && game.slot.emoji) {
     // A finished cup is drawn one last time with the child in the champion's
     // place, then the next press starts the new one.
     showBracket(game.wonCup ? Tournament.COUNT : undefined);
@@ -857,11 +877,13 @@ function paintSlots() {
     card.addEventListener('click', function () {
       // Selecting an empty slot goes straight to making a team; selecting the
       // one already active means the child wants to change it.
-      var wasActive = (game.save.active === i);
+      var was = game.save.active, wasActive = (was === i);
       game.save.active = i;
       game.slot = Store.activeSlot(game.save);
       persist();
-      if (!game.slot.emoji || wasActive) { openTeamEditor(); }
+      // Backing out of a slot the child only opened to look at must not leave
+      // that slot selected, so the editor is told where to return to.
+      if (!game.slot.emoji || wasActive) { openTeamEditor(was); }
       refreshStart();
       SFX.select();
     });
@@ -881,7 +903,7 @@ function refreshStart() {
 // used to sit on the start screen, which re-asked it on every visit and applied
 // it to whichever slot happened to be active — wrong on a shared tablet, where
 // each slot is a different child.
-function openTeamEditor() {
+function openTeamEditor(returnTo) {
   var ed = el('teamEditor'), grid = el('badgeGrid'), nameInput = el('teamName');
   var chosen = game.slot.emoji || BADGES[0];
   // Once the child edits the name it is theirs; picking badges stops rewriting it.
@@ -914,6 +936,20 @@ function openTeamEditor() {
   };
   el('teamDelete').className = '';
   ed.classList.remove('hidden');
+
+  // A way out that changes nothing. Without it, tapping the empty "+" slot to
+  // see what it did trapped the child on this card with only "save" and
+  // "delete" — neither of which is "I did not mean to be here".
+  el('teamCancel').onclick = function () {
+    if (!game.slot.emoji && typeof returnTo === 'number') {
+      game.save.active = returnTo;
+      game.slot = Store.activeSlot(game.save);
+      persist();
+    }
+    ed.classList.add('hidden');
+    refreshStart();
+    SFX.select();
+  };
 
   el('teamOk').onclick = function () {
     game.slot.emoji = chosen;
@@ -1023,21 +1059,68 @@ function boxState(cell, col, row, played, foeRow) {
 
 function hideBracket() { el('bracket').classList.add('hidden'); }
 
+// Cup progress on the start screen is four pips, not four flags. A row of
+// countries there meant nothing: the child had not seen the draw yet, so it
+// read as decoration. Pips say the only thing that belongs on this screen —
+// how far through the cup this team is.
 function paintCup() {
-  var row = el('cupRow'), shelf = el('trophyShelf');
-  if (!row || !game.slot) { return; }
-  row.innerHTML = '';
+  var pips = el('cupPips'), shelf = el('trophyShelf');
+  if (!pips || !game.slot) { return; }
+  pips.innerHTML = '';
   for (var i = 0; i < Tournament.COUNT; i++) {
-    var f = document.createElement('div');
-    f.className = 'cupFlag ' +
-      (i < game.slot.cup.index ? 'done' : (i === game.slot.cup.index ? 'now' : 'later'));
-    f.textContent = Tournament.crestFor(i, game.slot.emoji).flag;
-    row.appendChild(f);
+    var p = document.createElement('i');
+    p.className = 'pip' + (i < game.slot.cup.index ? ' done' : '');
+    pips.appendChild(p);
   }
   var n = Math.min(12, game.slot.trophies);
   shelf.textContent = n ? new Array(n + 1).join('\u{1F3C6}') : '';
 }
 
+
+// What this team has done, as icons and numbers. No text, so it reads the same
+// in any language, and no history — every figure is a counter the play loop
+// already keeps, which is why the panel cannot disagree with the game.
+function fmtTime(ms) {
+  var mins = Math.floor(ms / 60000);
+  if (mins < 60) { return mins + '′'; }               // 47′
+  return Math.floor(mins / 60) + ':' + ('0' + (mins % 60)).slice(-2);
+}
+
+function showStats() {
+  var grid = el('statsGrid'), s = game.slot && game.slot.stats;
+  if (!s) { return; }
+  var pct = s.answered ? Math.round(s.correct * 100 / s.answered) : 0;
+  var rows = [
+    ['⏱', fmtTime(s.ms)],                       // time on a pitch
+    ['\u{1F3DF}', s.matches],                        // matches played
+    ['\u{1F3C5}', s.wins],                           // matches won
+    ['\u{1F3C6}', game.slot.trophies],               // cups won
+    ['⚽', s.goalsFor],                          // goals scored
+    ['\u{1F9E4}', s.goalsAgainst],                   // goals conceded: past the gloves
+    ['\u{1F9EE}', s.answered],                       // questions answered
+    ['✅', s.correct + (s.answered ? ' · ' + pct + '%' : '')]
+  ];
+  grid.innerHTML = '';
+  rows.forEach(function (r) {
+    var cellIcon = document.createElement('div'), cellVal = document.createElement('div');
+    cellIcon.className = 'statIcon'; cellIcon.textContent = r[0];
+    cellVal.className = 'statVal';  cellVal.textContent = String(r[1]);
+    grid.appendChild(cellIcon); grid.appendChild(cellVal);
+  });
+  el('statsWho').textContent = (game.slot.emoji || '⚽') +
+    (game.slot.name ? ' ' + game.slot.name : '');
+  el('statsPanel').classList.remove('hidden');
+}
+
+el('startStats').addEventListener('click', function () {
+  if (!game.slot || !game.slot.emoji) { return; }
+  SFX.select();
+  showStats();
+});
+el('statsClose').addEventListener('click', function () {
+  SFX.select();
+  el('statsPanel').classList.add('hidden');
+});
 
 // Wire the age row inside the team editor. Returns the band it starts on and
 // reports every change back, so the caller keeps a single source of truth.
@@ -1068,11 +1151,35 @@ function paintAges(current, onPick) {
   return band;
 }
 
-// PLAY reads the active team rather than any start-screen control: a slot
-// carries its own age, cup progress and adaptive state. The boot sequence never
-// calls restart(), so game.state stays 'START' — which blocks the pointerdown
-// handler — until this fires.
-el('startPlay').addEventListener('click', function () {
+// Starting is two questions, asked in that order: what kind of game, then who
+// you are playing as. Putting both on one screen meant a child had to take in
+// teams, cup progress and trophies before knowing whether any of it applied to
+// what they wanted to do.
+//
+// A single match changes no cup progress and never opens the draw; the cup does
+// both. Everything else — age, adaptive state, badge — comes from the active
+// team either way, so neither mode needs a settings screen behind it.
+//
+// The boot sequence never calls restart(), so game.state stays 'START' — which
+// blocks the pointerdown handler — until `startGo` fires.
+function showStep(step) {
+  el('modeStep').classList.toggle('hidden', step !== 'mode');
+  el('teamStep').classList.toggle('hidden', step !== 'team');
+  // Cup progress belongs to the cup. In a friendly it is noise.
+  el('cupProgress').classList.toggle('hidden', game.mode !== 'cup');
+}
+
+function pickMode(mode) {
+  SFX.unlock();
+  game.mode = mode;
+  refreshStart();
+  showStep('team');
+  // A first-time child has no team at all; go straight to making one rather
+  // than showing them a row of empty slots to decipher.
+  if (!game.slot || !game.slot.emoji) { openTeamEditor(); }
+}
+
+function startPlaying() {
   SFX.unlock();
   // An empty slot has nobody to play as. Make the team first.
   if (!game.slot || !game.slot.emoji) { openTeamEditor(); return; }
@@ -1080,10 +1187,15 @@ el('startPlay').addEventListener('click', function () {
   game.startBand = game.slot.band > 0 ? game.slot.band : 1;
   game.maths = game.slot.maths || null;
   el('startScreen').classList.add('hidden');
-  // A team entering a cup meets its next opponent on the ladder, not by being
+  // A team entering the cup meets its next opponent on the draw, not by being
   // dropped straight onto the pitch.
-  if (game.mathsOn) { showBracket(); } else { restart(); }
-});
+  if (game.mode === 'cup') { showBracket(); } else { restart(); }
+}
+
+el('pickSingle').addEventListener('click', function () { pickMode('single'); });
+el('pickCup').addEventListener('click', function () { pickMode('cup'); });
+el('startBack').addEventListener('click', function () { SFX.select(); showStep('mode'); });
+el('startGo').addEventListener('click', startPlaying);
 
 /* ---------- juice ---------- */
 // Screen shake, a ball trail and a brief slow-motion on goals. None of it
@@ -1440,5 +1552,6 @@ loadProgress();
 // After loadProgress, not before: the start-screen block runs at parse time,
 // when game.slot is still null and there is nothing to paint.
 refreshStart();
+showStep('mode');
 fitCanvas();
 requestAnimationFrame(frame);

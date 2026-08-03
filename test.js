@@ -987,6 +987,24 @@ checkGenerators(8, true);   // band 8 alone may go negative
      'an explicit no-maths choice survives');
   eq(Store.repair({ slots: [{ band: 6 }] }).slots[0].band, 6, 'a chosen band survives');
 
+  // Every stat counter repairs the same way, including ones a save predates.
+  var STATS = ['correct', 'answered', 'matches', 'wins', 'goalsFor', 'goalsAgainst', 'ms'];
+  var fresh0 = Store.emptySlot();
+  STATS.forEach(function (k) {
+    eq(fresh0.stats[k], 0, 'a new slot starts ' + k + ' at zero');
+    eq(Store.repairSlot({ stats: {} }).stats[k], 0, 'a save predating ' + k + ' starts it at zero');
+    var neg = {}; neg[k] = -7;
+    eq(Store.repairSlot({ stats: neg }).stats[k], 0, k + ' can never be negative');
+    var junk = {}; junk[k] = 'lots';
+    eq(Store.repairSlot({ stats: junk }).stats[k], 0, k + ' ignores non-numbers');
+    var nan = {}; nan[k] = NaN;
+    eq(Store.repairSlot({ stats: nan }).stats[k], 0, k + ' ignores NaN');
+    var good = {}; good[k] = 42;
+    eq(Store.repairSlot({ stats: good }).stats[k], 42, k + ' survives a round trip');
+  });
+  // Time is milliseconds and arrives fractional from Date.now() arithmetic.
+  eq(Store.repairSlot({ stats: { ms: 1234.9 } }).stats.ms, 1234, 'ms is stored whole');
+
   // A slot round-trips, including an emoji and an empty name.
   var st = Store.emptyState();
   st.slots[1].emoji = '\uD83E\uDD81'; st.slots[1].name = '';

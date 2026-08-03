@@ -40,7 +40,14 @@ var Store = (function () {
       band: DEFAULT_BAND,        // age band 1-8, or 0 for "no maths"
       maths: null,               // {difficulty, mastery} once they have played
       cup: { season: 0, index: 0 },
-      stats: { correct: 0, answered: 0 },
+      // Everything a child might want to look back on. Counters only: no
+      // history, so the record cannot grow without bound.
+      stats: {
+        correct: 0, answered: 0,
+        matches: 0, wins: 0,
+        goalsFor: 0, goalsAgainst: 0,
+        ms: 0                        // time actually spent on a pitch
+      },
       unlocked: [],
       equipped: { ball: 'classic', pitch: 'day' },
       trophies: 0
@@ -74,9 +81,15 @@ var Store = (function () {
       base.cup.season = Math.max(0, raw.cup.season | 0);
       base.cup.index = Math.max(0, raw.cup.index | 0);
     }
+    // Every counter is repaired the same way, so adding one here is the only
+    // change a new stat needs. A save written before a counter existed simply
+    // starts it at zero.
     if (raw.stats) {
-      base.stats.correct = Math.max(0, raw.stats.correct | 0);
-      base.stats.answered = Math.max(0, raw.stats.answered | 0);
+      for (k in base.stats) {
+        if (typeof raw.stats[k] === 'number' && isFinite(raw.stats[k])) {
+          base.stats[k] = Math.max(0, Math.floor(raw.stats[k]));
+        }
+      }
     }
     if (Object.prototype.toString.call(raw.unlocked) === '[object Array]') {
       base.unlocked = raw.unlocked.filter(function (u) { return typeof u === 'string'; });

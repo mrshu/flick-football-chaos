@@ -11,10 +11,30 @@
   <div id="startScreen">
     <div id="startCard">
       <h1 id="startTitle">Flick Football Chaos</h1>
-      <div id="slotRow"></div>
-      <div id="cupRow" title="Cup progress"></div>
-      <div id="trophyShelf"></div>
-      <button id="startPlay" type="button">&#9654; PLAY</button>
+
+      <div id="modeStep">
+        <div id="modeRow">
+          <button id="pickSingle" type="button" title="One match" aria-label="One match">
+            <span class="modeIcon">&#9917;</span>
+          </button>
+          <button id="pickCup" type="button" title="Cup" aria-label="Cup">
+            <span class="modeIcon">&#127942;</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="teamStep" class="hidden">
+        <div id="slotRow"></div>
+        <div id="cupProgress">
+          <div id="trophyShelf"></div>
+          <div id="cupPips"></div>
+        </div>
+        <div id="startButtons">
+          <button id="startBack" type="button" aria-label="Back">&#8592;</button>
+          <button id="startGo" type="button" aria-label="Play">&#9654;</button>
+          <button id="startStats" type="button" title="Stats" aria-label="Stats">&#128202;</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -65,8 +85,17 @@
         </div>
         <div id="teamButtons">
           <button id="teamDelete" type="button" aria-label="Delete team">&#128465;</button>
+          <button id="teamCancel" type="button" aria-label="Back">&#10005;</button>
           <button id="teamOk" type="button">&#10004;</button>
         </div>
+      </div>
+    </div>
+
+    <div id="statsPanel" class="hidden">
+      <div id="statsCard">
+        <div id="statsWho"></div>
+        <div id="statsGrid"></div>
+        <button id="statsClose" type="button" aria-label="Back">&#10005;</button>
       </div>
     </div>
 

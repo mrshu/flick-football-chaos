@@ -453,34 +453,106 @@ canvas {
 }
 #teamDice:active { transform: scale(.92); }
 
-#startPlay {
-  font: inherit;
-  font-weight: 800;
-  font-size: clamp(18px, 3vh, 22px);
-  padding: 14px 38px;
-  border: none;
-  border-radius: 999px;
+/* Step one: what kind of game. Two unlabelled buttons — a ball is one match, a
+   trophy is the cup. Asking this first means a child deciding between a
+   kickabout and a tournament is not also reading a row of teams and a cup
+   progress bar that may not apply to either. */
+#modeRow { display: flex; gap: 14px; justify-content: center; }
+#modeRow button {
+  font: inherit; cursor: pointer;
+  flex: 1 1 0; max-width: 140px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 22px 10px;
+  border: 2px solid transparent; border-radius: 20px;
+  transition: transform .08s;
+}
+#modeRow .modeIcon { font-size: clamp(34px, 6vh, 48px); line-height: 1; }
+#modeRow button:active { transform: translateY(4px); }
+
+#pickSingle {
+  color: #fff;
+  background: rgba(255, 255, 255, .08);
+  border-color: rgba(255, 255, 255, .22);
+  box-shadow: 0 5px 0 rgba(0, 0, 0, .3);
+}
+#pickCup {
+  color: #2b1600;
+  background: linear-gradient(135deg, #ffd54a, #ff8a3d);
+  box-shadow: 0 6px 0 #b45c14, 0 10px 24px rgba(0, 0, 0, .4);
+}
+#pickSingle:active { box-shadow: 0 1px 0 rgba(0, 0, 0, .3); }
+#pickCup:active    { box-shadow: 0 2px 0 #b45c14; }
+
+/* Step two: who you are playing as, and — in the cup only — how far in. */
+#cupProgress { margin-bottom: 12px; }
+
+/* Four pips: how far through the cup this team is. Four flags here meant
+   nothing, because the child had not seen the draw yet. */
+#cupPips { display: flex; gap: 7px; justify-content: center; height: 11px; align-items: center; }
+#cupPips .pip {
+  width: 11px; height: 11px; border-radius: 50%;
+  background: rgba(255, 255, 255, .12);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18);
+}
+#cupPips .pip.done { background: #2ec27e; box-shadow: 0 0 8px rgba(46, 194, 126, .6); }
+
+#startButtons { display: flex; gap: 12px; align-items: center; justify-content: center; }
+#startBack {
+  font: inherit; font-size: 22px; font-weight: 800; cursor: pointer;
+  width: 52px; padding: 12px 0;
+  color: #fff; border: 2px solid rgba(255, 255, 255, .22); border-radius: 999px;
+  background: rgba(255, 255, 255, .08);
+}
+#startGo {
+  font: inherit; font-size: 24px; font-weight: 800; cursor: pointer;
+  padding: 13px 44px;
+  border: none; border-radius: 999px;
   color: #06230f;
   background: linear-gradient(135deg, #57e389, #2ec27e);
-  cursor: pointer;
   box-shadow: 0 6px 0 #1a8a55, 0 10px 24px rgba(0, 0, 0, .4);
   transition: transform .08s;
 }
-#startPlay:active { transform: translateY(4px); box-shadow: 0 2px 0 #1a8a55; }
+#startGo:active { transform: translateY(4px); box-shadow: 0 2px 0 #1a8a55; }
+#startBack:active { transform: translateY(3px); }
 
-/* Cup progress and trophies on the start screen. Opponents are flags and carry
-   no names, so the cup reads the same in any language. */
-#cupRow { display: flex; gap: 7px; justify-content: center; margin: 2px 0 10px; }
-#cupRow .cupFlag { font-size: 24px; line-height: 1; position: relative; }
-#cupRow .cupFlag.done { opacity: .4; }
-#cupRow .cupFlag.done::after {
-  content: '\2713'; position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 17px; font-weight: 900; color: #2ec27e;
-  text-shadow: 0 1px 3px rgba(0,0,0,.8);
+#startStats {
+  font: inherit; font-size: 20px; cursor: pointer;
+  width: 52px; padding: 12px 0;
+  color: #fff; border: 2px solid rgba(255, 255, 255, .22); border-radius: 999px;
+  background: rgba(255, 255, 255, .08);
 }
-#cupRow .cupFlag.now { transform: scale(1.3); filter: drop-shadow(0 0 6px rgba(255,213,74,.85)); }
-#cupRow .cupFlag.later { opacity: .3; }
+#startStats:active { transform: translateY(3px); }
+
+/* ---- what this team has done ---- */
+#statsPanel {
+  position: fixed; inset: 0; z-index: 30;
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+  background: rgba(5, 10, 25, .85); backdrop-filter: blur(3px);
+}
+#statsCard {
+  width: min(92%, 320px); padding: 18px 20px 14px;
+  border-radius: 18px; text-align: center;
+  background: linear-gradient(160deg, #1d3b6e, #122347);
+  box-shadow: 0 16px 50px rgba(0, 0, 0, .6);
+}
+#statsWho { font-size: 20px; font-weight: 800; margin-bottom: 14px; }
+
+/* Icon and number, nothing to read. Two pairs per row on anything but the
+   narrowest phone, so the whole record is visible without scrolling. */
+#statsGrid {
+  display: grid; grid-template-columns: auto 1fr auto 1fr;
+  gap: 10px 8px; align-items: center; margin-bottom: 14px;
+}
+#statsGrid .statIcon { font-size: 22px; line-height: 1; text-align: right; }
+#statsGrid .statVal  {
+  font-size: 19px; font-weight: 900; text-align: left; color: #ffd54a;
+  white-space: nowrap;
+}
+#statsClose {
+  font: inherit; font-size: 18px; font-weight: 800; cursor: pointer;
+  padding: 8px 26px; border: none; border-radius: 999px;
+  color: #fff; background: rgba(255, 255, 255, .14);
+}
 
 /* The badge grid holds flags as well as animals, so rows stay even. */
 #badgeGrid { grid-template-columns: repeat(6, 1fr); }
@@ -548,9 +620,10 @@ canvas {
 #teamName::placeholder { opacity: .4; }
 #teamButtons { display: flex; gap: 10px; justify-content: center; margin-top: 12px; }
 #teamButtons button {
-  font: inherit; font-size: 18px; font-weight: 800; padding: 8px 22px;
+  font: inherit; font-size: 18px; font-weight: 800; padding: 8px 20px;
   border: none; border-radius: 999px; cursor: pointer;
 }
+#teamCancel { color: #fff; background: rgba(255, 255, 255, .14); }
 #teamOk { color: #06230f; background: linear-gradient(135deg, #57e389, #2ec27e); }
 #teamDelete { color: #fff; background: rgba(255,255,255,.1); }
 #teamDelete.arm { background: #ef4444; }
