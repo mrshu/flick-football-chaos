@@ -788,9 +788,17 @@ canvas {
   50%      { box-shadow: 0 0 12px 2px rgba(255, 213, 74, .6); }
 }
 
+#bracketButtons { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
+#bracketBack {
+  font: inherit; font-size: 20px; font-weight: 800; cursor: pointer;
+  width: 48px; padding: 10px 0;
+  color: #fff; border: 2px solid rgba(255, 255, 255, .22); border-radius: 999px;
+  background: rgba(255, 255, 255, .08);
+}
+#bracketBack:active { transform: translateY(3px); }
 #roundGo {
   font: inherit; font-size: 22px; font-weight: 800; padding: 10px 34px;
-  border: none; border-radius: 999px; cursor: pointer; margin-top: 6px;
+  border: none; border-radius: 999px; cursor: pointer;
   color: #06230f; background: linear-gradient(135deg, #57e389, #2ec27e);
   box-shadow: 0 6px 0 #1a8a55;
 }

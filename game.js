@@ -896,6 +896,15 @@ el('roundGo').addEventListener('click', () => {
   if (bracketFinal) { bracketFinal = false; goHome(); } else { restart(); }
 });
 
+// The draw is a screen a child can arrive at and decide against. Leaving it
+// costs nothing: cup progress is only written at full time, so backing out
+// here returns them to exactly the round they were on.
+el('bracketBack').addEventListener('click', () => {
+  SFX.select();
+  hideBracket();
+  goHome();
+});
+
 // Back to the menu, with the game parked so nothing on the pitch is live.
 // Everything the child might want next — another cup, a friendly, their
 // stats — is a choice on that screen rather than something they are dropped
@@ -1075,6 +1084,9 @@ function showBracket(played) {
   // which reads as the win not having counted.
   bracketFinal = played >= Tournament.COUNT;
   el('roundGo').textContent = bracketFinal ? '\u{1F3E0}' : '▶';
+  // On the champion view the main button already goes home; a second one
+  // beside it would just be two ways to do the same thing.
+  el('bracketBack').classList.toggle('hidden', bracketFinal);
   var mine = game.slot.emoji || '⚽';
   var cols = Tournament.bracket(played, mine), c, i, cell, colEl, head;
   // The child's next opponent is the other half of their pair in this round.
