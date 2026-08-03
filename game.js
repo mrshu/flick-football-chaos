@@ -335,13 +335,20 @@ function saveShot(shot, firstX) {
 // track the same ball x regardless of whose turn is starting - real
 // keepers do not stop watching the ball when it is the other side's turn.
 function updateKeepers() {
-  const targetX = game.ball.x;
   for (const k of game.keepers) {
     // A keeper the child flicked upfield is walked back to its own line, so
     // rushing out costs exactly one turn of cover rather than the whole match.
     k.y = k.home[1];
     k.vx = 0; k.vy = 0;
-    k.x = Formation.keeperStep(k.x, targetX, KEEPER_MAX_STEP, KEEPER_MIN_X, KEEPER_MAX_X);
+    // Each side moves its own keeper. The CPU's tracks the ball because the
+    // CPU is playing it; the child's stays exactly where they left it, because
+    // it is theirs to position - a keeper that both obeys a flick and drifts
+    // on its own belongs to nobody.
+    if (k.team === 'ai') {
+      k.x = Formation.keeperStep(k.x, game.ball.x, KEEPER_MAX_STEP, KEEPER_MIN_X, KEEPER_MAX_X);
+    } else {
+      k.x = Formation.keeperStep(k.x, k.x, KEEPER_MAX_STEP, KEEPER_MIN_X, KEEPER_MAX_X);
+    }
   }
 }
 
