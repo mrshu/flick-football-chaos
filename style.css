@@ -233,6 +233,14 @@ canvas {
   text-align: center;
 }
 
+#quizLead {
+  font-size: clamp(12px, 2vh, 15px);
+  font-weight: 700;
+  letter-spacing: .4px;
+  opacity: .65;
+  margin-bottom: 6px;
+}
+
 #quizPrize {
   display: inline-flex;
   flex-direction: column;

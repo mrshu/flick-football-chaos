@@ -248,7 +248,7 @@ function clearModifier() {
 function askQuestion() {
   if (!game.maths) { game.maths = Maths.newState(game.startBand); }
   game.state = 'HUMAN_QUESTION';
-  setTurnMsg('Answer for a prize!', 'human');
+  setTurnMsg('Your turn', 'human');
   var q = Maths.make(game.maths.difficulty, game.maths, Math.random);
   var keys = Object.keys(MODIFIERS);
   var prizeId = keys[(Math.random() * keys.length) | 0];
