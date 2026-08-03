@@ -997,4 +997,50 @@ checkGenerators(8, true);   // band 8 alone may go negative
   eq(st.slots[2].maths.difficulty, 7, 'clearing one slot leaves the others alone');
 })();
 
+// ---- The cup ----
+(function () {
+  var T = require('./tournament.js');
+
+  eq(T.COUNT, 5, 'five opponents');
+  eq(T.CRESTS.length, 5, 'a crest each');
+
+  // Rising, and never perfect. The cap is the only safeguard against an
+  // unwinnable final, since nothing in the design weakens an opponent.
+  var i, prev = -1;
+  for (i = 0; i < T.COUNT; i++) {
+    var sk = T.skillFor(i, 0);
+    ok(sk > prev, 'opponent ' + i + ' is harder than the last');
+    ok(sk <= 0.95, 'opponent ' + i + ' is never perfect');
+    prev = sk;
+  }
+  // Later seasons lift the floor but never break the cap.
+  for (var season = 0; season < 40; season++) {
+    for (i = 0; i < T.COUNT; i++) {
+      ok(T.skillFor(i, season) <= 0.95, 'cap holds in season ' + season);
+      ok(T.skillFor(i, season) >= T.skillFor(i, 0) - 1e-9, 'seasons never get easier');
+    }
+  }
+  ok(T.skillFor(0, 5) > T.skillFor(0, 0), 'a later season is harder than the first');
+
+  // Losing replays the same opponent; progress is never destroyed.
+  var cup = { season: 0, index: 2 };
+  eq(T.recordResult(cup, false).index, 2, 'a loss replays the same opponent');
+  eq(T.recordResult(cup, false).season, 0, 'a loss never costs a season');
+  eq(T.recordResult(cup, true).index, 3, 'a win advances by exactly one');
+
+  // Winning the last opponent rolls into a new season.
+  var last = { season: 1, index: 4 };
+  var after = T.recordResult(last, true);
+  eq(after.index, 0, 'the cup restarts after the final');
+  eq(after.season, 2, 'and the season increments');
+  ok(T.isComplete(after, 4), 'completing the final is detectable');
+  ok(!T.isComplete({ season: 0, index: 3 }, 2), 'mid-cup is not complete');
+
+  // Out-of-range indices must not throw or return junk.
+  [-5, 99].forEach(function (bad) {
+    ok(isFinite(T.skillFor(bad, 0)), 'skill is finite for index ' + bad);
+    ok(!!T.crestFor(bad), 'a crest exists for index ' + bad);
+  });
+})();
+
 done();

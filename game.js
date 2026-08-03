@@ -162,6 +162,7 @@ const game = {
   timer: 0, moveTime: 0, ballRot: 0,
   drag: null, aiChoice: null, askedLastTurn: false, threatPath: null,
   shake: 0, slowmo: 0, trail: [],
+  save: null, slot: null, aiSkill: 0.55,
   particles: [], lastHitSfx: 0,
 };
 
@@ -226,6 +227,28 @@ function restart() {
   goalFlash.classList.add('hidden');
   updateScore();
   startTurn('human');
+}
+
+/* ---------- persistence ---------- */
+// The child's slot is loaded once at boot and written back whenever something
+// they earned changes. Everything here tolerates storage being unavailable.
+function persist() {
+  if (game.save) { Store.save(game.save); }
+}
+
+function loadProgress() {
+  game.save = Store.load();
+  game.slot = Store.activeSlot(game.save);
+  if (game.slot.maths) { game.maths = game.slot.maths; }
+  game.aiSkill = Tournament.skillFor(game.slot.cup.index, game.slot.cup.season);
+}
+
+// Adaptive state belongs to the slot, so a sibling on another slot is not
+// dragged around by this child's answers.
+function rememberMaths() {
+  if (!game.slot || !game.maths) { return; }
+  game.slot.maths = game.maths;
+  persist();
 }
 
 /* ---------- HUD helpers ---------- */
@@ -302,6 +325,11 @@ function askQuestion() {
     game.maths = Maths.update(game.maths, {
       correct: correct, elapsedMs: elapsedMs, band: q.band, skill: q.skill
     });
+    if (game.slot) {
+      game.slot.stats.answered += 1;
+      if (correct) { game.slot.stats.correct += 1; }
+    }
+    rememberMaths();
     finishQuestion(correct);
   }, function () {
     finishQuestion(false); // skip: no penalty, but no prize either
@@ -331,6 +359,11 @@ function askSaveQuestion() {
     game.maths = Maths.update(game.maths, {
       correct: correct, elapsedMs: elapsedMs, band: q.band, skill: q.skill
     });
+    if (game.slot) {
+      game.slot.stats.answered += 1;
+      if (correct) { game.slot.stats.correct += 1; }
+    }
+    rememberMaths();
     finishSaveQuestion(correct);
   }, function () {
     finishSaveQuestion(false); // skip: shot stands, but no Maths.update - declining says nothing about ability
@@ -454,6 +487,13 @@ function afterGoal() {
 }
 
 function gameOver(winner) {
+  if (game.slot) {
+    const before = game.slot.cup.index;
+    game.slot.cup = Tournament.recordResult(game.slot.cup, winner === 'human');
+    if (Tournament.isComplete(game.slot.cup, before)) { game.slot.trophies += 1; }
+    game.aiSkill = Tournament.skillFor(game.slot.cup.index, game.slot.cup.season);
+    persist();
+  }
   game.state = 'OVER';
   overTitle.textContent = winner === 'human' ? 'You Win! \u{1F3C6}' : 'CPU Wins \u{1F916}';
   overSub.textContent = `Final score ${game.score.human} – ${game.score.ai}`;
@@ -500,9 +540,12 @@ function computeAiShot() {
   const tx = b.x - dx * (b.r + p.r) * 0.85;
   const ty = b.y - dy * (b.r + p.r) * 0.85;
   let ang = Math.atan2(ty - p.y, tx - p.x);
-  ang += (Math.random() * 2 - 1) * 0.05; // aim error keeps the AI beatable
+  // One skill value drives the CPU's aim and its power discipline. It rises
+  // through the cup, so a later opponent misses less and wastes less.
+  const sk = game.aiSkill;
+  ang += (Math.random() * 2 - 1) * (0.24 - 0.19 * sk);
   const dist = Math.hypot(tx - p.x, ty - p.y);
-  const power = Math.min(1, 0.6 + dist / 720 + Math.random() * 0.08);
+  const power = Math.min(1, 0.6 + dist / 720 + Math.random() * (0.28 - 0.24 * sk));
   const sp = power * MAX_LAUNCH * game.powerMult;
   return { player: p, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp };
 }
@@ -756,9 +799,64 @@ el('again').addEventListener('click', () => { SFX.unlock(); restart(); });
 // playable. Play hides the overlay and starts the match; the boot sequence
 // never calls restart() on its own, so game.state stays 'START' — which
 // blocks the pointerdown handler — until this fires.
+// Draw one crest: a shield in the opponent's colour with its own pattern, so
+// the five are told apart by shape as well as hue.
+function crestCanvas(index, size) {
+  var c = document.createElement('canvas'), g = c.getContext('2d');
+  var crest = Tournament.crestFor(index), w = size, h = size * 1.2;
+  c.width = w * 2; c.height = h * 2; c.style.width = w + 'px'; c.style.height = h + 'px';
+  g.scale(2, 2);
+  g.beginPath();
+  g.moveTo(2, 2); g.lineTo(w - 2, 2); g.lineTo(w - 2, h * 0.62);
+  g.quadraticCurveTo(w / 2, h - 1, 2, h * 0.62);
+  g.closePath();
+  g.fillStyle = crest.fill; g.fill();
+  g.save(); g.clip();
+  g.fillStyle = crest.ink;
+  if (crest.pattern === 'stripes') {
+    for (var x = 0; x < w; x += 9) { g.fillRect(x, 0, 4, h); }
+  } else if (crest.pattern === 'halves') {
+    g.fillRect(w / 2, 0, w / 2, h);
+  } else if (crest.pattern === 'sash') {
+    g.save(); g.rotate(-0.7); g.fillRect(-h, h * 0.35, w * 3, 7); g.restore();
+  } else if (crest.pattern === 'quarters') {
+    g.fillRect(0, 0, w / 2, h / 2); g.fillRect(w / 2, h / 2, w / 2, h / 2);
+  } else {
+    for (var y = 0; y < h; y += 9) { g.fillRect(0, y, w, 4); }
+  }
+  g.restore();
+  g.lineWidth = 2; g.strokeStyle = 'rgba(255,255,255,.75)';
+  g.beginPath();
+  g.moveTo(2, 2); g.lineTo(w - 2, 2); g.lineTo(w - 2, h * 0.62);
+  g.quadraticCurveTo(w / 2, h - 1, 2, h * 0.62);
+  g.closePath(); g.stroke();
+  return c;
+}
+
+function paintCup() {
+  var row = el('cupRow'), shelf = el('trophyShelf');
+  if (!row || !game.slot) { return; }
+  row.innerHTML = '';
+  for (var i = 0; i < Tournament.COUNT; i++) {
+    var wrap = document.createElement('div');
+    wrap.className = 'cupCrest ' +
+      (i < game.slot.cup.index ? 'done' : (i === game.slot.cup.index ? 'now' : 'later'));
+    wrap.appendChild(crestCanvas(i, 30));
+    row.appendChild(wrap);
+  }
+  // One trophy per completed cup, capped so a long-running shelf cannot
+  // overflow the card.
+  var n = Math.min(12, game.slot.trophies);
+  shelf.textContent = n ? new Array(n + 1).join('\u{1F3C6}') : '';
+}
+
 (function () {
   var screen = el('startScreen'), ageBtns = screen.querySelectorAll('.ageBtn'), playBtn = el('startPlay');
-  var selectedBand = game.startBand, i;
+  // Resume where the child left off rather than making them re-pick every time.
+  var selectedBand = (game.slot && game.slot.maths)
+    ? Math.max(1, Math.round(game.slot.maths.difficulty))
+    : game.startBand;
+  var i;
 
   function paint() {
     for (var k = 0; k < ageBtns.length; k++) {
@@ -767,6 +865,7 @@ el('again').addEventListener('click', () => { SFX.unlock(); restart(); });
     }
   }
   paint();
+  paintCup();
 
   for (i = 0; i < ageBtns.length; i++) {
     (function (btn) {
@@ -782,7 +881,11 @@ el('again').addEventListener('click', () => { SFX.unlock(); restart(); });
     SFX.unlock();
     game.mathsOn = selectedBand > 0;
     game.startBand = selectedBand > 0 ? selectedBand : 1;
-    game.maths = null;
+    // Keep the slot's adaptive state unless the child picked a different age,
+    // in which case they are telling us the old level was wrong.
+    var saved = game.slot && game.slot.maths;
+    var sameBand = saved && Math.abs(saved.difficulty - selectedBand) < 1.5;
+    game.maths = sameBand ? saved : null;
     screen.classList.add('hidden');
     restart();
   });
@@ -1135,5 +1238,9 @@ function frame(now) {
 // overlay already relies on) but nothing is playable: game.state stays
 // 'START' until the start screen's Play button calls restart().
 init();
+loadProgress();
+// After loadProgress, not before: the start-screen block runs at parse time,
+// when game.slot is still null and there is nothing to paint.
+paintCup();
 fitCanvas();
 requestAnimationFrame(frame);
