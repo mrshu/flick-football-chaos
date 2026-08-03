@@ -36,6 +36,10 @@ const STEP = 1 / 120;
 // off it without ever knocking it out of position.
 const KEEPER_R = PLAYER_R;
 const KEEPER_Y_INSET = 26; // how far in front of its own goal line it stands
+// How near the goal a shot must come to count as worth defending. Gated only
+// on certain goals, the save question fired on 21% of CPU turns - a mechanic
+// the child would rarely meet.
+const THREAT_DY = 150, THREAT_X_SLACK = 55;
 const KEEPER_MAX_STEP = 70; // per-turn cap - the lag that keeps it beatable
 const KEEPER_MIN_X = MOUTH_L + KEEPER_R, KEEPER_MAX_X = MOUTH_R - KEEPER_R;
 
@@ -301,9 +305,29 @@ function finishSaveQuestion(correct) {
   var shot = game.pendingAiShot, saveX = game.pendingSaveX;
   game.pendingAiShot = null;
   game.pendingSaveX = null;
-  if (correct) { diveKeeper(saveX); }
+  if (correct) { saveShot(shot, saveX); }
   commitAiShot(shot);
 }
+
+// Diving changes the physics the prediction was made against, so diving once to
+// the predicted point saved only ~83% of shots, and iterating from there still
+// left ~10% conceded. "I answered correctly and it still went in" reads as the
+// game cheating, so instead: try the keeper across its whole line and take the
+// first position that genuinely stops the shot. Roughly a dozen short
+// simulations, run once, only when a save has been earned.
+function saveShot(shot, firstX) {
+  var candidates = [firstX], span = KEEPER_MAX_X - KEEPER_MIN_X, i, x;
+  for (i = 0; i <= 12; i++) { candidates.push(KEEPER_MIN_X + span * i / 12); }
+  for (i = 0; i < candidates.length; i++) {
+    x = candidates[i];
+    diveKeeper(x);
+    if (!simulateAiShot(shot).scores) { return true; }
+  }
+  diveKeeper(firstX); // nothing stops it - keep the honest dive rather than none
+  return false;
+}
+
+
 
 /* ---------- goalkeepers ---------- */
 // Repositioned once per turn setup (never mid-flight, never as part of
@@ -596,17 +620,27 @@ function simulateAiShot(shot) {
   clones[shooterIdx].vy = shot.vy;
   simActive = true;
   const maxSteps = Math.ceil(MAX_MOVE_TIME / STEP);
-  let onTarget = false, crossX = null;
+  let scores = false, crossX = null;
+  // A shot the child never gets to defend is a shot they cannot learn from, so
+  // "threatening" is deliberately wider than "certain goal": anything that ends
+  // up near the mouth counts, and near-misses are exactly the moments worth
+  // saving. Track the ball's closest approach to the goal line and its x there.
+  let bestDy = Infinity, bestX = simBall.x;
   for (let i = 0; i < maxSteps; i++) {
     advanceBodies(clones, game.friction, STEP);
     resolveCollisions(clones, simBall);
-    if (simBall.y - simBall.r > BOT_Y) { onTarget = true; crossX = simBall.x; break; } // would score for ai
-    if (simBall.y + simBall.r < TOP_Y) { break; }                                       // own-goal fluke: not this shot's target
-    if (clones.every(o => Math.hypot(o.vx, o.vy) < STOP_SPEED)) { break; }               // settled without scoring
+    const dy = BOT_Y - simBall.y;
+    if (dy < bestDy) { bestDy = dy; bestX = simBall.x; }
+    if (simBall.y - simBall.r > BOT_Y) { scores = true; crossX = simBall.x; break; } // would score for ai
+    if (simBall.y + simBall.r < TOP_Y) { break; }                                     // own-goal fluke: not this shot's target
+    if (clones.every(o => Math.hypot(o.vx, o.vy) < STOP_SPEED)) { break; }            // settled without scoring
   }
   simActive = false;
-  return { onTarget: onTarget, x: crossX };
+  const threatening = scores ||
+    (bestDy < THREAT_DY && Math.abs(bestX - W / 2) < MOUTH_HALF + THREAT_X_SLACK);
+  return { onTarget: threatening, scores: scores, x: scores ? crossX : bestX };
 }
+
 
 /* ---------- input (pointer events cover mouse + touch) ---------- */
 function ptFromEvent(e) {
