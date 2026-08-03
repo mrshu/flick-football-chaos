@@ -443,3 +443,76 @@ canvas {
 #cupRow .cupCrest.later { opacity: .32; }
 
 #trophyShelf { min-height: 22px; font-size: 18px; letter-spacing: 2px; margin-bottom: 6px; }
+
+/* ---- team slots on the start screen ---- */
+#slotRow { display: flex; gap: 8px; justify-content: center; margin-bottom: 10px; }
+.slotCard {
+  position: relative;
+  width: 62px; height: 62px;
+  border-radius: 14px;
+  border: 2px solid rgba(255,255,255,.2);
+  background: rgba(255,255,255,.06);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px; cursor: pointer; overflow: hidden;
+}
+.slotCard.on { border-color: #ffd54a; background: rgba(255,213,74,.16); }
+.slotCard .badge { font-size: 26px; line-height: 1; }
+.slotCard .who { font-size: 9px; opacity: .8; max-width: 56px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.slotCard .pencil {
+  position: absolute; right: 2px; top: 1px; font-size: 10px; opacity: .55;
+}
+.slotCard.empty .badge { opacity: .45; font-weight: 800; }
+
+/* ---- team editor ---- */
+#teamEditor {
+  position: absolute; inset: 0; z-index: 7;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(5,10,25,.8);
+}
+#teamCard {
+  width: min(92%, 340px); padding: 18px 16px 14px;
+  border-radius: 18px; text-align: center;
+  background: linear-gradient(160deg, #1d3b6e, #122347);
+  box-shadow: 0 16px 50px rgba(0,0,0,.6);
+}
+#badgeGrid {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; margin-bottom: 12px;
+}
+#badgeGrid button {
+  font: inherit; font-size: 22px; line-height: 1;
+  padding: 5px 0; border-radius: 10px; cursor: pointer;
+  border: 2px solid transparent; background: rgba(255,255,255,.07);
+}
+#badgeGrid button.on { border-color: #ffd54a; background: rgba(255,213,74,.2); }
+#teamName {
+  font: inherit; font-size: 16px; font-weight: 700; text-align: center;
+  width: 100%; padding: 8px; border-radius: 10px; border: 2px solid rgba(255,255,255,.2);
+  background: rgba(255,255,255,.08); color: #fff;
+}
+#teamName::placeholder { opacity: .4; }
+#teamButtons { display: flex; gap: 10px; justify-content: center; margin-top: 12px; }
+#teamButtons button {
+  font: inherit; font-size: 18px; font-weight: 800; padding: 8px 22px;
+  border: none; border-radius: 999px; cursor: pointer;
+}
+#teamOk { color: #06230f; background: linear-gradient(135deg, #57e389, #2ec27e); }
+#teamDelete { color: #fff; background: rgba(255,255,255,.1); }
+#teamDelete.arm { background: #ef4444; }
+
+/* ---- between-match card ---- */
+#roundCard {
+  position: absolute; inset: 0; z-index: 7;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; background: rgba(5,10,25,.82); backdrop-filter: blur(3px);
+}
+#roundVs { display: flex; align-items: center; gap: 18px; font-size: 40px; font-weight: 900; }
+#roundVs .side { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+#roundVs .side small { font-size: 12px; opacity: .8; font-weight: 700; }
+#roundCrests { display: flex; gap: 7px; }
+#roundGo {
+  font: inherit; font-size: 22px; font-weight: 800; padding: 10px 34px;
+  border: none; border-radius: 999px; cursor: pointer;
+  color: #06230f; background: linear-gradient(135deg, #57e389, #2ec27e);
+  box-shadow: 0 6px 0 #1a8a55;
+}
+#roundGo:active { transform: translateY(4px); box-shadow: 0 2px 0 #1a8a55; }

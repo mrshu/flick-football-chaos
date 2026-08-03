@@ -12,6 +12,7 @@
     <div id="startCard">
       <h1 id="startTitle">Flick Football Chaos</h1>
       <p id="startSub">Pick your age</p>
+      <div id="slotRow"></div>
       <div id="cupRow" title="Cup progress"></div>
       <div id="trophyShelf"></div>
       <div id="startAges">
@@ -50,6 +51,23 @@
       <div id="quizChoices"></div>
       <button id="quizSkip" type="button" aria-label="Skip">&#8618;</button>
     </div>
+    <div id="teamEditor" class="hidden">
+      <div id="teamCard">
+        <div id="badgeGrid"></div>
+        <input id="teamName" type="text" maxlength="12" placeholder="&#9917;" aria-label="Team name">
+        <div id="teamButtons">
+          <button id="teamDelete" type="button" aria-label="Delete team">&#128465;</button>
+          <button id="teamOk" type="button">&#10004;</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="roundCard" class="hidden">
+      <div id="roundVs"></div>
+      <div id="roundCrests"></div>
+      <button id="roundGo" type="button">&#9654;</button>
+    </div>
+
     <div id="overlay" class="hidden">
       <div id="overCard">
         <h1 id="overTitle">You Win!</h1>

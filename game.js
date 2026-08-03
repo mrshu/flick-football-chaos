@@ -487,10 +487,11 @@ function afterGoal() {
 }
 
 function gameOver(winner) {
+  var trophyWon = false;
   if (game.slot) {
     const before = game.slot.cup.index;
     game.slot.cup = Tournament.recordResult(game.slot.cup, winner === 'human');
-    if (Tournament.isComplete(game.slot.cup, before)) { game.slot.trophies += 1; }
+    if (Tournament.isComplete(game.slot.cup, before)) { game.slot.trophies += 1; trophyWon = true; }
     game.aiSkill = Tournament.skillFor(game.slot.cup.index, game.slot.cup.season);
     persist();
   }
@@ -500,6 +501,7 @@ function gameOver(winner) {
   overlay.classList.remove('hidden');
   setTurnMsg(winner === 'human' ? 'Champion!' : 'Better luck next time!', winner);
   SFX.win(winner === 'human');
+  if (trophyWon) { overTitle.textContent = '\u{1F3C6} CUP WON \u{1F3C6}'; }
 }
 
 /* ---------- AI ---------- */
@@ -793,7 +795,23 @@ canvas.addEventListener('pointercancel', () => { game.drag = null; });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
 
-el('again').addEventListener('click', () => { SFX.unlock(); restart(); });
+el('again').addEventListener('click', () => {
+  SFX.unlock();
+  overlay.classList.add('hidden');
+  // Next opponent, or the same one again after a loss — either way the child
+  // sees who they are facing before play resumes.
+  if (game.mathsOn && game.slot && game.slot.emoji) {
+    showRoundCard('\u2694');
+  } else {
+    restart();
+  }
+});
+
+el('roundGo').addEventListener('click', () => {
+  SFX.unlock();
+  hideRoundCard();
+  restart();
+});
 
 // Start screen: age (and "no maths") is chosen once, before any football is
 // playable. Play hides the overlay and starts the match; the boot sequence
@@ -833,6 +851,142 @@ function crestCanvas(index, size) {
   return c;
 }
 
+// A curated grid rather than the system emoji picker: it is tap-only, needs no
+// keyboard, and is not overwhelming for a five-year-old.
+var BADGES = ['\u{1F981}','\u{1F42F}','\u{1F438}','\u{1F984}','\u{1F996}','\u{1F419}',
+              '\u{1F41D}','\u{1F98A}','\u{1F43C}','\u{1F992}','\u{1F988}','\u{1F985}',
+              '\u26BD','\u{1F525}','\u26A1','\u2B50','\u{1F308}','\u{1F680}',
+              '\u{1F451}','\u{1F48E}','\u{1F340}','\u{1F3B8}','\u{1F36A}','\u{1F47D}'];
+
+function slotLabel(slot) { return slot.emoji || '\uFF0B'; }
+
+function paintSlots() {
+  var row = el('slotRow');
+  if (!row || !game.save) { return; }
+  row.innerHTML = '';
+  game.save.slots.forEach(function (slot, i) {
+    var card = document.createElement('div');
+    card.className = 'slotCard' + (i === game.save.active ? ' on' : '') + (slot.emoji ? '' : ' empty');
+    var badge = document.createElement('div');
+    badge.className = 'badge';
+    badge.textContent = slotLabel(slot);
+    card.appendChild(badge);
+    if (slot.name) {
+      var who = document.createElement('div');
+      who.className = 'who'; who.textContent = slot.name;
+      card.appendChild(who);
+    }
+    if (slot.emoji) {
+      var pen = document.createElement('div');
+      pen.className = 'pencil'; pen.textContent = '\u270E';
+      card.appendChild(pen);
+    }
+    card.addEventListener('click', function () {
+      // Selecting an empty slot goes straight to making a team; selecting the
+      // one already active means the child wants to change it.
+      var wasActive = (game.save.active === i);
+      game.save.active = i;
+      game.slot = Store.activeSlot(game.save);
+      persist();
+      if (!game.slot.emoji || wasActive) { openTeamEditor(); }
+      refreshStart();
+      SFX.select();
+    });
+    row.appendChild(card);
+  });
+}
+
+function refreshStart() {
+  paintSlots();
+  paintCup();
+  if (game.slot && game.slot.maths) {
+    game.aiSkill = Tournament.skillFor(game.slot.cup.index, game.slot.cup.season);
+  }
+}
+
+function openTeamEditor() {
+  var ed = el('teamEditor'), grid = el('badgeGrid'), nameInput = el('teamName');
+  var chosen = game.slot.emoji || BADGES[0];
+  grid.innerHTML = '';
+  BADGES.forEach(function (b) {
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.textContent = b;
+    if (b === chosen) { btn.className = 'on'; }
+    btn.addEventListener('click', function () {
+      chosen = b;
+      [].forEach.call(grid.children, function (c) { c.className = (c.textContent === b) ? 'on' : ''; });
+      SFX.select();
+    });
+    grid.appendChild(btn);
+  });
+  nameInput.value = game.slot.name || '';
+  el('teamDelete').className = '';
+  ed.classList.remove('hidden');
+
+  el('teamOk').onclick = function () {
+    game.slot.emoji = chosen;
+    // The name is optional and may stay empty: it needs a keyboard, and a
+    // five-year-old may not type. The badge alone is a complete team.
+    game.slot.name = nameInput.value.slice(0, 12);
+    persist();
+    ed.classList.add('hidden');
+    refreshStart();
+  };
+  // Deleting is the one destructive control here, so it takes two taps.
+  el('teamDelete').onclick = function () {
+    var btn = el('teamDelete');
+    if (btn.className !== 'arm') { btn.className = 'arm'; return; }
+    Store.clearSlot(game.save, game.save.active);
+    game.slot = Store.activeSlot(game.save);
+    game.maths = null;
+    persist();
+    ed.classList.add('hidden');
+    refreshStart();
+  };
+}
+
+// Shown before each cup match and after each result. A tournament the child
+// only experiences as a progress bar is not a tournament; this is where they
+// see who they are about to play and how far they have come.
+function showRoundCard(headline) {
+  var card = el('roundCard'), vs = el('roundVs'), crests = el('roundCrests');
+  if (!card || !game.slot) { return false; }
+  var idx = game.slot.cup.index;
+
+  vs.innerHTML = '';
+  var mine = document.createElement('div');
+  mine.className = 'side';
+  mine.innerHTML = '<span>' + (game.slot.emoji || '\u26BD') + '</span>';
+  if (game.slot.name) {
+    var lbl = document.createElement('small');
+    lbl.textContent = game.slot.name;
+    mine.appendChild(lbl);
+  }
+  vs.appendChild(mine);
+
+  var mid = document.createElement('div');
+  mid.textContent = headline;
+  mid.style.fontSize = '22px';
+  vs.appendChild(mid);
+
+  var theirs = document.createElement('div');
+  theirs.className = 'side';
+  theirs.appendChild(crestCanvas(idx, 46));
+  vs.appendChild(theirs);
+
+  crests.innerHTML = '';
+  for (var i = 0; i < Tournament.COUNT; i++) {
+    var w = document.createElement('div');
+    w.className = 'cupCrest ' + (i < idx ? 'done' : (i === idx ? 'now' : 'later'));
+    w.appendChild(crestCanvas(i, 22));
+    crests.appendChild(w);
+  }
+  card.classList.remove('hidden');
+  return true;
+}
+
+function hideRoundCard() { el('roundCard').classList.add('hidden'); }
+
 function paintCup() {
   var row = el('cupRow'), shelf = el('trophyShelf');
   if (!row || !game.slot) { return; }
@@ -865,7 +1019,7 @@ function paintCup() {
     }
   }
   paint();
-  paintCup();
+  refreshStart();
 
   for (i = 0; i < ageBtns.length; i++) {
     (function (btn) {
@@ -887,7 +1041,13 @@ function paintCup() {
     var sameBand = saved && Math.abs(saved.difficulty - selectedBand) < 1.5;
     game.maths = sameBand ? saved : null;
     screen.classList.add('hidden');
-    restart();
+    // A named team entering a cup meets its first opponent on a card, not by
+    // being dropped straight onto the pitch.
+    if (game.mathsOn && game.slot && game.slot.emoji) {
+      showRoundCard('\u2694');
+    } else {
+      restart();
+    }
   });
 })();
 
@@ -1245,6 +1405,6 @@ init();
 loadProgress();
 // After loadProgress, not before: the start-screen block runs at parse time,
 // when game.slot is still null and there is nothing to paint.
-paintCup();
+refreshStart();
 fitCanvas();
 requestAnimationFrame(frame);
