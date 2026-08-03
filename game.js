@@ -161,6 +161,7 @@ const game = {
   score: { human: 0, ai: 0 }, lastScorer: null,
   timer: 0, moveTime: 0, ballRot: 0,
   drag: null, aiChoice: null, askedLastTurn: false, threatPath: null,
+  shake: 0, slowmo: 0, trail: [],
   particles: [], lastHitSfx: 0,
 };
 
@@ -426,6 +427,9 @@ function settle() {
 }
 
 function goalScored(scorer) {
+  addShake(SHAKE_MAX);
+  game.slowmo = 0.55;   // a beat of slow motion so the goal lands
+  game.trail.length = 0;
   game.score[scorer]++;
   game.lastScorer = scorer;
   updateScore();
@@ -568,6 +572,7 @@ function collideCircles(a, b) {
 let simActive = false;
 
 function hitSfx(impact) {
+  if (impact > 240) { addShake(Math.min(6, impact / 260)); }
   if (simActive) return;
   const now = performance.now();
   if (impact > 90 && now - game.lastHitSfx > 50) {
@@ -782,6 +787,45 @@ el('again').addEventListener('click', () => { SFX.unlock(); restart(); });
     restart();
   });
 })();
+
+/* ---------- juice ---------- */
+// Screen shake, a ball trail and a brief slow-motion on goals. None of it
+// changes the rules; it exists because a hard collision that registers only as
+// a number is a hard collision the child does not feel.
+const SHAKE_MAX = 9;
+
+function addShake(amount) {
+  game.shake = Math.min(SHAKE_MAX, game.shake + amount);
+}
+
+function updateJuice(dt) {
+  game.shake *= Math.pow(0.0025, dt);          // decays in ~a fifth of a second
+  if (game.shake < 0.05) game.shake = 0;
+  if (game.slowmo > 0) game.slowmo = Math.max(0, game.slowmo - dt);
+
+  // Trail: a short history of ball positions, only while it is actually moving.
+  const b = game.ball, sp = Math.hypot(b.vx, b.vy);
+  if (sp > 90) {
+    game.trail.push(b.x, b.y);
+    while (game.trail.length > 26) { game.trail.shift(); game.trail.shift(); }
+  } else if (game.trail.length) {
+    game.trail.shift(); game.trail.shift();
+  }
+}
+
+function drawTrail() {
+  const tr = game.trail;
+  if (tr.length < 4) return;
+  ctx.save();
+  for (let i = 0; i < tr.length - 2; i += 2) {
+    const a = (i / (tr.length - 2));
+    ctx.beginPath();
+    ctx.arc(tr[i], tr[i + 1], game.ball.r * (0.25 + a * 0.55), 0, 6.29);
+    ctx.fillStyle = 'rgba(255,255,255,' + (a * 0.3).toFixed(3) + ')';
+    ctx.fill();
+  }
+  ctx.restore();
+}
 
 /* ---------- particles ---------- */
 const CONFETTI_COLORS = ['#ffd54a', '#ff8a3d', '#57e389', '#6fb5ff', '#ff6b8a', '#c792ff'];
@@ -1034,13 +1078,22 @@ function drawParticles() {
 
 function draw(t) {
   ctx.clearRect(0, 0, W, H);
+  let sx = 0, sy = 0;
+  if (game.shake > 0) {
+    sx = (Math.random() * 2 - 1) * game.shake;
+    sy = (Math.random() * 2 - 1) * game.shake;
+    ctx.save();
+    ctx.translate(sx, sy);
+  }
   drawPitch();
   for (const k of game.keepers) drawKeeper(k);
   drawThreat(t);
   for (const p of game.players) drawPlayer(p, t);
+  drawTrail();
   drawBall(game.ball);
   drawAim();
   drawParticles();
+  if (game.shake > 0) ctx.restore();
 }
 
 /* ---------- main loop ---------- */
@@ -1057,7 +1110,7 @@ function frame(now) {
     game.timer -= dt;
     if (game.timer <= 0) afterGoal();
   } else if (game.state === 'MOVING') {
-    acc += dt;
+    acc += dt * (game.slowmo > 0 ? 0.35 : 1);
     game.moveTime += dt;
     let steps = 0;
     while (acc >= STEP && steps < 12 && game.state === 'MOVING') {
@@ -1071,6 +1124,7 @@ function frame(now) {
     acc = 0;
   }
 
+  updateJuice(dt);
   updateParticles(dt);
   draw(now / 1000);
   requestAnimationFrame(frame);
