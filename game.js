@@ -136,12 +136,16 @@ const MODIFIERS = {
 
 const game = {
   players: [], ball: null, posts: [], keepers: [],
-  state: 'START', // START | HUMAN_QUESTION | HUMAN_AIM | MOVING | AI_WAIT | GOAL_PAUSE | OVER
+  // AI_SAVE_QUESTION: a CPU shot was simulated forward and found to be on
+  // target; the modal is up, waiting on the child's save question. No
+  // timer drives it - see askSaveQuestion.
+  state: 'START', // START | HUMAN_QUESTION | HUMAN_AIM | MOVING | AI_WAIT | AI_SAVE_QUESTION | GOAL_PAUSE | OVER
   turn: 'human', mover: 'human',
   maths: null, mathsOn: true, startBand: 3,
   turnCount: 0, sinceChaos: 0, modifier: null,
   friction: BASE_FRICTION, powerMult: 1,
   pendingPrize: null,
+  pendingAiShot: null, pendingSaveX: null,
   score: { human: 0, ai: 0 }, lastScorer: null,
   timer: 0, moveTime: 0, ballRot: 0,
   drag: null, aiChoice: null,
@@ -202,6 +206,8 @@ function restart() {
   resetPositions();
   Quiz.hide();
   game.pendingPrize = null;
+  game.pendingAiShot = null;
+  game.pendingSaveX = null;
   overlay.classList.add('hidden');
   goalFlash.classList.add('hidden');
   updateScore();
@@ -260,7 +266,7 @@ function askQuestion() {
     finishQuestion(correct);
   }, function () {
     finishQuestion(false); // skip: no penalty, but no prize either
-  });
+  }, 'Answer for a bonus');
 }
 
 function finishQuestion(correct) {
@@ -269,6 +275,34 @@ function finishQuestion(correct) {
   if (correct && prizeId) { activateModifier(prizeId); }
   game.state = 'HUMAN_AIM';
   setTurnMsg('Your turn — drag a blue player', 'human');
+}
+
+/* ---------- CPU save question ---------- */
+// Mirrors askQuestion/finishQuestion above but themed as a save rather
+// than a bonus - a glove glyph and "Answer to save!" instead of a prize -
+// and is only ever shown by aiLaunch after its forward simulation found
+// the pending shot on target. No timer: the game waits for the child, the
+// same as the bonus question.
+function askSaveQuestion() {
+  if (!game.maths) { game.maths = Maths.newState(game.startBand); }
+  setTurnMsg('CPU shoots — save it!', 'ai');
+  var q = Maths.make(game.maths.difficulty, game.maths, Math.random);
+  Quiz.show(q, 'save', function (chosen, correct, elapsedMs) {
+    game.maths = Maths.update(game.maths, {
+      correct: correct, elapsedMs: elapsedMs, band: q.band, skill: q.skill
+    });
+    finishSaveQuestion(correct);
+  }, function () {
+    finishSaveQuestion(false); // skip: shot stands, but no Maths.update - declining says nothing about ability
+  }, 'Answer to save!');
+}
+
+function finishSaveQuestion(correct) {
+  var shot = game.pendingAiShot, saveX = game.pendingSaveX;
+  game.pendingAiShot = null;
+  game.pendingSaveX = null;
+  if (correct) { diveKeeper(saveX); }
+  commitAiShot(shot);
 }
 
 /* ---------- goalkeepers ---------- */
@@ -281,6 +315,18 @@ function updateKeepers() {
   for (const k of game.keepers) {
     k.x = Formation.keeperStep(k.x, targetX, KEEPER_MAX_STEP, KEEPER_MIN_X, KEEPER_MAX_X);
   }
+}
+
+// A correct save answer jumps the human keeper straight to the shot's
+// predicted crossing point (known because the shot was already simulated
+// - see simulateAiShot), clamped into its own goal mouth.
+// Formation.keeperStep with an unlimited step is exactly a clamp-to-target,
+// i.e. a "dive" with no lag. The ball then genuinely collides with the
+// repositioned keeper when the shot plays out - nothing about the save is
+// faked.
+function diveKeeper(x) {
+  var keeper = game.keepers.filter(function (k) { return k.team === 'human'; })[0];
+  keeper.x = Formation.keeperStep(keeper.x, x, Infinity, KEEPER_MIN_X, KEEPER_MAX_X);
 }
 
 /* ---------- turn flow ---------- */
@@ -360,30 +406,68 @@ function pickAiPlayer() {
   return Formation.chooseShooter(aiPlayers, game.ball, BOT_Y);
 }
 
-function aiLaunch() {
+// Computes the CPU's shot without mutating anything, so it can be tried
+// out in simulateAiShot before it is committed to. Aims at the goal-mouth
+// corner furthest from the human keeper (Formation.farCorner) rather than
+// dead centre - "aim away from the keeper", the owner's instruction - with
+// a small random margin off the post so the exact target still varies shot
+// to shot. Aim error and power are also tightened a little further than
+// before (0.07->0.05 rad of error; 0.58->0.6 power floor, 0.09->0.08
+// randomness) now that the save question gives the child a second line of
+// defence - see aiLaunch and the playtest notes for why this stayed modest.
+function computeAiShot() {
   const p = game.aiChoice || pickAiPlayer();
   const b = game.ball;
-  let dx = W / 2 - b.x, dy = BACK_BOT - b.y;
+  const keeper = game.keepers.filter(k => k.team === 'human')[0]; // defends the goal the CPU shoots at
+  const margin = KEEPER_R + 4 + Math.random() * 18;
+  const targetX = Formation.farCorner(keeper.x, MOUTH_L, MOUTH_R, margin);
+  let dx = targetX - b.x, dy = BACK_BOT - b.y;
   const dl = Math.hypot(dx, dy) || 1;
   dx /= dl; dy /= dl;
   // contact point slightly behind the ball so the hit pushes it goalward
   const tx = b.x - dx * (b.r + p.r) * 0.85;
   const ty = b.y - dy * (b.r + p.r) * 0.85;
   let ang = Math.atan2(ty - p.y, tx - p.x);
-  ang += (Math.random() * 2 - 1) * 0.07; // aim error keeps the AI beatable
+  ang += (Math.random() * 2 - 1) * 0.05; // aim error keeps the AI beatable
   const dist = Math.hypot(tx - p.x, ty - p.y);
-  // Higher floor and less randomness than before so shots reliably reach
-  // and drive the ball onward, without being so tight the AI stops missing.
-  const power = Math.min(1, 0.58 + dist / 760 + Math.random() * 0.09);
+  const power = Math.min(1, 0.6 + dist / 720 + Math.random() * 0.08);
   const sp = power * MAX_LAUNCH * game.powerMult;
-  p.vx = Math.cos(ang) * sp;
-  p.vy = Math.sin(ang) * sp;
+  return { player: p, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp };
+}
+
+// Actually fires a computed shot: assigns the velocity and starts the
+// move. Split out from aiLaunch so the "shot missed" path and the "save
+// failed or was skipped" path commit the exact same shot object that was
+// simulated, rather than recomputing (and risking a different) one.
+function commitAiShot(shot) {
+  const p = shot.player;
+  p.vx = shot.vx;
+  p.vy = shot.vy;
   game.mover = 'ai';
   game.moveTime = 0;
   game.state = 'MOVING';
   game.aiChoice = null;
   setTurnMsg('CPU shoots!', 'ai');
   SFX.launch();
+}
+
+// The save mechanic's gate (owner instruction: "simulate its shot forward
+// ... and check whether it would score"). Only a shot simulateAiShot finds
+// on target pauses for a save question - otherwise play proceeds exactly
+// as before. Gating matters for three reasons: it keeps the question from
+// appearing on every single turn, it makes the moment mean something, and
+// it teaches the child this is the dangerous moment - a question over a
+// shot that was never going in would just be noise. Also skipped entirely
+// in no-maths mode, since there is no maths to answer with.
+function aiLaunch() {
+  const shot = computeAiShot();
+  if (!game.mathsOn) { commitAiShot(shot); return; }
+  const sim = simulateAiShot(shot);
+  if (!sim.onTarget) { commitAiShot(shot); return; }
+  game.pendingAiShot = shot;
+  game.pendingSaveX = sim.x;
+  game.state = 'AI_SAVE_QUESTION';
+  askSaveQuestion();
 }
 
 /* ---------- physics ---------- */
@@ -409,7 +493,13 @@ function collideCircles(a, b) {
   hitSfx(-velN);
 }
 
+// simActive guards this during the save mechanic's forward lookahead (see
+// simulateAiShot below) - that run must be silent and must not disturb the
+// real hit-sound cooldown, since nothing has actually happened on screen.
+let simActive = false;
+
 function hitSfx(impact) {
+  if (simActive) return;
   const now = performance.now();
   if (impact > 90 && now - game.lastHitSfx > 50) {
     game.lastHitSfx = now;
@@ -417,8 +507,9 @@ function hitSfx(impact) {
   }
 }
 
-function walls(o) {
-  const isBall = o === game.ball;
+// isBall is passed in rather than compared against game.ball so the same
+// function works unchanged on simulateAiShot's cloned ball.
+function walls(o, isBall) {
   if (o.x - o.r < SIDE_L) { o.x = SIDE_L + o.r; o.vx = Math.abs(o.vx) * WALL_REST; hitSfx(Math.abs(o.vx)); }
   if (o.x + o.r > SIDE_R) { o.x = SIDE_R - o.r; o.vx = -Math.abs(o.vx) * WALL_REST; hitSfx(Math.abs(o.vx)); }
   const inMouth = o.x > MOUTH_L + 4 && o.x < MOUTH_R - 4;
@@ -436,9 +527,11 @@ function walls(o) {
   }
 }
 
-function physicsStep(dt) {
-  const list = movers();
-  const fr = Math.pow(game.friction, dt * 60);
+// Split out of physicsStep so simulateAiShot can run the identical
+// movement/friction rule on its own cloned bodies - the lookahead can only
+// ever match real play if it is, literally, the same code.
+function advanceBodies(list, friction, dt) {
+  const fr = Math.pow(friction, dt * 60);
   for (const o of list) {
     o.x += o.vx * dt;
     o.y += o.vy * dt;
@@ -449,14 +542,27 @@ function physicsStep(dt) {
       o.x = W / 2; o.y = H / 2; o.vx = o.vy = 0;
     }
   }
-  const b = game.ball;
-  game.ballRot += (Math.hypot(b.vx, b.vy) / Math.max(b.r, 1)) * dt * (b.vx < 0 ? -1 : 1);
+}
+
+// Same reasoning as advanceBodies: the collision/wall-bounce pass, shared
+// between real play and the save mechanic's lookahead. ballRef marks which
+// element of list is "the ball" for the in-mouth wall rule, since it can't
+// be identified by comparing to game.ball when list is a set of clones.
+function resolveCollisions(list, ballRef) {
   for (let it = 0; it < 2; it++) {
     for (let i = 0; i < list.length; i++)
       for (let j = i + 1; j < list.length; j++) collideCircles(list[i], list[j]);
     for (const o of list) for (const post of game.posts) collideCircles(o, post);
-    for (const o of list) walls(o);
+    for (const o of list) walls(o, o === ballRef);
   }
+}
+
+function physicsStep(dt) {
+  const list = movers();
+  advanceBodies(list, game.friction, dt);
+  const b = game.ball;
+  game.ballRot += (Math.hypot(b.vx, b.vy) / Math.max(b.r, 1)) * dt * (b.vx < 0 ? -1 : 1);
+  resolveCollisions(list, b);
   if (game.state === 'MOVING') {
     if (b.y + b.r < TOP_Y) goalScored('human');       // ball fully inside top goal
     else if (b.y - b.r > BOT_Y) goalScored('ai');     // ball fully inside bottom goal
@@ -464,6 +570,39 @@ function physicsStep(dt) {
 }
 
 const allStopped = () => movers().every(o => Math.hypot(o.vx, o.vy) < STOP_SPEED);
+
+function cloneBody(o) {
+  return { x: o.x, y: o.y, vx: o.vx, vy: o.vy, r: o.r, invM: o.invM };
+}
+
+// The save mechanic's forward lookahead (owner instruction: "simulate its
+// shot forward ... and check whether it would score"). Clones every mover
+// (posts are immovable - invM 0 - so the real ones are safe to reuse
+// as-is) and replays advanceBodies/resolveCollisions on the clones only,
+// so nothing here touches the real game state or plays a sound
+// (simActive silences hitSfx for the duration). Bounded to MAX_MOVE_TIME
+// worth of steps, same ceiling a real move gets, then gives up - one shot
+// played out once, not a search over shot choices, so this stays cheap.
+function simulateAiShot(shot) {
+  const list = movers();
+  const clones = list.map(cloneBody);
+  const shooterIdx = list.indexOf(shot.player);
+  const simBall = clones[clones.length - 1]; // movers() always ends with game.ball
+  clones[shooterIdx].vx = shot.vx;
+  clones[shooterIdx].vy = shot.vy;
+  simActive = true;
+  const maxSteps = Math.ceil(MAX_MOVE_TIME / STEP);
+  let onTarget = false, crossX = null;
+  for (let i = 0; i < maxSteps; i++) {
+    advanceBodies(clones, game.friction, STEP);
+    resolveCollisions(clones, simBall);
+    if (simBall.y - simBall.r > BOT_Y) { onTarget = true; crossX = simBall.x; break; } // would score for ai
+    if (simBall.y + simBall.r < TOP_Y) { break; }                                       // own-goal fluke: not this shot's target
+    if (clones.every(o => Math.hypot(o.vx, o.vy) < STOP_SPEED)) { break; }               // settled without scoring
+  }
+  simActive = false;
+  return { onTarget: onTarget, x: crossX };
+}
 
 /* ---------- input (pointer events cover mouse + touch) ---------- */
 function ptFromEvent(e) {

@@ -1,19 +1,22 @@
 'use strict';
 var Quiz = (function () {
 
-  var panel, prizeGlyphEl, prizePreviewEl, qEl, choicesEl, skipBtn;
+  var panel, leadEl, prizeGlyphEl, prizePreviewEl, qEl, choicesEl, skipBtn;
   var shownAt = 0, answered = false, done = null, skipDone = null, current = null, timer = 0;
 
   // The one place that knows what each chaos modifier looks like: its glyph
   // and a wordless before/after preview built from CSS shapes. game.js only
   // ever hands us the modifier id — it has its own MODIFIERS map for the
   // (worded) in-game banner text, but the prize-card glyph/preview mapping
-  // lives here and nowhere else.
+  // lives here and nowhere else. `save` is not a chaos modifier at all — it
+  // is the goalkeeper-save question, reusing this same card with a glove
+  // glyph and no before/after preview (kind left unset).
   var PRIZES = {
     giant:    { glyph: '\u{1F388}', kind: 'dots', from: 'Xs', to: 'Lg', color: '#ffffff' },
     tiny:     { glyph: '\u{1F41C}', kind: 'dots', from: 'Lg', to: 'Xs', color: '#7db4ff' },
     super:    { glyph: '\u{1F4A5}', kind: 'bars', from: 'Sm', to: 'Lg', color: '#ffffff' },
     slippery: { glyph: '\u{1F9CA}', kind: 'trail', color: '#7dd3fc' },
+    save:     { glyph: '\u{1F9E4}' },
   };
 
   function shape(cls, extraCls, color) {
@@ -53,6 +56,7 @@ var Quiz = (function () {
   function ready() {
     if (!panel) {
       panel = document.getElementById('quiz');
+      leadEl = document.getElementById('quizLead');
       prizeGlyphEl = document.getElementById('quizPrizeGlyph');
       prizePreviewEl = document.getElementById('quizPrizePreview');
       qEl = document.getElementById('quizQ');
@@ -116,13 +120,14 @@ var Quiz = (function () {
     }, correct ? 420 : 1150);
   }
 
-  function show(question, prizeId, onAnswer, onSkip) {
+  function show(question, prizeId, onAnswer, onSkip, lead) {
     ready();
     if (timer) { clearTimeout(timer); timer = 0; }
     current = question;
     done = onAnswer;
     skipDone = onSkip;
     answered = false;
+    leadEl.textContent = lead;
     var prize = PRIZES[prizeId];
     prizeGlyphEl.textContent = prize ? prize.glyph : '';
     prizePreviewEl.innerHTML = '';

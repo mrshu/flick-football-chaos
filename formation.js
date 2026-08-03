@@ -111,6 +111,22 @@ var Formation = (function () {
     return best;
   }
 
+  // Picks the goal-mouth x-coordinate furthest from a keeper's current x,
+  // clamped inward by `margin` (kept off the post) - i.e. "shoot at the
+  // open corner", the target aiLaunch uses now that the CPU is meant to
+  // shoot better. Pure and dependency-free so `node test.js` can check it
+  // directly, same reasoning as `chooseShooter`/`keeperStep` below. A
+  // keeper standing exactly at the mouth's centre is a tie, broken toward
+  // the right post - arbitrary, but deterministic and still inside the
+  // mouth. `margin` is clamped to half the mouth width so an oversized
+  // margin can never push the target outside [mouthL, mouthR].
+  function farCorner(keeperX, mouthL, mouthR, margin) {
+    var half = (mouthR - mouthL) / 2;
+    if (margin > half) { margin = half; }
+    var distToL = keeperX - mouthL, distToR = mouthR - keeperX;
+    return distToL > distToR ? mouthL + margin : mouthR - margin;
+  }
+
   // Pure step function for the goalkeepers (playtester defect 3): slide a
   // keeper's x toward the ball's x by at most maxStep, then clamp to the
   // patrol range. Capping the step (rather than snapping straight to the
@@ -132,6 +148,7 @@ var Formation = (function () {
   return {
     make: make,
     chooseShooter: chooseShooter,
+    farCorner: farCorner,
     keeperStep: keeperStep,
     // Geometry exposed so tests can check placement without duplicating
     // (and risking drift from) these numbers.

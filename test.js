@@ -901,6 +901,48 @@ checkGenerators(8, true);   // band 8 alone may go negative
     }
     eq(pos, tgt, 'keeper step reaches a reachable target after enough turns');
   })();
+
+  // keeperStep also does the goalkeeper's "dive" for the save mechanic: a
+  // single jump (maxStep = Infinity) straight to a target x, clamped into
+  // the mouth. Confirms that usage keeps the dive inside the goal mouth
+  // even when the target is the exact post or well outside it.
+  eq(Formation.keeperStep(300, 400, Infinity, 220, 380), 380,
+     'an unlimited dive still clamps to the mouth (target beyond the post)');
+  eq(Formation.keeperStep(300, -50, Infinity, 220, 380), 220,
+     'an unlimited dive still clamps to the mouth (target beyond the other post)');
+  eq(Formation.keeperStep(300, 260, Infinity, 220, 380), 260,
+     'an unlimited dive lands exactly on an in-mouth target');
+})();
+
+// ---- Task 15: farCorner - CPU aims at the open corner (owner instruction:
+// "aim away from the keeper") ----
+(function () {
+  var mouthL = 220, mouthR = 380, i, x, margin, target, rand = makeRng(4242);
+
+  eq(Formation.farCorner(230, mouthL, mouthR, 30), mouthR - 30,
+     'keeper hugging the left post -> aim at the right corner');
+  eq(Formation.farCorner(370, mouthL, mouthR, 30), mouthL + 30,
+     'keeper hugging the right post -> aim at the left corner');
+  eq(Formation.farCorner(300, mouthL, mouthR, 30), mouthR - 30,
+     'a dead-centre keeper is a deterministic tie, broken toward the right corner');
+
+  // An oversized margin (>= half the mouth width) clamps to dead centre
+  // rather than overshooting past the opposite post.
+  eq(Formation.farCorner(230, mouthL, mouthR, 500), (mouthL + mouthR) / 2,
+     'an oversized margin clamps the target to the mouth centre, never past it');
+
+  for (i = 0; i < 20; i++) {
+    x = mouthL + rand() * (mouthR - mouthL);
+    margin = rand() * 79; // kept under half the mouth width (80) so a side is well-defined
+    target = Formation.farCorner(x, mouthL, mouthR, margin);
+    ok(target >= mouthL && target <= mouthR, 'farCorner never aims outside the goal mouth');
+    // The predictor must agree with itself: whichever side it picked must
+    // really be the side further from the keeper (not the near post).
+    var pickedRight = target > (mouthL + mouthR) / 2;
+    var keeperNearRight = x > (mouthL + mouthR) / 2;
+    ok(pickedRight !== keeperNearRight || Math.abs(x - (mouthL + mouthR) / 2) < 1e-9,
+       'farCorner picks the side the keeper is furthest from');
+  }
 })();
 
 done();
