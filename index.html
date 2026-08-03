@@ -14,16 +14,21 @@
 
       <div id="modeStep">
         <div id="modeRow">
-          <button id="pickSingle" type="button" title="One match" aria-label="One match">
+          <button id="pickSingle" type="button">
             <span class="modeIcon">&#9917;</span>
+            <span class="modeName">One match</span>
+            <span class="modeHint">Just play</span>
           </button>
-          <button id="pickCup" type="button" title="Cup" aria-label="Cup">
+          <button id="pickCup" type="button">
             <span class="modeIcon">&#127942;</span>
+            <span class="modeName">Tournament</span>
+            <span class="modeHint">Win the cup</span>
           </button>
         </div>
       </div>
 
       <div id="teamStep" class="hidden">
+        <p class="caption">Choose your team</p>
         <div id="slotRow"></div>
         <div id="cupProgress">
           <div id="trophyShelf"></div>
@@ -61,13 +66,16 @@
     </div>
     <div id="teamEditor" class="hidden">
       <div id="teamCard">
+        <p class="caption">Pick a badge</p>
         <div id="badgeGrid"></div>
+        <p class="caption">Team name</p>
         <div id="teamNameRow">
           <input id="teamName" type="text" maxlength="12" placeholder="&#9917;" aria-label="Team name">
           <button id="teamDice" type="button" title="Another name" aria-label="Another name">&#127922;</button>
         </div>
         <div id="agePanel">
-        <div id="ageLead" title="Age">
+        <p class="caption">How old are you?</p>
+        <div id="ageLead">
           <span class="cake">&#127874;</span>
           <span id="ageValue">7</span>
         </div>
@@ -94,6 +102,7 @@
     <div id="statsPanel" class="hidden">
       <div id="statsCard">
         <div id="statsWho"></div>
+        <p class="caption">This team so far</p>
         <div id="statsGrid"></div>
         <button id="statsClose" type="button" aria-label="Back">&#10005;</button>
       </div>
@@ -102,6 +111,7 @@
     <div id="bracket" class="hidden">
       <div id="bracketCard">
         <div id="bracketTitle">&#127942;</div>
+        <p class="caption" id="bracketCaption">Next match</p>
         <div id="bracketTie">
           <div class="side"><span class="bdg" id="tieMe"></span><span class="nm" id="tieMeName"></span></div>
           <div class="vs"><span id="tieRound">&#127942;</span></div>

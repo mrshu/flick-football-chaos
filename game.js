@@ -50,6 +50,11 @@ const KEEPER_MAX_STEP = 70;
 // position and jogging back, which is what makes a rush-out cost something.
 const KEEPER_ON_LINE = 30, KEEPER_RETURN_STEP = 70;
 const KEEPER_MIN_X = MOUTH_L + KEEPER_R, KEEPER_MAX_X = MOUTH_R - KEEPER_R;
+// The AI keeper's line, and how fast it may slide along it while the child is
+// aiming. Turn the speed down if keepers feel unbeatable: at 0 they are static
+// targets again, and the aim no longer matters.
+const KEEPER_LINE_Y = TOP_Y + KEEPER_Y_INSET;
+const KEEPER_TRACK_SPEED = 200;   // px per second
 
 /* ---------- DOM ---------- */
 const canvas = document.getElementById('game');
@@ -415,6 +420,37 @@ function updateKeepers() {
   // outfield player. Anything that repositioned them between turns moved a
   // piece the child had not touched.
   for (const k of game.keepers) { k.vx = 0; k.vy = 0; }
+}
+
+// Where the aim currently points, in x, at the far keeper's line. This is the
+// shot the child is threatening right now, so it is what the keeper should be
+// covering — the alternative, tracking the ball, would have it stand still
+// while they swung the aim from post to post.
+function aimTargetX() {
+  if (!game.drag) { return null; }
+  var p = game.drag.player;
+  var dx = p.x - game.drag.px, dy = p.y - game.drag.py;
+  if (Math.hypot(dx, dy) < 1 || dy > -1e-6) { return null; }   // not aimed upfield
+  var t = (KEEPER_LINE_Y - p.y) / dy;
+  return t > 0 ? p.x + dx * t : null;
+}
+
+// The keeper slides while the child aims. It is deliberately slower than a
+// pointer can move: swinging the aim across the mouth leaves the keeper
+// trailing, and that lag is the whole skill in beating it. A keeper that
+// snapped to the aim would make every shot a coin toss on reaction time.
+function trackAim(dt) {
+  if (game.state !== 'HUMAN_AIM') { return; }
+  var target = aimTargetX();
+  if (target === null) { return; }
+  var k = game.keepers.filter(function (g) { return g.team === 'ai'; })[0];
+  if (!k) { return; }
+  k.x = Formation.keeperStep(k.x, target, KEEPER_TRACK_SPEED * dt,
+                             KEEPER_MIN_X, KEEPER_MAX_X);
+  // Only along the line. Nudging it forward would take it out of its goal and
+  // hand the child an empty net for missing.
+  k.y = TOP_Y + KEEPER_Y_INSET;
+  k.vx = k.vy = 0;
 }
 
 // A correct save answer jumps the human keeper straight to the shot's
@@ -1009,6 +1045,7 @@ function showBracket(played) {
   el('tieFoe').textContent = foe ? foe.flag : '\u{1F3C6}';
   el('tieFoeName').textContent = foe ? (Names.country(foe.flag) || '') : '';
   el('tieRound').textContent = foe ? Tournament.roundIcon(played) : '\u{1F389}';
+  el('bracketCaption').textContent = foe ? 'Next match' : 'You won the cup!';
 
   tree.innerHTML = '';
   for (c = 0; c < cols.length; c++) {
@@ -1091,21 +1128,24 @@ function showStats() {
   if (!s) { return; }
   var pct = s.answered ? Math.round(s.correct * 100 / s.answered) : 0;
   var rows = [
-    ['⏱', fmtTime(s.ms)],                       // time on a pitch
-    ['\u{1F3DF}', s.matches],                        // matches played
-    ['\u{1F3C5}', s.wins],                           // matches won
-    ['\u{1F3C6}', game.slot.trophies],               // cups won
-    ['⚽', s.goalsFor],                          // goals scored
-    ['\u{1F9E4}', s.goalsAgainst],                   // goals conceded: past the gloves
-    ['\u{1F9EE}', s.answered],                       // questions answered
-    ['✅', s.correct + (s.answered ? ' · ' + pct + '%' : '')]
+    ['⏱', 'Time played', fmtTime(s.ms)],
+    ['\u{1F3DF}', 'Matches', s.matches],
+    ['\u{1F3C5}', 'Won', s.wins],
+    ['\u{1F3C6}', 'Cups', game.slot.trophies],
+    ['⚽', 'Goals scored', s.goalsFor],
+    ['\u{1F9E4}', 'Goals let in', s.goalsAgainst],
+    ['\u{1F9EE}', 'Questions', s.answered],
+    // "Correct", not "right first time": there is only ever one attempt.
+    ['✅', 'Correct', s.correct + (s.answered ? ' · ' + pct + '%' : '')]
   ];
   grid.innerHTML = '';
   rows.forEach(function (r) {
-    var cellIcon = document.createElement('div'), cellVal = document.createElement('div');
-    cellIcon.className = 'statIcon'; cellIcon.textContent = r[0];
-    cellVal.className = 'statVal';  cellVal.textContent = String(r[1]);
-    grid.appendChild(cellIcon); grid.appendChild(cellVal);
+    ['statIcon', 'statLabel', 'statVal'].forEach(function (cls, n) {
+      var cell = document.createElement('div');
+      cell.className = cls;
+      cell.textContent = String(r[n]);
+      grid.appendChild(cell);
+    });
   });
   el('statsWho').textContent = (game.slot.emoji || '⚽') +
     (game.slot.name ? ' ' + game.slot.name : '');
@@ -1537,6 +1577,7 @@ function frame(now) {
     acc = 0;
   }
 
+  trackAim(dt);
   updateJuice(dt);
   updateParticles(dt);
   draw(now / 1000);
