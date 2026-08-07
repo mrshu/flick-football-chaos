@@ -21,6 +21,8 @@
 - **Tests**: run with `node test.js`; it prints a count and `ALL PASS` or exits non-zero. New generator tests recompute answers from the *rendered* tokens, not by repeating the generator's own formula.
 - **Commits**: Conventional Commits with a prose body (why + what), wrapped at 72 columns, committed via `git commit -F - <<'EOF' ... EOF`. Never `-m` with backticks.
 - **No AI attribution anywhere.**
+- **Nothing blocks.** Every command gets an explicit timeout (≤120s). The game runs from `file://` by design — open the file directly rather than starting a server. If a server is genuinely needed, start it in the background and kill it before finishing; never run one in the foreground.
+- **Bounded visual iteration.** Browser verification steps cap out: if a browser tool fails three times, stop and report rather than retrying; if a drawing has not converged after roughly six look-adjust cycles, settle on the best version, and report what is still imperfect. A task that reports an honest partial result beats one that grinds.
 
 ---
 
