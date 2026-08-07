@@ -133,7 +133,7 @@
   // difficulty is exactly that band.
   (function () {
     var row = el('bandRow'), b, btn;
-    for (b = 1; b <= 8; b++) {
+    for (b = 1; b <= Maths.MAX_BAND; b++) {
       btn = document.createElement('button');
       btn.className = 'lab' + (b === band ? ' on' : '');
       btn.textContent = b;

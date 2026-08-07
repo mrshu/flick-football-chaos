@@ -373,6 +373,8 @@ canvas {
 }
 .qFrac { display: inline-flex; flex-direction: column; font-size: .6em; line-height: 1.05; }
 .qFrac span:last-child { border-top: 3px solid #fff; }
+.qVar { font-style: italic; letter-spacing: .5px; }
+.qDiag canvas { display: block; width: 180px; height: 110px; }
 
 #startScreen {
   position: fixed;
