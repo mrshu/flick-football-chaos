@@ -1547,4 +1547,14 @@ checkGenerators(11, false);
   eq(N.make(makeRng(3)), N.make(makeRng(3)), 'the same seed gives the same name');
 })();
 
+// ---- Over-12: the form rating is a display of difficulty, nothing more ----
+(function () {
+  eq(Maths.rating(1), 47, 'rating floor is 47');
+  eq(Maths.rating(11), 99, 'rating ceiling is 99');
+  eq(Maths.rating(6), 73, 'rating midpoint lands at 73');
+  eq(Maths.rating(0.2), 47, 'rating clamps below the floor');
+  eq(Maths.rating(20), 99, 'rating clamps above the ceiling');
+  eq(Maths.rating(undefined), 47, 'rating tolerates a missing difficulty');
+})();
+
 done();

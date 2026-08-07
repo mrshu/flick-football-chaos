@@ -697,6 +697,15 @@ var Maths = (function () {
 
   function expectedMs(band) { return 2500 + 900 * band; }
 
+  // A FIFA-style number for the stats card: difficulty 1 reads 47, the
+  // ceiling reads 99. Display only - nothing in the engine reads it back.
+  function rating(difficulty) {
+    var d = (typeof difficulty === 'number' && isFinite(difficulty)) ? difficulty : 1;
+    if (d < 1) { d = 1; }
+    if (d > MAX_BAND) { d = MAX_BAND; }
+    return Math.round(47 + (d - 1) * 52 / (MAX_BAND - 1));
+  }
+
   function update(state, outcome) {
     var d = state.difficulty, step, exp = expectedMs(outcome.band);
     var fastStreak = state.fastStreak || 0, wrongStreak = state.wrongStreak || 0;
@@ -750,7 +759,7 @@ var Maths = (function () {
     make: make, update: update, newState: newState,
     choiceCount: choiceCount, buildChoices: buildChoices,
     _randInt: _randInt, _pick: _pick, _shuffle: _shuffle,
-    _BANDS: _BANDS, MAX_BAND: MAX_BAND
+    _BANDS: _BANDS, MAX_BAND: MAX_BAND, rating: rating
   };
 })();
 
