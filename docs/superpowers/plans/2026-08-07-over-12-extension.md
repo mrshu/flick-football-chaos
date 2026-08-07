@@ -870,7 +870,14 @@ Above `renderToken` in `quiz.js`:
   }
 ```
 
-Note the `areaComp` labels: `w` sits above the notch edge and `h` inside it — nudge positions while eyeballing in the lab (Step 4); exact pixel offsets are yours to tune.
+**Label placement rule (binding, overrides the offsets above).** Everything is drawn in white on a dark panel, so a number sitting on a line is unreadable. Therefore:
+
+- **Every dimension and angle label sits *outside* the shape's outline** — below the base, left of a vertical side, beyond the vertex, clear of the arc. Never on a stroke, never inside the figure.
+- **The only label allowed inside a figure is the `?` area marker** in `areaComp`, and it must be centred in open space with clear air around it.
+- Angle labels in `angleTri` go outside the triangle past each labelled corner; `angleLine`'s known angle goes outside the arc, not between arc and ray.
+- If a label cannot be placed clear at the current canvas size, grow the canvas or shrink the drawing — do not overlap.
+
+The brief's pixel offsets are a starting point that does *not* yet satisfy this rule (e.g. `angleTri` currently places both known angles inside the triangle). Fixing them is part of the task, verified by eye in the lab at Step 4.
 
 - [ ] **Step 3: Extend the maths lab's band row**
 
