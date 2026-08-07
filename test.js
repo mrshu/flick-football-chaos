@@ -113,7 +113,7 @@ ok(r1() !== r1(), 'successive values differ');
 })();
 
 // ---- Band generator shared checks (used by Tasks 4-7) ----
-var TOKEN_TYPES = ['num', 'balls', 'op', 'eq', 'box', 'frac', 'bar', 'sep', 'pct', 'pow'];
+var TOKEN_TYPES = ['num', 'balls', 'op', 'eq', 'box', 'frac', 'bar', 'sep', 'pct', 'pow', 'var', 'diag'];
 
 function checkGenerators(band, allowNegative) {
   var gens = Maths._BANDS[band], rand = makeRng(1000 + band), g, q, i, k, tok;
@@ -338,6 +338,70 @@ checkGenerators(8, true);   // band 8 alone may go negative
     if (q.answer < 0) { sawNegative = true; }
   }
   ok(sawNegative, 'band 8 actually produces negative answers');
+})();
+
+// ---- Over-12: band 9 ----
+checkGenerators(9, false);
+
+(function () {
+  var rand = makeRng(91), i, q, m;
+
+  // eqn2 renders [var 'ax', +, b, =, c, sep, var 'x', =, box]; recompute
+  // a·answer + b === c from the rendered parts.
+  for (i = 0; i < 80; i++) {
+    q = Maths._BANDS[9][0](rand);
+    eq(q.skill, 'eqn2', 'band 9 gen 0 is eqn2');
+    m = /^(\d+)x$/.exec(q.render[0].v);
+    ok(!!m, 'eqn2 leads with a coefficient-x token');
+    eq(Number(m[1]) * q.answer + q.render[2].v, q.render[4].v,
+       'eqn2 recomputes from the rendered parts');
+    ok(q.answer >= 2 && q.answer <= 12, 'eqn2 solutions stay small and whole');
+  }
+
+  // expand renders [var 'a(x+b)', =, var 'ax', +, box]; answer === a·b.
+  for (i = 0; i < 80; i++) {
+    q = Maths._BANDS[9][1](rand);
+    eq(q.skill, 'expand', 'band 9 gen 1 is expand');
+    m = /^(\d+)\(x\+(\d+)\)$/.exec(q.render[0].v);
+    ok(!!m, 'expand leads with a bracket token');
+    eq(q.answer, Number(m[1]) * Number(m[2]),
+       'expand recomputes a·b from the bracket');
+    eq(q.render[2].v, m[1] + 'x', 'expanded x-term matches the coefficient');
+  }
+
+  // angleLine: two angles on a straight line sum to 180.
+  for (i = 0; i < 80; i++) {
+    q = Maths._BANDS[9][2](rand);
+    eq(q.skill, 'angleLine', 'band 9 gen 2 is angleLine');
+    eq(q.render[0].t, 'diag', 'angleLine renders a diagram');
+    eq(q.render[0].kind, 'angleLine', 'angleLine diagram kind');
+    eq(q.answer + q.render[0].known, 180, 'angles on a line sum to 180');
+    ok(q.render[0].known >= 25 && q.render[0].known <= 155,
+       'angleLine known angle is drawable');
+  }
+
+  // seqRule: linear sequence, gap mid-sequence; recompute step from two
+  // adjacent visible terms and the answer from a visible reference.
+  for (i = 0; i < 80; i++) {
+    q = Maths._BANDS[9][3](rand);
+    eq(q.skill, 'seqRule', 'band 9 gen 3 is seqRule');
+    var nums = [], k, idx = 0, gap = -1;
+    for (k = 0; k < q.render.length; k++) {
+      if (q.render[k].t === 'num') { nums.push({ i: idx, v: q.render[k].v }); idx++; }
+      else if (q.render[k].t === 'box') { gap = idx; idx++; }
+    }
+    ok(gap >= 1 && gap <= 3, 'seqRule gap is mid-sequence');
+    eq(nums.length, 4, 'seqRule shows four known terms');
+    var a = null, b = null;
+    for (k = 0; k + 1 < nums.length; k++) {
+      if (nums[k + 1].i === nums[k].i + 1) { a = nums[k]; b = nums[k + 1]; break; }
+    }
+    ok(!!a, 'seqRule has two adjacent visible terms');
+    var step = b.v - a.v;
+    ok(step >= 3 && step <= 9, 'seqRule step is 3-9');
+    eq(q.answer, a.v + (gap - a.i) * step,
+       'seqRule recomputes the hidden term from a visible one');
+  }
 })();
 
 // ---- Task 8 ----

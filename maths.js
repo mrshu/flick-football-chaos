@@ -370,8 +370,61 @@ var Maths = (function () {
     };
   }
 
+  // --- band 9: two-step equations, expanding, angles on a line, sequences ---
+  // The unknown is written `x`, so the question row reads "3x + 4 = 19 , x = □".
+  function genEqn2(rand) {
+    var a = _randInt(rand, 2, 6), x = _randInt(rand, 2, 12), b = _randInt(rand, 1, 12);
+    var c = a * x + b;
+    return {
+      render: [{ t: 'var', v: a + 'x' }, { t: 'op', v: OP.add }, { t: 'num', v: b },
+               { t: 'eq' }, { t: 'num', v: c }, { t: 'sep' },
+               { t: 'var', v: 'x' }, { t: 'eq' }, { t: 'box' }],
+      answer: x, skill: 'eqn2',
+      // Forgot to divide (ax), forgot to subtract (c/a, rounded), off by one.
+      near: [a * x, Math.round(c / a), x + 1, x - 1]
+    };
+  }
+
+  function genExpand(rand) {
+    var a = _randInt(rand, 2, 9), b = _randInt(rand, 2, 9);
+    return {
+      render: [{ t: 'var', v: a + '(x+' + b + ')' }, { t: 'eq' },
+               { t: 'var', v: a + 'x' }, { t: 'op', v: OP.add }, { t: 'box' }],
+      answer: a * b, skill: 'expand',
+      // Forgot to multiply (b), added instead (a+b), slipped a row on tables.
+      near: [b, a + b, a * b + a, a * b - a]
+    };
+  }
+
+  function genAngleLine(rand) {
+    var known = _randInt(rand, 25, 155);
+    return {
+      render: [{ t: 'diag', kind: 'angleLine', known: known }, { t: 'box' }],
+      answer: 180 - known, skill: 'angleLine',
+      // Read the wrong angle (known), guessed a right angle's complement.
+      near: [known, 180 - known + 10, 180 - known - 10, 90 - (known % 90)]
+    };
+  }
+
+  function genSeqRule(rand) {
+    var step = _randInt(rand, 3, 9);
+    var start = _randInt(rand, 2, 20);
+    var gap = _randInt(rand, 1, 3);
+    var render = [], i;
+    for (i = 0; i < 5; i++) {
+      if (i > 0) { render.push({ t: 'sep' }); }
+      render.push(i === gap ? { t: 'box' } : { t: 'num', v: start + i * step });
+    }
+    var answer = start + gap * step;
+    return {
+      render: render, answer: answer, skill: 'seqRule',
+      near: [answer + step, answer - step, answer + 1, answer - 1]
+    };
+  }
+
   _BANDS[7] = [genPct, genOrder, genRatio];
   _BANDS[8] = [genNeg, genSquare, genRoot, genEqn];
+  _BANDS[9] = [genEqn2, genExpand, genAngleLine, genSeqRule];
 
   function newState(startBand) {
     var d = typeof startBand === 'number' ? startBand : 1;
