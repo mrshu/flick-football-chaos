@@ -596,9 +596,9 @@ checkGenerators(11, false);
   s = Maths.newState(1);
   for (var i = 0; i < 50; i++) { s = Maths.update(s, outcome(false, 1000, 1)); }
   eq(s.difficulty, 1, 'difficulty never falls below 1');
-  s = Maths.newState(8);
-  for (i = 0; i < 200; i++) { s = Maths.update(s, outcome(true, 100, 8)); }
-  eq(s.difficulty, 8, 'difficulty never rises above 8');
+  s = Maths.newState(11);
+  for (i = 0; i < 200; i++) { s = Maths.update(s, outcome(true, 100, 11)); }
+  eq(s.difficulty, 11, 'difficulty never rises above 11');
 
   // Mastery tracking.
   s = Maths.update(Maths.newState(4), outcome(true, 1000, 4, 'mul'));
@@ -611,6 +611,17 @@ checkGenerators(11, false);
   ok(s.mastery.div <= 1 && s.mastery.div > 0.9, 'mastery converges towards 1 without exceeding it');
   for (i = 0; i < 400; i++) { s = Maths.update(s, outcome(false, 1000, 4, 'div')); }
   ok(s.mastery.div >= 0 && s.mastery.div < 0.1, 'mastery converges towards 0 without going below');
+})();
+
+// ---- Task 4 (over-12): MAX_BAND ceiling ----
+(function () {
+  eq(Maths.MAX_BAND, 11, 'the ladder tops out at band 11');
+  var s = Maths.newState(11);
+  eq(s.difficulty, 11, 'newState accepts a band-11 start');
+  eq(Maths.newState(99).difficulty, 11, 'newState clamps above the ceiling');
+  var top = { difficulty: 11, home: 11, mastery: {}, fastStreak: 0, wrongStreak: 0 };
+  var up = Maths.update(top, { correct: true, elapsedMs: 1000, band: 11, skill: 'x' });
+  eq(up.difficulty, 11, 'update clamps at the new ceiling');
 })();
 
 // ---- Task 9b: adaptive acceleration ----
@@ -664,8 +675,8 @@ checkGenerators(11, false);
   // the plain UP_FAST step. Without this, one hot streak compounds into the
   // next and the reach never binds.
   (function () {
-    // 30 answers puts them well past the reach (home 1 + 3 = 4) while staying
-    // clear of the ceiling at 8, where every step would read as zero.
+    // 30 answers puts them well past the reach (home 1 + 3 = 4) while the
+    // unaccelerated climb still keeps them clear of band 8.
     var s = Maths.newState(1), i, prev;
     for (i = 0; i < 30; i++) { s = Maths.update(s, outcome(true, 1, Math.round(s.difficulty))); }
     ok(s.difficulty > 4 && s.difficulty < 8,
@@ -738,7 +749,7 @@ checkGenerators(11, false);
     ok(s.wrongStreak === 5, 'wrong streak counts consecutive wrong answers');
   })();
 
-  // Difficulty never escapes [1, 8] under any run, including long runs of
+  // Difficulty never escapes [1, 11] under any run, including long runs of
   // accelerated climbs and accelerated descents. One property; track the
   // extremes across each run and assert once rather than on every step.
   (function () {
@@ -748,15 +759,15 @@ checkGenerators(11, false);
       if (s.difficulty < minD) { minD = s.difficulty; }
       if (s.difficulty > maxD) { maxD = s.difficulty; }
     }
-    ok(minD >= 1 && maxD <= 8, 'accelerated climb stays within [1,8]');
+    ok(minD >= 1 && maxD <= 11, 'accelerated climb stays within [1,11]');
     minD = Infinity; maxD = -Infinity;
-    s = Maths.newState(8);
+    s = Maths.newState(11);
     for (i = 0; i < 300; i++) {
-      s = Maths.update(s, outcome(false, 9000, 8));
+      s = Maths.update(s, outcome(false, 9000, 11));
       if (s.difficulty < minD) { minD = s.difficulty; }
       if (s.difficulty > maxD) { maxD = s.difficulty; }
     }
-    ok(minD >= 1 && maxD <= 8, 'accelerated descent stays within [1,8]');
+    ok(minD >= 1 && maxD <= 11, 'accelerated descent stays within [1,11]');
   })();
 })();
 
@@ -873,14 +884,14 @@ checkGenerators(11, false);
 
 // ---- Task 11: adaptive convergence (spec 8.7) ----
 (function () {
-  // A synthetic learner of fixed ability on the 1-8 band scale. Chance of
+  // A synthetic learner of fixed ability on the 1-11 band scale. Chance of
   // knowing the answer falls off as difficulty exceeds ability; whatever is
   // not known is guessed from the available choices, which is what makes
   // floor support (spec 8.6) measurable.
   function simulate(ability, n, seed) {
     var rand = makeRng(seed), s = Maths.newState(4);
     var correct = 0, total = 0, sum = 0, i, known, choices, p, ok_, band, ms;
-    // The [1,8] bound is one property of Maths.update; asserting it on every
+    // The [1,11] bound is one property of Maths.update; asserting it on every
     // one of the n simulated answers re-tests the same clamp with different
     // numbers. Track the extremes across the whole run and assert once -
     // identical coverage, without a check per answer.
@@ -897,13 +908,13 @@ checkGenerators(11, false);
       if (s.difficulty > maxD) { maxD = s.difficulty; }
       if (i > n / 2) { total++; sum += s.difficulty; if (ok_) { correct++; } }
     }
-    ok(minD >= 1 && maxD <= 8,
-       'difficulty stays within [1,8] across the run (min ' + minD.toFixed(3) +
+    ok(minD >= 1 && maxD <= 11,
+       'difficulty stays within [1,11] across the run (min ' + minD.toFixed(3) +
        ', max ' + maxD.toFixed(3) + ')');
     return { accuracy: correct / total, band: sum / total };
   }
 
-  var abilities = [1.5, 3, 4.5, 6, 7.5], i, r;
+  var abilities = [1.5, 3, 4.5, 6, 7.5, 9, 10.5], i, r;
   for (i = 0; i < abilities.length; i++) {
     r = simulate(abilities[i], 40000, 900 + i);
     ok(r.accuracy > 0.72 && r.accuracy < 0.88,
@@ -914,6 +925,10 @@ checkGenerators(11, false);
   // A strong learner climbs, a struggling one descends.
   ok(simulate(8, 4000, 77).band > 6, 'a strong learner climbs the scale');
   ok(simulate(1, 4000, 78).band < 2.5, 'a struggling learner descends the scale');
+
+  // The extended ceiling is reachable: a very strong learner placed at the
+  // old default still climbs into the over-12 bands.
+  ok(simulate(11, 40000, 79).band > 8, 'a 16+ learner climbs past the old ceiling');
 })();
 
 // ---- Distractor plausibility sweep ----

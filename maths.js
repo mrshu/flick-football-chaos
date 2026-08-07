@@ -546,10 +546,14 @@ var Maths = (function () {
 
   _BANDS[11] = [genIndices, genIneq, genSeqGeo, genAreaComp];
 
+  // Bands 1-8 cover ages 5-12; 9-11 carry the ladder to 16+ (see the over-12
+  // spec). One constant, so the ceiling cannot disagree with itself.
+  var MAX_BAND = 11;
+
   function newState(startBand) {
     var d = typeof startBand === 'number' ? startBand : 1;
     if (d < 1) { d = 1; }
-    if (d > 8) { d = 8; }
+    if (d > MAX_BAND) { d = MAX_BAND; }
     // `home` is the band an adult chose for this child, and it is the single
     // most reliable thing the engine is ever told. Acceleration is allowed to
     // roam a few bands either side of it and no further; see update().
@@ -559,7 +563,7 @@ var Maths = (function () {
   function pickBand(difficulty, rand) {
     var b = Math.floor(difficulty), f = difficulty - b;
     if (b < 1) { b = 1; f = 0; }
-    if (b >= 8) { return 8; }
+    if (b >= MAX_BAND) { return MAX_BAND; }
     return rand() < f ? b + 1 : b;
   }
 
@@ -567,7 +571,7 @@ var Maths = (function () {
   // call. Placed after every _BANDS[n] assignment so the table is complete.
   var _skillIndex = (function () {
     var idx = {}, b, i, gens, fixed = function () { return 0.5; };
-    for (b = 1; b <= 8; b++) {
+    for (b = 1; b <= MAX_BAND; b++) {
       gens = _BANDS[b];
       idx[b] = [];
       for (i = 0; i < gens.length; i++) {
@@ -600,7 +604,7 @@ var Maths = (function () {
   function make(difficulty, state, rand) {
     var band = pickBand(difficulty, rand);
     var q = pickGenerator(band, state, rand)(rand);
-    var min = band === 8 ? -30 : 0;
+    var min = band >= 8 ? -30 : 0;
     var choices = buildChoices(q.answer, choiceCount(difficulty), q.near, rand, min);
     return {
       render: q.render, answer: q.answer, choices: choices,
@@ -722,7 +726,7 @@ var Maths = (function () {
     }
     d += step;
     if (d < 1) { d = 1; }
-    if (d > 8) { d = 8; }
+    if (d > MAX_BAND) { d = MAX_BAND; }
 
     var mastery = {}, k;
     for (k in state.mastery) {
@@ -742,7 +746,7 @@ var Maths = (function () {
     make: make, update: update, newState: newState,
     choiceCount: choiceCount, buildChoices: buildChoices,
     _randInt: _randInt, _pick: _pick, _shuffle: _shuffle,
-    _BANDS: _BANDS
+    _BANDS: _BANDS, MAX_BAND: MAX_BAND
   };
 })();
 
