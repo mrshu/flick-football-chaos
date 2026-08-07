@@ -1095,6 +1095,90 @@ checkGenerators(8, true);   // band 8 alone may go negative
   eq(st.slots[2].maths.difficulty, 7, 'clearing one slot leaves the others alone');
 })();
 
+// ---- The locker: cosmetics earned by playing ----
+(function () {
+  var Locker = require('./locker.js');
+  var Store = require('./store.js');
+
+  ok(typeof Locker === 'object' && Locker !== null, 'Locker module loads');
+
+  // A minimal slot, the only shape the ledger is allowed to depend on.
+  function slot(correct, trophies, unlocked) {
+    return { stats: { correct: correct }, trophies: trophies || 0,
+             unlocked: unlocked || [] };
+  }
+
+  // The catalogue: flat unique ids, known kinds, and the spec's exact
+  // milestone table in ascending order.
+  var KINDS = { ball: true, hat: true, pitch: true };
+  var seen = {}, lastAt = 0;
+  ok(Locker.ITEMS.length === 14, 'six balls, four hats, four pitches');
+  Locker.ITEMS.forEach(function (it) {
+    ok(KINDS[it.kind], it.id + ' has a known kind');
+    ok(typeof it.id === 'string' && it.id.length > 0, 'every item has an id');
+    ok(!seen[it.id], it.id + ' appears only once');
+    seen[it.id] = true;
+  });
+  var milestones = Locker.MILESTONES;
+  eq(milestones.length, 10, 'ten correct-answer milestones');
+  milestones.forEach(function (it) {
+    ok(it.at > lastAt, it.id + ' milestone rises past the previous one');
+    lastAt = it.at;
+  });
+  eq(milestones[0].at, 10, 'the first unlock lands within a match or two');
+  eq(milestones[9].at, 1000, 'the last milestone is the gold ball at 1000');
+  eq(Locker.byId('gold').kind, 'ball', 'byId finds an item');
+  eq(Locker.byId('nope'), null, 'byId returns null for junk');
+
+  // Earning: defaults are always there, milestones arrive exactly on time.
+  var e0 = Locker.earned(slot(0));
+  ['classic', 'day', 'none'].forEach(function (id) {
+    ok(e0.indexOf(id) !== -1, id + ' is unlocked from the start');
+  });
+  ok(e0.indexOf('stripes') === -1, 'nothing else is unlocked at zero');
+  ok(Locker.earned(slot(9)).indexOf('stripes') === -1, 'stripes needs all ten');
+  ok(Locker.earned(slot(10)).indexOf('stripes') !== -1, 'stripes lands at ten');
+  var e1000 = Locker.earned(slot(1000));
+  ['stripes', 'cap', 'night', 'stars', 'crown', 'snow', 'flames', 'party',
+   'space', 'gold'].forEach(function (id) {
+    ok(e1000.indexOf(id) !== -1, id + ' is earned by 1000 correct');
+  });
+  ok(e1000.indexOf('beach') === -1, 'the beach ball is not bought with answers');
+  ok(Locker.earned(slot(0, 1)).indexOf('beach') !== -1,
+     'the beach ball comes with the first cup');
+
+  // The next milestone, with the previous one for drawing the filling
+  // silhouette: fraction = (correct - prev) / (at - prev).
+  var n = Locker.next(slot(0));
+  eq(n.id, 'stripes', 'next from zero is the first milestone');
+  eq(n.at, 10, 'next reports its own threshold');
+  eq(n.prev, 0, 'the first milestone fills from zero');
+  n = Locker.next(slot(10));
+  eq(n.id, 'cap', 'reaching a milestone moves next along');
+  eq(n.prev, 10, 'the fill restarts at the last milestone');
+  n = Locker.next(slot(999));
+  eq(n.id, 'gold', 'the last milestone is reachable');
+  eq(n.prev, 750, 'and fills from the one before it');
+  eq(Locker.next(slot(1000)), null, 'nothing left to fill after gold');
+
+  // Fresh: earned but not yet shown to the child. Defaults never announce
+  // themselves; a stale seen-list self-heals by replaying the reveal once.
+  eq(Locker.fresh(slot(0)).length, 0, 'a new slot has nothing to reveal');
+  eq(Locker.fresh(slot(60, 0, ['stripes'])).join(','), 'cap,night',
+     'fresh lists earned-but-unseen items in milestone order');
+  eq(Locker.fresh(slot(60, 0, ['stripes', 'cap', 'night'])).length, 0,
+     'nothing fresh once everything earned has been seen');
+  eq(Locker.fresh(slot(0, 1)).join(','), 'beach',
+     'a trophy unlock reveals like any other');
+
+  // The store carries a hat slot, and saves from before hats keep bare heads.
+  eq(Store.emptySlot().equipped.hat, 'none', 'a new slot starts bare-headed');
+  eq(Store.repairSlot({ equipped: { ball: 'gold' } }).equipped.hat, 'none',
+     'a save predating hats repairs to none');
+  eq(Store.repairSlot({ equipped: { hat: 'crown' } }).equipped.hat, 'crown',
+     'an equipped hat survives a round trip');
+})();
+
 // ---- The cup ----
 (function () {
   var T = require('./tournament.js');

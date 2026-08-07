@@ -34,10 +34,14 @@
           <div id="trophyShelf"></div>
           <div id="cupPips"></div>
         </div>
+        <button id="nextUnlock" type="button" class="hidden" title="Locker" aria-label="Next unlock">
+          <canvas id="nextUnlockArt" width="44" height="44"></canvas>
+        </button>
         <div id="startButtons">
           <button id="startBack" type="button" aria-label="Back">&#8592;</button>
           <button id="startGo" type="button" aria-label="Play">&#9654;</button>
           <button id="startStats" type="button" title="Stats" aria-label="Stats">&#128202;</button>
+          <button id="startLocker" type="button" title="Locker" aria-label="Locker">&#127933;</button>
         </div>
       </div>
     </div>
@@ -108,6 +112,17 @@
       </div>
     </div>
 
+    <div id="lockerPanel" class="hidden">
+      <div id="lockerCard">
+        <div id="lockerWho"></div>
+        <p class="caption">Your locker</p>
+        <div class="lockerGrid" id="lockerBall"></div>
+        <div class="lockerGrid" id="lockerHat"></div>
+        <div class="lockerGrid" id="lockerPitch"></div>
+        <button id="lockerClose" type="button" aria-label="Back">&#10005;</button>
+      </div>
+    </div>
+
     <div id="bracket" class="hidden">
       <div id="bracketCard">
         <div id="bracketTitle">&#127942;</div>
@@ -130,6 +145,10 @@
       <div id="overCard">
         <h1 id="overTitle">You Win!</h1>
         <p id="overSub"></p>
+        <div id="overUnlocks" class="hidden">
+          <p class="caption">Unlocked!</p>
+          <div id="overUnlockRow"></div>
+        </div>
         <button id="again">Play Again</button>
       </div>
     </div>
@@ -140,6 +159,7 @@
 <script src="maths.js"></script>
 <script src="names.js"></script>
 <script src="store.js"></script>
+<script src="locker.js"></script>
 <script src="tournament.js"></script>
 <script src="quiz.js"></script>
 <script src="formation.js"></script>

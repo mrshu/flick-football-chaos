@@ -49,7 +49,7 @@ var Store = (function () {
         ms: 0                        // time actually spent on a pitch
       },
       unlocked: [],
-      equipped: { ball: 'classic', pitch: 'day' },
+      equipped: { ball: 'classic', pitch: 'day', hat: 'none' },
       trophies: 0
     };
   }

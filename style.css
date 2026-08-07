@@ -532,13 +532,26 @@ canvas {
 #startGo:active { transform: translateY(4px); box-shadow: 0 2px 0 #1a8a55; }
 #startBack:active { transform: translateY(3px); }
 
-#startStats {
+#startStats, #startLocker {
   font: inherit; font-size: 20px; cursor: pointer;
   width: 52px; padding: 12px 0;
   color: #fff; border: 2px solid rgba(255, 255, 255, .22); border-radius: 999px;
   background: rgba(255, 255, 255, .08);
 }
-#startStats:active { transform: translateY(3px); }
+#startStats:active, #startLocker:active { transform: translateY(3px); }
+
+/* The next unlock, filling as it approaches. It sits above the start buttons
+   so every visit to the menu shows how close the next reward is — and it is a
+   button into the locker, because wanting the thing is the moment to show
+   where things live. */
+#nextUnlock {
+  display: block; margin: 0 auto 12px; padding: 5px;
+  border-radius: 12px; cursor: pointer;
+  border: 2px solid rgba(255, 255, 255, .16);
+  background: rgba(255, 255, 255, .05);
+}
+#nextUnlock canvas { display: block; border-radius: 7px; }
+#nextUnlock:active { transform: scale(.94); }
 
 /* ---- what this team has done ---- */
 #statsPanel {
@@ -604,6 +617,71 @@ canvas {
 .slotCard.on .pencil { background: rgba(255, 213, 74, .5); color: #2b1600; }
 .slotCard .pencil:active { transform: scale(.9); }
 .slotCard.empty .badge { opacity: .45; font-weight: 800; }
+
+/* ---- the locker ---- */
+#lockerPanel {
+  position: fixed; inset: 0; z-index: 30;
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+  background: rgba(5, 10, 25, .85); backdrop-filter: blur(3px);
+}
+#lockerCard {
+  width: min(96%, 540px); max-height: 94%; overflow-y: auto;
+  padding: 22px 26px 18px;
+  border-radius: 22px; text-align: center;
+  background: linear-gradient(160deg, #1d3b6e, #122347);
+  box-shadow: 0 16px 50px rgba(0, 0, 0, .6);
+}
+#lockerWho { font-size: 26px; font-weight: 800; margin-bottom: 4px; }
+/* One shelf per kind, the same panel treatment as the badge grid so choosing
+   a ball reads like choosing a badge: tap the one you want. */
+.lockerGrid {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px;
+  margin-bottom: 10px; padding: 10px;
+  border-radius: 14px;
+  border: 2px solid rgba(255, 255, 255, .09);
+  background: rgba(255, 255, 255, .04);
+}
+.lockerGrid button {
+  position: relative; padding: 6px 4px 4px;
+  border-radius: 12px; cursor: pointer;
+  border: 2px solid transparent; background: rgba(255, 255, 255, .06);
+}
+.lockerGrid button canvas {
+  display: block; margin: 0 auto; width: 44px; height: 44px; border-radius: 8px;
+}
+.lockerGrid button.on {
+  border-color: #fff;
+  background: rgba(255, 213, 74, .22);
+  box-shadow: 0 0 0 3px rgba(255, 213, 74, .35);
+}
+/* A locked tile is the item itself, part-shaded, filling upward as the child
+   gets closer (the shading is painted into the canvas, not filtered on top, so
+   the colours underneath still read). It is a thing to want, not a button that
+   fails. The price sits under the art on its own line: in the corner it
+   overlapped the drawing and clipped its own last digit. */
+.lockerGrid button.locked { cursor: default; }
+.lockerGrid .need {
+  display: block; margin-top: 3px; min-height: 12px;
+  font-size: 11px; font-weight: 800; letter-spacing: -.2px;
+  color: #ffd54a; opacity: .9; white-space: nowrap;
+}
+#lockerClose {
+  font: inherit; font-size: 22px; font-weight: 800; cursor: pointer;
+  margin-top: 4px; padding: 11px 34px;
+  border: none; border-radius: 999px;
+  color: #fff; background: rgba(255, 255, 255, .14);
+}
+
+/* New cosmetics land on the full-time card, popping in one by one. */
+#overUnlocks { margin: 12px 0 4px; }
+#overUnlockRow { display: flex; gap: 10px; justify-content: center; }
+#overUnlockRow canvas {
+  width: 52px; height: 52px; padding: 4px;
+  border-radius: 10px; background: rgba(255, 255, 255, .1);
+  animation: cardPop .5s ease both;
+}
+#overUnlockRow canvas:nth-child(2) { animation-delay: .15s; }
+#overUnlockRow canvas:nth-child(3) { animation-delay: .3s; }
 
 /* ---- team editor ---- */
 /* Fixed and above the start screen: the editor is opened from there, so an

@@ -575,6 +575,24 @@ function gameOver(winner) {
   // After both branches: a friendly still moves the counters above, and losing
   // those on a refresh would make the record quietly wrong.
   if (game.slot) { persist(); }
+  // Anything the match earned is revealed here, at full time — never while a
+  // question is open, so the questions stay a move and not a shop. The ledger
+  // is derived from the counters; `unlocked` only records what has been shown,
+  // which makes each reveal fire exactly once and lets a stale save replay it.
+  var freshIds = game.slot ? Locker.fresh(game.slot) : [];
+  el('overUnlocks').classList.toggle('hidden', !freshIds.length);
+  if (freshIds.length) {
+    var row = el('overUnlockRow');
+    row.innerHTML = '';
+    freshIds.forEach(function (id) {
+      var cv = document.createElement('canvas');
+      cv.width = cv.height = 56;
+      paintCosmeticTile(cv, Locker.byId(id));
+      row.appendChild(cv);
+      game.slot.unlocked.push(id);
+    });
+    persist();
+  }
   game.state = 'OVER';
   overTitle.textContent = winner === 'human' ? 'You Win! \u{1F3C6}' : 'CPU Wins \u{1F916}';
   overSub.textContent = `Final score ${game.score.human} – ${game.score.ai}`;
@@ -999,6 +1017,7 @@ function paintSlots() {
 function refreshStart() {
   paintSlots();
   paintCup();
+  paintNextUnlock();
   if (game.slot && game.slot.maths) {
     game.aiSkill = Tournament.skillFor(game.slot.cup.index, game.slot.cup.season);
   }
@@ -1249,6 +1268,137 @@ el('statsClose').addEventListener('click', function () {
   if (statsThenHome) { statsThenHome = false; goHome(); }
 });
 
+/* ---------- the locker ---------- */
+// Cosmetics earned by playing (locker.js owns the ledger; this is the shop
+// window). Everything is drawn by the same painters the match uses, so a tile
+// is an honest preview, not an icon of one.
+// `progress` (0..1, default 1) shades the item down from the top, so a locked
+// cosmetic is the thing itself filling up rather than a blacked-out blob. A
+// child should be able to see what they are working towards — that is the
+// whole point of showing it locked at all — so the shade is translucent and
+// never quite empties.
+function paintCosmeticTile(canvas, item, progress) {
+  var c = canvas.getContext('2d'), s = canvas.width, m = s / 2;
+  c.clearRect(0, 0, s, s);
+  if (item.kind === 'ball') {
+    c.save(); c.translate(m, m);
+    paintBallFace(c, s * 0.36, item.id);
+    c.restore();
+  } else if (item.kind === 'hat') {
+    // the child's own blue player, trying the hat on
+    var r = s * 0.28, y = m + s * 0.14;
+    c.beginPath(); c.arc(m, y, r, 0, 6.29);
+    c.fillStyle = '#3b82f6'; c.fill();
+    c.lineWidth = 3; c.strokeStyle = '#1e50b0'; c.stroke();
+    c.beginPath(); c.arc(m, y, r * 0.45, 0, 6.29);
+    c.fillStyle = 'rgba(255,255,255,0.85)'; c.fill();
+    paintHat(c, m, y, r, item.id);
+  } else {
+    // a patch of turf: base coat, one mowing stripe, the halfway line
+    var th = PITCH_THEMES[item.id] || PITCH_THEMES.day;
+    c.fillStyle = th.base; c.fillRect(0, 0, s, s);
+    c.fillStyle = th.stripe;
+    c.fillRect(0, 0, s, s / 3); c.fillRect(0, s * 2 / 3, s, s / 3);
+    if (th.stars) {
+      c.fillStyle = 'rgba(255,255,255,0.6)';
+      for (var i = 0; i < 12; i++) c.fillRect((i * 17 + 5) % s, (i * 23 + 7) % s, 2, 2);
+    }
+    c.strokeStyle = th.line; c.lineWidth = 2;
+    c.beginPath(); c.moveTo(0, m); c.lineTo(s, m); c.stroke();
+    c.beginPath(); c.arc(m, m, s * 0.17, 0, 6.29); c.stroke();
+  }
+
+  // source-atop confines the shade to what was actually drawn, so a ball fills
+  // like a gauge while the tile behind it stays clear.
+  var f = (progress === undefined) ? 1 : Math.max(0.12, Math.min(1, progress));
+  if (f < 1) {
+    c.save();
+    c.globalCompositeOperation = 'source-atop';
+    c.fillStyle = 'rgba(9,16,38,0.76)';
+    c.fillRect(0, 0, s, s * (1 - f));
+    c.restore();
+  }
+}
+
+// How far this slot is towards an item it has not earned yet, 0..1. Cup items
+// are bought with a different currency, so they count trophies instead.
+function cosmeticProgress(item) {
+  if (item.cup) { return (game.slot.trophies || 0) / item.cup; }
+  return (game.slot.stats.correct || 0) / item.at;
+}
+
+var LOCKER_GRIDS = { ball: 'lockerBall', hat: 'lockerHat', pitch: 'lockerPitch' };
+
+function paintLocker() {
+  var earnedNow = Locker.earned(game.slot);
+  Object.keys(LOCKER_GRIDS).forEach(function (kind) {
+    var grid = el(LOCKER_GRIDS[kind]);
+    grid.innerHTML = '';
+    Locker.ITEMS.filter(function (it) { return it.kind === kind; }).forEach(function (it) {
+      var have = earnedNow.indexOf(it.id) !== -1;
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = (equippedId(kind) === it.id ? 'on' : '') + (have ? '' : ' locked');
+      var cv = document.createElement('canvas');
+      cv.width = cv.height = 56;
+      paintCosmeticTile(cv, it, have ? 1 : cosmeticProgress(it));
+      btn.appendChild(cv);
+      // The price, under the art rather than over it: a tag sitting on the
+      // corner clipped its own last digit, and a tick on a locked item read as
+      // "you have this". "180/400" explains itself and the fill above it. An
+      // earned tile keeps the empty line so every tile is the same height.
+      var need = document.createElement('span');
+      need.className = 'need';
+      if (!have) {
+        need.textContent = it.cup
+          ? '\u{1F3C6} ' + (game.slot.trophies || 0) + '/' + it.cup
+          : (game.slot.stats.correct || 0) + '/' + it.at;
+      }
+      btn.appendChild(need);
+      btn.addEventListener('click', function () {
+        if (!have) { return; }   // a locked tile is a goal, not a button
+        game.slot.equipped[kind] = it.id;
+        persist();
+        paintLocker();
+        SFX.select();
+      });
+      grid.appendChild(btn);
+    });
+  });
+}
+
+function showLocker() {
+  if (!game.slot || !game.slot.emoji) { return; }
+  el('lockerWho').textContent = (game.slot.emoji || '⚽') +
+    (game.slot.name ? ' ' + game.slot.name : '');
+  paintLocker();
+  el('lockerPanel').classList.remove('hidden');
+}
+
+el('startLocker').addEventListener('click', function () { SFX.select(); showLocker(); });
+el('nextUnlock').addEventListener('click', function () { SFX.select(); showLocker(); });
+el('lockerClose').addEventListener('click', function () {
+  SFX.select();
+  el('lockerPanel').classList.add('hidden');
+});
+
+// The next milestone on the start card: drawn in full, then hidden under a
+// dark shade that retreats upward as the child's correct answers approach it.
+// A silhouette that fills, never a number to read — tapping it opens the
+// locker, where the price tags live.
+function paintNextUnlock() {
+  var wrap = el('nextUnlock');
+  if (!wrap) { return; }
+  var n = (game.slot && game.slot.emoji && game.slot.band > 0)
+    ? Locker.next(game.slot) : null;
+  if (!n) { wrap.classList.add('hidden'); return; }
+  wrap.classList.remove('hidden');
+  // Filled across this leg only (from the last milestone, not from zero), so
+  // the next reward always looks reachable rather than a thousand answers away.
+  paintCosmeticTile(el('nextUnlockArt'), Locker.byId(n.id),
+    (game.slot.stats.correct - n.prev) / (n.at - n.prev));
+}
+
 // Wire the age row inside the team editor. Returns the band it starts on and
 // reports every change back, so the caller keeps a single source of truth.
 function paintAges(current, onPick) {
@@ -1402,26 +1552,63 @@ function line(x1, y1, x2, y2) {
 
 function drawNet(yBack, yLine) {
   const top = Math.min(yBack, yLine), h = Math.abs(yLine - yBack);
-  ctx.fillStyle = 'rgba(255,255,255,0.13)';
+  const net = pitchTheme().net;
+  ctx.fillStyle = 'rgba(' + net + ',0.13)';
   ctx.fillRect(MOUTH_L, top, MOUTH_HALF * 2, h);
-  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.strokeStyle = 'rgba(' + net + ',0.3)';
   ctx.lineWidth = 1;
   for (let x = MOUTH_L; x <= MOUTH_R; x += 14) line(x, top, x, top + h);
   for (let y = top; y <= top + h; y += 14) line(MOUTH_L, y, MOUTH_R, y);
 }
 
+// Everything the pitch renderer needs to look like somewhere else. The lines
+// and nets take a colour per theme because white vanishes on snow; everything
+// else is the same pitch wearing different paint.
+const PITCH_THEMES = {
+  day:   { base: '#2e9e4f', stripe: 'rgba(255,255,255,0.06)',
+           line: 'rgba(255,255,255,0.9)', net: '255,255,255', post: '#1b5e33' },
+  night: { base: '#175233', stripe: 'rgba(255,255,255,0.045)',
+           line: 'rgba(255,255,255,0.8)', net: '255,255,255', post: '#0b2e1e' },
+  snow:  { base: '#c7d8e4', stripe: 'rgba(255,255,255,0.45)',
+           line: 'rgba(37,78,110,0.7)', net: '37,78,110', post: '#7c99ad' },
+  space: { base: '#1e1348', stripe: 'rgba(255,255,255,0.05)',
+           line: 'rgba(196,181,253,0.85)', net: '196,181,253', post: '#0f0a24',
+           stars: true },
+};
+
+// What this slot has chosen to wear. Falls back to the defaults whenever the
+// save predates a kind or holds an id the catalogue does not know, so a
+// hand-edited save draws the classic look rather than nothing.
+const COSMETIC_DEFAULTS = { ball: 'classic', pitch: 'day', hat: 'none' };
+function equippedId(kind) {
+  const id = game.slot && game.slot.equipped && game.slot.equipped[kind];
+  return (id && Locker.byId(id)) ? id : COSMETIC_DEFAULTS[kind];
+}
+function pitchTheme() { return PITCH_THEMES[equippedId('pitch')] || PITCH_THEMES.day; }
+
 function drawPitch() {
-  ctx.fillStyle = '#2e9e4f';
+  const th = pitchTheme();
+  ctx.fillStyle = th.base;
   ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.fillStyle = th.stripe;
   for (let i = 0; i < 9; i += 2) ctx.fillRect(0, i * 100, W, 100);
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  // Space plays under a starfield: fixed pseudo-random positions, so the sky
+  // holds still frame to frame instead of shimmering.
+  if (th.stars) {
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    for (let i = 0; i < 70; i++) {
+      const sx = (i * 137 + 29) % W, sy = (i * 211 + 61) % H;
+      ctx.fillRect(sx, sy, i % 3 ? 2 : 3, i % 3 ? 2 : 3);
+    }
+  }
+
+  ctx.strokeStyle = th.line;
   ctx.lineWidth = 4;
   ctx.strokeRect(SIDE_L, TOP_Y, SIDE_R - SIDE_L, BOT_Y - TOP_Y);
   line(SIDE_L, H / 2, SIDE_R, H / 2);
   ctx.beginPath(); ctx.arc(W / 2, H / 2, 72, 0, 6.29); ctx.stroke();
-  ctx.beginPath(); ctx.arc(W / 2, H / 2, 5, 0, 6.29); ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(W / 2, H / 2, 5, 0, 6.29); ctx.fillStyle = th.line; ctx.fill();
   ctx.strokeRect(W / 2 - 140, TOP_Y, 280, 110);
   ctx.strokeRect(W / 2 - 140, BOT_Y - 110, 280, 110);
 
@@ -1431,7 +1618,7 @@ function drawPitch() {
   for (const p of game.posts) {
     ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.29);
     ctx.fillStyle = '#fff'; ctx.fill();
-    ctx.lineWidth = 2; ctx.strokeStyle = '#1b5e33'; ctx.stroke();
+    ctx.lineWidth = 2; ctx.strokeStyle = th.post; ctx.stroke();
   }
 }
 
@@ -1455,6 +1642,10 @@ function drawPlayer(p, t) {
   ctx.arc(p.x - p.r * 0.3, p.y - p.r * 0.35, p.r * 0.5, Math.PI * 0.9, Math.PI * 1.6);
   ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.stroke();
 
+  // The locker's hat, worn by the child's outfield players only: the keeper's
+  // kit is its identity, and the CPU has earned nothing.
+  if (isHuman) paintHat(ctx, p.x, p.y, p.r, equippedId('hat'));
+
   // turn hints: pulse selectable blues, ring the CPU's pick
   const selected = game.drag && game.drag.player === p;
   if (selected || (game.state === 'AI_WAIT' && game.aiChoice === p)) {
@@ -1463,6 +1654,38 @@ function drawPlayer(p, t) {
   } else if (game.state === 'HUMAN_AIM' && isHuman) {
     ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 6 + Math.sin(t * 5) * 2.5, 0, 6.29);
     ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.stroke();
+  }
+}
+
+// A hat perched on the top edge of a player disc. Painted from the same
+// routine in play and in the locker tiles, so trying one on is honest.
+function paintHat(c, x, y, r, hat) {
+  if (!hat || hat === 'none') return;
+  if (hat === 'cap') {
+    c.beginPath(); c.arc(x, y - r * 0.62, r * 0.55, Math.PI, 6.29);
+    c.fillStyle = '#ef4444'; c.fill();
+    c.lineWidth = 2; c.strokeStyle = '#991b1b'; c.stroke();
+    c.beginPath();
+    c.ellipse(x, y - r * 0.6, r * 0.72, r * 0.16, 0, 0, 6.29);
+    c.fillStyle = '#b91c1c'; c.fill();
+  } else if (hat === 'crown') {
+    c.beginPath();
+    c.moveTo(x - r * 0.6, y - r * 0.55);
+    c.lineTo(x - r * 0.6, y - r * 1.15); c.lineTo(x - r * 0.3, y - r * 0.8);
+    c.lineTo(x, y - r * 1.25); c.lineTo(x + r * 0.3, y - r * 0.8);
+    c.lineTo(x + r * 0.6, y - r * 1.15); c.lineTo(x + r * 0.6, y - r * 0.55);
+    c.closePath();
+    c.fillStyle = '#fbbf24'; c.fill();
+    c.lineWidth = 2; c.strokeStyle = '#b45309'; c.stroke();
+  } else if (hat === 'party') {
+    c.beginPath();
+    c.moveTo(x, y - r * 1.45);
+    c.lineTo(x - r * 0.45, y - r * 0.45); c.lineTo(x + r * 0.45, y - r * 0.45);
+    c.closePath();
+    c.fillStyle = '#8b5cf6'; c.fill();
+    c.lineWidth = 2; c.strokeStyle = '#6d28d9'; c.stroke();
+    c.beginPath(); c.arc(x, y - r * 1.45, r * 0.18, 0, 6.29);
+    c.fillStyle = '#fbbf24'; c.fill();
   }
 }
 
@@ -1538,6 +1761,80 @@ function drawKeeper(p) {
   ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 6, Math.PI * 1.62, Math.PI * 0.38); ctx.stroke();
 }
 
+// The face of the ball, painted around an origin the caller has already
+// translated (and, in play, rotated) to. Shared by the match renderer and the
+// locker tiles, so what the child picks is exactly what they get.
+function paintBallFace(c, r, skin) {
+  c.beginPath(); c.arc(0, 0, r, 0, 6.29);
+  c.fillStyle = skin === 'gold' ? '#fcd34d' : '#fff'; c.fill();
+  c.lineWidth = 2;
+  c.strokeStyle = skin === 'gold' ? '#92400e' : '#2b2b2b'; c.stroke();
+  c.save();
+  c.beginPath(); c.arc(0, 0, r - 1, 0, 6.29); c.clip();
+
+  if (skin === 'stripes') {
+    c.fillStyle = '#2563eb';
+    for (let k = 0; k < 5; k += 2) c.fillRect(-r + k * r * 0.4, -r, r * 0.4, r * 2);
+  } else if (skin === 'stars') {
+    c.fillStyle = '#f59e0b';
+    for (let k = 0; k < 5; k++) {
+      const a = k * 1.2566 - Math.PI / 2;
+      paintStar(c, Math.cos(a) * r * 0.55, Math.sin(a) * r * 0.55, r * 0.3);
+    }
+  } else if (skin === 'flames') {
+    const g = c.createRadialGradient(0, 0, r * 0.1, 0, 0, r);
+    g.addColorStop(0, '#fde047'); g.addColorStop(0.55, '#f97316');
+    g.addColorStop(1, '#b91c1c');
+    c.fillStyle = g; c.fillRect(-r, -r, r * 2, r * 2);
+    c.strokeStyle = 'rgba(127,29,29,0.8)'; c.lineWidth = r * 0.14;
+    for (let k = 0; k < 3; k++) {
+      c.beginPath(); c.arc(0, 0, r * (0.45 + k * 0.22), k * 2.1, k * 2.1 + 2.4);
+      c.stroke();
+    }
+  } else if (skin === 'beach') {
+    const cols = ['#ef4444', '#fbbf24', '#3b82f6'];
+    for (let k = 0; k < 6; k++) {
+      if (k % 2) continue;                     // white wedges stay the base coat
+      c.beginPath(); c.moveTo(0, 0);
+      c.arc(0, 0, r, k * 1.0472 - Math.PI / 2, (k + 1) * 1.0472 - Math.PI / 2);
+      c.closePath(); c.fillStyle = cols[k / 2]; c.fill();
+    }
+    c.beginPath(); c.arc(0, 0, r * 0.22, 0, 6.29);
+    c.fillStyle = '#fff'; c.fill();
+  } else {                                     // classic and gold: pentagons
+    c.fillStyle = skin === 'gold' ? '#b45309' : '#2b2b2b';
+    c.beginPath();
+    for (let k = 0; k < 5; k++) {
+      const a = k * 1.2566 - Math.PI / 2, rr = r * 0.4;
+      const px = Math.cos(a) * rr, py = Math.sin(a) * rr;
+      k === 0 ? c.moveTo(px, py) : c.lineTo(px, py);
+    }
+    c.closePath(); c.fill();
+    for (let k = 0; k < 5; k++) {
+      const a = k * 1.2566 - Math.PI / 2 + 0.63;
+      c.beginPath();
+      c.arc(Math.cos(a) * r * 0.85, Math.sin(a) * r * 0.85, r * 0.28, 0, 6.29);
+      c.fill();
+    }
+    if (skin === 'gold') {                     // a shine, so gold reads as metal
+      c.strokeStyle = 'rgba(255,255,255,0.75)'; c.lineWidth = r * 0.16;
+      c.beginPath(); c.arc(0, 0, r * 0.72, Math.PI * 1.05, Math.PI * 1.45);
+      c.stroke();
+    }
+  }
+  c.restore();
+}
+
+function paintStar(c, x, y, r) {
+  c.beginPath();
+  for (let k = 0; k < 10; k++) {
+    const a = k * Math.PI / 5 - Math.PI / 2, rr = k % 2 ? r * 0.45 : r;
+    const px = x + Math.cos(a) * rr, py = y + Math.sin(a) * rr;
+    k === 0 ? c.moveTo(px, py) : c.lineTo(px, py);
+  }
+  c.closePath(); c.fill();
+}
+
 function drawBall(b) {
   ctx.beginPath();
   ctx.ellipse(b.x + 2, b.y + 3, b.r, b.r * 0.92, 0, 0, 6.29);
@@ -1546,26 +1843,7 @@ function drawBall(b) {
   ctx.save();
   ctx.translate(b.x, b.y);
   ctx.rotate(game.ballRot);
-  ctx.beginPath(); ctx.arc(0, 0, b.r, 0, 6.29);
-  ctx.fillStyle = '#fff'; ctx.fill();
-  ctx.lineWidth = 2; ctx.strokeStyle = '#2b2b2b'; ctx.stroke();
-  ctx.save();
-  ctx.beginPath(); ctx.arc(0, 0, b.r - 1, 0, 6.29); ctx.clip();
-  ctx.fillStyle = '#2b2b2b';
-  ctx.beginPath();
-  for (let k = 0; k < 5; k++) {
-    const a = k * 1.2566 - Math.PI / 2, rr = b.r * 0.4;
-    const px = Math.cos(a) * rr, py = Math.sin(a) * rr;
-    k === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-  }
-  ctx.closePath(); ctx.fill();
-  for (let k = 0; k < 5; k++) {
-    const a = k * 1.2566 - Math.PI / 2 + 0.63;
-    ctx.beginPath();
-    ctx.arc(Math.cos(a) * b.r * 0.85, Math.sin(a) * b.r * 0.85, b.r * 0.28, 0, 6.29);
-    ctx.fill();
-  }
-  ctx.restore();
+  paintBallFace(ctx, b.r, equippedId('ball'));
   ctx.restore();
 }
 
