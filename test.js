@@ -452,6 +452,66 @@ checkGenerators(10, false);
   }
 })();
 
+// ---- Over-12: band 11 ----
+checkGenerators(11, false);
+
+(function () {
+  var rand = makeRng(111), i, q;
+
+  // indices: b^p × b^q = b^□ (answer p+q) or b^p ÷ b^q = b^□ (answer p−q).
+  for (i = 0; i < 80; i++) {
+    q = Maths._BANDS[11][0](rand);
+    eq(q.skill, 'indices', 'band 11 gen 0 is indices');
+    eq(q.render[0].v, q.render[2].v, 'indices keeps one base throughout');
+    eq(q.render[4].e, '□', 'indices asks for the exponent');
+    if (q.render[1].v === '×') {
+      eq(q.answer, q.render[0].e + q.render[2].e, 'multiplied powers add exponents');
+    } else {
+      eq(q.answer, q.render[0].e - q.render[2].e, 'divided powers subtract exponents');
+      ok(q.answer >= 1, 'divided powers keep a positive exponent');
+    }
+  }
+
+  // ineq: answer is the largest whole x with a·x < c.
+  for (i = 0; i < 80; i++) {
+    q = Maths._BANDS[11][1](rand);
+    eq(q.skill, 'ineq', 'band 11 gen 1 is ineq');
+    var m = /^(\d+)x$/.exec(q.render[0].v), a = Number(m[1]), c = q.render[2].v;
+    ok(a * q.answer < c, 'ineq answer satisfies the inequality');
+    ok(a * (q.answer + 1) >= c, 'ineq answer is the largest such x');
+  }
+
+  // seqGeo: constant ratio, gap in the late half; recompute from neighbours.
+  for (i = 0; i < 80; i++) {
+    q = Maths._BANDS[11][2](rand);
+    eq(q.skill, 'seqGeo', 'band 11 gen 2 is seqGeo');
+    var nums = [], k, idx = 0, gap = -1;
+    for (k = 0; k < q.render.length; k++) {
+      if (q.render[k].t === 'num') { nums.push({ i: idx, v: q.render[k].v }); idx++; }
+      else if (q.render[k].t === 'box') { gap = idx; idx++; }
+    }
+    ok(gap >= 2 && gap <= 4, 'seqGeo gap sits in the late half');
+    var r0 = null;
+    for (k = 0; k + 1 < nums.length; k++) {
+      if (nums[k + 1].i === nums[k].i + 1) { r0 = nums[k + 1].v / nums[k].v; break; }
+    }
+    ok(r0 === 2 || r0 === 3, 'seqGeo ratio is 2 or 3');
+    var ref = nums[0];
+    eq(q.answer, ref.v * Math.pow(r0, gap - ref.i),
+       'seqGeo recomputes the hidden term from a visible one');
+  }
+
+  // areaComp: L-shape area is the outer rectangle minus the notch.
+  for (i = 0; i < 80; i++) {
+    q = Maths._BANDS[11][3](rand);
+    eq(q.skill, 'areaComp', 'band 11 gen 3 is areaComp');
+    var g = q.render[0];
+    eq(g.kind, 'areaComp', 'areaComp diagram kind');
+    eq(q.answer, g.W * g.H - g.w * g.h, 'areaComp area recomputes');
+    ok(g.w < g.W && g.h < g.H, 'areaComp notch fits inside the rectangle');
+  }
+})();
+
 // ---- Task 8 ----
 (function () {
   var rand = makeRng(101), i, q, counts = { 3: 0, 4: 0 };

@@ -485,6 +485,67 @@ var Maths = (function () {
 
   _BANDS[10] = [genSimul, genAngleTri, genPythag, genSeqQuad];
 
+  // --- band 11: index laws, inequalities, geometric sequences, areas ---
+  function genIndices(rand) {
+    var base = _randInt(rand, 2, 5);
+    var div = rand() < 0.4;
+    var p = _randInt(rand, 2, 5), q = _randInt(rand, 2, 5);
+    if (div && p <= q) { p = q + _randInt(rand, 1, 3); } // keep p−q ≥ 1
+    return {
+      render: [{ t: 'pow', v: base, e: p }, { t: 'op', v: div ? OP.div : OP.mul },
+               { t: 'pow', v: base, e: q }, { t: 'eq' },
+               { t: 'pow', v: base, e: '□' }],
+      answer: div ? p - q : p + q, skill: 'indices',
+      // Multiplied the exponents, kept one of them, off by one.
+      near: [p * q, p, q, (div ? p - q : p + q) + 1]
+    };
+  }
+
+  function genIneq(rand) {
+    var a = _randInt(rand, 2, 9), x = _randInt(rand, 2, 12);
+    var c = a * x + _randInt(rand, 1, a); // a·x < c ≤ a·(x+1)
+    return {
+      render: [{ t: 'var', v: a + 'x' }, { t: 'op', v: '<' }, { t: 'num', v: c },
+               { t: 'sep' }, { t: 'var', v: 'x' }, { t: 'eq' }, { t: 'box' }],
+      answer: x, skill: 'ineq',
+      // Rounded up instead, divided and truncated wrongly, off by two.
+      near: [x + 1, x - 1, Math.round(c / a), x + 2]
+    };
+  }
+
+  function genSeqGeo(rand) {
+    var r = _pick(rand, [2, 3]);
+    var start = _randInt(rand, 2, 6);
+    var gap = _randInt(rand, 2, 4);
+    var render = [], i, v;
+    for (i = 0; i < 5; i++) {
+      v = start * Math.pow(r, i);
+      if (i > 0) { render.push({ t: 'sep' }); }
+      render.push(i === gap ? { t: 'box' } : { t: 'num', v: v });
+    }
+    var answer = start * Math.pow(r, gap);
+    var prev = start * Math.pow(r, gap - 1);
+    var prevprev = start * Math.pow(r, gap - 2);
+    return {
+      render: render, answer: answer, skill: 'seqGeo',
+      // Continued linearly from the two terms before the gap.
+      near: [prev + (prev - prevprev), answer + r, answer - r, prev]
+    };
+  }
+
+  function genAreaComp(rand) {
+    var W = _randInt(rand, 6, 12), H = _randInt(rand, 5, 10);
+    var w = _randInt(rand, 2, W - 3), h = _randInt(rand, 2, H - 2);
+    return {
+      render: [{ t: 'diag', kind: 'areaComp', W: W, H: H, w: w, h: h }, { t: 'box' }],
+      answer: W * H - w * h, skill: 'areaComp',
+      // Ignored the notch, subtracted lengths instead of area.
+      near: [W * H, W * H - w - h, W * H - w * h + h, W * H - w * h - w]
+    };
+  }
+
+  _BANDS[11] = [genIndices, genIneq, genSeqGeo, genAreaComp];
+
   function newState(startBand) {
     var d = typeof startBand === 'number' ? startBand : 1;
     if (d < 1) { d = 1; }
