@@ -426,6 +426,65 @@ var Maths = (function () {
   _BANDS[8] = [genNeg, genSquare, genRoot, genEqn];
   _BANDS[9] = [genEqn2, genExpand, genAngleLine, genSeqRule];
 
+  // --- band 10: simultaneous equations, triangle angles, Pythagoras ---
+  function genSimul(rand) {
+    var y = _randInt(rand, 1, 9), x = y + _randInt(rand, 1, 9);
+    return {
+      render: [{ t: 'var', v: 'x' }, { t: 'op', v: OP.add }, { t: 'var', v: 'y' },
+               { t: 'eq' }, { t: 'num', v: x + y }, { t: 'sep' },
+               { t: 'var', v: 'x' }, { t: 'op', v: OP.sub }, { t: 'var', v: 'y' },
+               { t: 'eq' }, { t: 'num', v: x - y }, { t: 'sep' },
+               { t: 'var', v: 'x' }, { t: 'eq' }, { t: 'box' }],
+      answer: x, skill: 'simul',
+      // Solved for the wrong letter (y), added the equations' right sides.
+      near: [y, x + y, x + 1, x - 1]
+    };
+  }
+
+  function genAngleTri(rand) {
+    var a = _randInt(rand, 30, 100), b = _randInt(rand, 30, Math.min(100, 160 - a));
+    var c = 180 - a - b;
+    return {
+      render: [{ t: 'diag', kind: 'angleTri', a: a, b: b }, { t: 'box' }],
+      answer: c, skill: 'angleTri',
+      // Subtracted from 90 or 360, read a labelled angle, off by ten.
+      near: [c + 10, c - 10, a + b, 180 - c]
+    };
+  }
+
+  // Whole-number hypotenuses only, so the answer needs no root extraction.
+  var TRIPLES = [[3, 4, 5], [6, 8, 10], [5, 12, 13], [9, 12, 15],
+                 [8, 15, 17], [7, 24, 25], [12, 16, 20], [20, 21, 29]];
+
+  function genPythag(rand) {
+    var t = _pick(rand, TRIPLES);
+    var flip = rand() < 0.5;
+    var la = flip ? t[1] : t[0], lb = flip ? t[0] : t[1];
+    return {
+      render: [{ t: 'diag', kind: 'pythag', legA: la, legB: lb }, { t: 'box' }],
+      answer: t[2], skill: 'pythag',
+      // Added the legs, took the longer leg, off by one.
+      near: [la + lb, Math.max(la, lb), t[2] + 1, t[2] - 1]
+    };
+  }
+
+  function genSeqQuad(rand) {
+    var c = _randInt(rand, 0, 10), render = [], i, v;
+    for (i = 1; i <= 5; i++) {
+      v = i * i + c;
+      if (i > 1) { render.push({ t: 'sep' }); }
+      render.push(i === 5 ? { t: 'box' } : { t: 'num', v: v });
+    }
+    var answer = 25 + c;
+    return {
+      render: render, answer: answer, skill: 'seqQuad',
+      // Continued linearly (repeating the last difference), off by two.
+      near: [16 + c + (16 + c - (9 + c)), answer + 2, answer - 2, answer + 1]
+    };
+  }
+
+  _BANDS[10] = [genSimul, genAngleTri, genPythag, genSeqQuad];
+
   function newState(startBand) {
     var d = typeof startBand === 'number' ? startBand : 1;
     if (d < 1) { d = 1; }

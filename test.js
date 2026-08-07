@@ -404,6 +404,54 @@ checkGenerators(9, false);
   }
 })();
 
+// ---- Over-12: band 10 ----
+checkGenerators(10, false);
+
+(function () {
+  var rand = makeRng(101), i, q;
+
+  // simul renders "x+y=s , x−y=d , x=□"; x=(s+d)/2 must be whole and > y ≥ 1.
+  for (i = 0; i < 80; i++) {
+    q = Maths._BANDS[10][0](rand);
+    eq(q.skill, 'simul', 'band 10 gen 0 is simul');
+    var s = q.render[4].v, d = q.render[10].v;
+    eq(q.answer, (s + d) / 2, 'simul recomputes x from sum and difference');
+    ok(q.answer === Math.floor(q.answer), 'simul x is whole');
+    var y = s - q.answer;
+    ok(y >= 1 && q.answer > y, 'simul keeps x > y >= 1');
+  }
+
+  // angleTri: three angles of a triangle sum to 180, all drawable.
+  for (i = 0; i < 80; i++) {
+    q = Maths._BANDS[10][1](rand);
+    eq(q.skill, 'angleTri', 'band 10 gen 1 is angleTri');
+    eq(q.render[0].kind, 'angleTri', 'angleTri diagram kind');
+    eq(q.render[0].a + q.render[0].b + q.answer, 180,
+       'triangle angles sum to 180');
+    ok(q.answer >= 20, 'angleTri unknown stays drawable');
+    ok(q.render[0].a >= 30 && q.render[0].b >= 30, 'angleTri knowns stay drawable');
+  }
+
+  // pythag: legs and answer form a Pythagorean triple.
+  for (i = 0; i < 80; i++) {
+    q = Maths._BANDS[10][2](rand);
+    eq(q.skill, 'pythag', 'band 10 gen 2 is pythag');
+    eq(q.render[0].kind, 'pythag', 'pythag diagram kind');
+    var la = q.render[0].legA, lb = q.render[0].legB;
+    eq(la * la + lb * lb, q.answer * q.answer, 'pythag is a true triple');
+  }
+
+  // seqQuad: differences grow by 2; recompute term 5 from terms 3 and 4.
+  for (i = 0; i < 80; i++) {
+    q = Maths._BANDS[10][3](rand);
+    eq(q.skill, 'seqQuad', 'band 10 gen 3 is seqQuad');
+    var t = [q.render[0].v, q.render[2].v, q.render[4].v, q.render[6].v];
+    eq(t[1] - t[0] + 2, t[2] - t[1], 'seqQuad differences grow by 2');
+    eq(q.answer, t[3] + (t[3] - t[2]) + 2,
+       'seqQuad recomputes the next term from the last difference');
+  }
+})();
+
 // ---- Task 8 ----
 (function () {
   var rand = makeRng(101), i, q, counts = { 3: 0, 4: 0 };
