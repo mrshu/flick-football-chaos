@@ -112,6 +112,24 @@ ok(r1() !== r1(), 'successive values differ');
      'comparison choices are the three symbols');
 })();
 
+// ---- Over-12: the choice row hardens at the top of the ladder ----
+(function () {
+  eq(Maths.choiceCount(8.99), 4, 'four choices just below band 9');
+  eq(Maths.choiceCount(9), 5, 'five choices from difficulty 9');
+  eq(Maths.choiceCount(10.99), 5, 'five choices just below band 11');
+  eq(Maths.choiceCount(11), 6, 'six choices at the ceiling');
+
+  var rand = makeRng(55), i, j, c;
+  for (i = 0; i < 40; i++) {
+    c = Maths.buildChoices(24, 6, [23, 25, 26, 22], rand, 0);
+    eq(c.length, 6, 'buildChoices fills six slots');
+    ok(c.indexOf(24) !== -1, 'six-choice set contains the answer');
+    for (j = 0; j < c.length; j++) {
+      eq(c.indexOf(c[j]), j, 'six choices are distinct');
+    }
+  }
+})();
+
 // ---- Band generator shared checks (used by Tasks 4-7) ----
 var TOKEN_TYPES = ['num', 'balls', 'op', 'eq', 'box', 'frac', 'bar', 'sep', 'pct', 'pow', 'var', 'diag'];
 

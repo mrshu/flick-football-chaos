@@ -31,6 +31,10 @@ var Maths = (function () {
   function choiceCount(difficulty) {
     if (difficulty <= 1.25) { return 2; }
     if (difficulty <= 1.75) { return 3; }
+    // The top of the ladder hardens the format instead of the numbers: more
+    // choices means less to gain from a guess (evidence() also weighs this).
+    if (difficulty >= 11) { return 6; }
+    if (difficulty >= 9) { return 5; }
     return 4;
   }
 
@@ -55,7 +59,7 @@ var Maths = (function () {
     }
 
     // Pad outward from the answer until we have enough distinct options.
-    // Maximum count is 4, so at most 3 extra values needed; each iteration offers 2 candidates.
+    // Maximum count is 6, so at most 5 extra values needed; each iteration offers 2 candidates.
     for (i = 1; out.length < count && i <= 12; i++) {
       if (out.length < count && answer + i >= min && out.indexOf(answer + i) === -1) {
         out.push(answer + i);
