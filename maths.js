@@ -72,7 +72,7 @@ var Maths = (function () {
     return _shuffle(rand, out);
   }
 
-  var OP = { add: '+', sub: '−', mul: '×', div: '÷' };
+  var OP = { add: '+', sub: '−', mul: '×', div: '÷', lt: '<' };
 
   // --- band 1: counting and bonds to 5 ---
   function genCount(rand) {
@@ -440,7 +440,8 @@ var Maths = (function () {
                { t: 'eq' }, { t: 'num', v: x - y }, { t: 'sep' },
                { t: 'var', v: 'x' }, { t: 'eq' }, { t: 'box' }],
       answer: x, skill: 'simul',
-      // Solved for the wrong letter (y), added the equations' right sides.
+      // Solved for the wrong letter (y), stopped at the first equation's
+      // right side (x + y), off by one either way.
       near: [y, x + y, x + 1, x - 1]
     };
   }
@@ -451,8 +452,12 @@ var Maths = (function () {
     return {
       render: [{ t: 'diag', kind: 'angleTri', a: a, b: b }, { t: 'box' }],
       answer: c, skill: 'angleTri',
-      // Subtracted from 90 or 360, read a labelled angle, off by ten.
-      near: [c + 10, c - 10, a + b, 180 - c]
+      // Off by ten either way, added the two labelled angles instead of
+      // subtracting them, read one labelled angle straight off the picture.
+      // `180 - c` used to sit here as a fourth option: it is identically
+      // `a + b`, so this list only ever offered three distinct distractors
+      // at a band that shows five choices.
+      near: [c + 10, c - 10, a + b, a]
     };
   }
 
@@ -472,18 +477,25 @@ var Maths = (function () {
     };
   }
 
+  // a·n² + c. The coefficient exists purely for variety: with a fixed at 1
+  // the whole skill was eleven questions (c = 0..10) and a player at band 10
+  // exhausted it inside a single match. Every term stays a whole number and
+  // the defining property is untouched — the differences still grow by a
+  // constant, now 2a rather than always 2.
   function genSeqQuad(rand) {
-    var c = _randInt(rand, 0, 10), render = [], i, v;
+    var a = _randInt(rand, 1, 3), c = _randInt(rand, 0, 12), render = [], i, v;
     for (i = 1; i <= 5; i++) {
-      v = i * i + c;
+      v = a * i * i + c;
       if (i > 1) { render.push({ t: 'sep' }); }
       render.push(i === 5 ? { t: 'box' } : { t: 'num', v: v });
     }
-    var answer = 25 + c;
+    var answer = 25 * a + c;
     return {
       render: render, answer: answer, skill: 'seqQuad',
-      // Continued linearly (repeating the last difference), off by two.
-      near: [16 + c + (16 + c - (9 + c)), answer + 2, answer - 2, answer + 1]
+      // Continued linearly, repeating the last difference (7a) instead of
+      // growing it — that lands on answer − 2a, so the "off by two" pair that
+      // used to sit beside it has become ±2a, which cannot collide with it.
+      near: [answer - 2 * a, answer + 2 * a, answer + 1, answer - 1]
     };
   }
 
@@ -509,7 +521,7 @@ var Maths = (function () {
     var a = _randInt(rand, 2, 9), x = _randInt(rand, 2, 12);
     var c = a * x + _randInt(rand, 1, a); // a·x < c ≤ a·(x+1)
     return {
-      render: [{ t: 'var', v: a + 'x' }, { t: 'op', v: '<' }, { t: 'num', v: c },
+      render: [{ t: 'var', v: a + 'x' }, { t: 'op', v: OP.lt }, { t: 'num', v: c },
                { t: 'sep' }, { t: 'var', v: 'x' }, { t: 'eq' }, { t: 'box' }],
       answer: x, skill: 'ineq',
       // Rounded up instead, divided and truncated wrongly, off by two.
@@ -629,7 +641,7 @@ var Maths = (function () {
   // ordinary good/bad play — before every further answer in the same
   // direction jumps further than the last, up to ACCEL_CAP. Young bands
   // (<=4) accelerate upward at full strength because their content is
-  // thin and a capable child exhausts it fast; bands 5-8 hold real ground
+  // thin and a capable child exhausts it fast; bands 5-11 hold real ground
   // that still rewards practice, so ACCEL_UP_OLD_RATIO damps the climb
   // there. The same growing-jump shape mirrors downward off any streak of
   // wrong answers, with no band damping: an overshoot can strand a child
