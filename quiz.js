@@ -72,8 +72,39 @@ var Quiz = (function () {
   function drawDiag(t) {
     var W = 180, H = 110, dpr = window.devicePixelRatio || 1;
     var cv = document.createElement('canvas');
-    cv.width = W * dpr; cv.height = H * dpr;
     var ctx = cv.getContext('2d');
+    ctx.font = '700 14px "Trebuchet MS", Verdana, sans-serif';
+
+    // areaComp's outline is an L made of two candidate rectangles for the
+    // '?' marker (see below); measure it and decide, before the canvas is
+    // sized, whether either rectangle leaves it real clearance at the
+    // usual scale. Resizing a canvas after drawing starts wipes its
+    // state, so any growing has to happen up front.
+    var ox = 14, oy = 12, sc, pw, ph, nw, nh, leftClear, botClear, grew = false;
+    if (t.kind === 'areaComp') {
+      var qm = ctx.measureText('?');
+      var qw = qm.width;
+      var qh = (typeof qm.actualBoundingBoxAscent === 'number')
+        ? qm.actualBoundingBoxAscent + qm.actualBoundingBoxDescent
+        : 11;
+      var margin = 5, g = 1, tries = 0;
+      do {
+        sc = g * Math.min(150 / t.W, 84 / t.H);
+        pw = t.W * sc; ph = t.H * sc; nw = t.w * sc; nh = t.h * sc;
+        leftClear = Math.min((pw - nw) - (qw + margin * 2), ph - (qh + margin * 2));
+        botClear = Math.min(nw - (qw + margin * 2), (ph - nh) - (qh + margin * 2));
+        tries++;
+        if (leftClear >= 0 || botClear >= 0 || tries >= 6) { break; }
+        g *= 1.15;
+      } while (true);
+      if (g > 1) {
+        H = Math.max(H, Math.ceil(oy + ph + 14));
+        W = Math.max(W, Math.ceil(ox + pw + 16));
+        grew = true;
+      }
+    }
+
+    cv.width = W * dpr; cv.height = H * dpr;
     ctx.scale(dpr, dpr);
     ctx.strokeStyle = '#fff';
     ctx.fillStyle = '#fff';
@@ -81,6 +112,7 @@ var Quiz = (function () {
     ctx.font = '700 14px "Trebuchet MS", Verdana, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    if (grew) { cv.style.width = W + 'px'; cv.style.height = H + 'px'; }
 
     function line(x1, y1, x2, y2) {
       ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
@@ -105,7 +137,14 @@ var Quiz = (function () {
       var wedgeLabel = function (bisector, width, txt) {
         var half = Math.max(width / 2, 0.12);
         var tw = ctx.measureText(txt).width;
-        var r = Math.min(76, Math.max(26, (tw / 2 + 5) / Math.sin(half)));
+        // Base radius keeps the label inside its own wedge; pushing
+        // further out by the label's own half-width plus a fixed margin
+        // gives constant clearance from both bounding rays no matter how
+        // steep the ray is. Dividing only by sin(half) (the old formula)
+        // shrinks toward zero as the wedge narrows near a vertical ray,
+        // which is exactly what let the glyph sit on the stroke.
+        var base = Math.min(50, Math.max(20, 7 / Math.sin(half)));
+        var r = Math.min(76, base + tw / 2 + 6);
         var x = Math.min(W - 12, Math.max(12, cx + r * Math.cos(bisector)));
         var y = Math.min(H - 9, Math.max(9, cy - r * Math.sin(bisector)));
         ctx.fillText(txt, x, y);
@@ -168,8 +207,8 @@ var Quiz = (function () {
       // height on the left, the short H-h edge on the right) draws the
       // shape the generator actually means and its area matches for
       // every W,H,w,h the generator can produce, verified by shoelace.
-      var sc = Math.min(150 / t.W, 84 / t.H), ox = 14, oy = 12;
-      var pw = t.W * sc, ph = t.H * sc, nw = t.w * sc, nh = t.h * sc;
+      // sc/pw/ph/nw/nh/ox/oy and leftClear/botClear were already worked
+      // out above, before the canvas was sized.
       ctx.beginPath();
       ctx.moveTo(ox, oy);
       ctx.lineTo(ox + pw - nw, oy);
@@ -182,7 +221,16 @@ var Quiz = (function () {
       ctx.fillText(String(t.H), ox - 8, oy + ph / 2);
       ctx.fillText(String(t.w), ox + pw - nw / 2, oy + nh - 8);
       ctx.fillText(String(t.h), ox + pw - nw + 8, oy + nh / 2);
-      ctx.fillText('?', ox + pw / 2, oy + nh + (ph - nh) / 2);
+      // The '?' goes in whichever of the L-shape's two rectangles — the
+      // left column (pw-nw wide, full ph tall) or the bottom strip (nw
+      // wide, ph-nh tall) — leaves more clearance around it; the
+      // generator can make either one thin (H-h as small as 2 units, or
+      // W-w as small as 3), so a fixed choice collides on the thin one.
+      if (botClear >= leftClear) {
+        ctx.fillText('?', ox + pw - nw / 2, oy + nh + (ph - nh) / 2);
+      } else {
+        ctx.fillText('?', ox + (pw - nw) / 2, oy + ph / 2);
+      }
     }
     return cv;
   }
