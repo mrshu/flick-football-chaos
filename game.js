@@ -1110,6 +1110,7 @@ function openTeamEditor(returnTo) {
     // adaptive state it produced is thrown away with it.
     if (band !== game.slot.band) { game.slot.maths = null; game.maths = null; }
     game.slot.band = band;
+    applySkin();
     persist();
     ed.classList.add('hidden');
     refreshStart();
