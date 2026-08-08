@@ -1702,20 +1702,31 @@ checkGenerators(11, false);
   eq(T.skillFor(2, 0, 3), 0.70, 'band 3 round 3 is unchanged');
   eq(T.skillFor(3, 0, 3), 0.95, 'band 3 final is unchanged');
 
-  // Band 11 sits at its floor until the ladder overtakes it in the final.
-  eq(T.skillFor(0, 0, 11), 0.80, 'band 11 round 1 starts at the floor');
-  eq(T.skillFor(1, 0, 11), 0.80, 'band 11 round 2 is still the floor');
-  eq(T.skillFor(2, 0, 11), 0.80, 'band 11 round 3 is still the floor');
+  // Band 11 opens at its floor and still climbs from there to the final —
+  // the blend restores a rising ladder instead of three flat rounds.
+  eq(T.skillFor(0, 0, 11), 0.8315789473684211, 'band 11 round 1 starts at the floor');
+  eq(T.skillFor(1, 0, 11), 0.8710526315789474, 'band 11 round 2 has climbed');
+  eq(T.skillFor(2, 0, 11), 0.9105263157894736, 'band 11 round 3 has climbed again');
   eq(T.skillFor(3, 0, 11), 0.95, 'band 11 final is the tuned ceiling');
 
-  // Band 9's floor is below the later rungs, so the ladder wins where it is
-  // already higher — the floor never makes an opponent weaker.
-  eq(T.skillFor(0, 0, 9), 0.45, 'band 9 round 1 is lifted to the floor');
-  eq(T.skillFor(1, 0, 9), 0.45, 'band 9 round 2 already matched the floor');
-  eq(T.skillFor(2, 0, 9), 0.70, 'band 9 round 3 keeps the ladder value');
-  eq(T.skillFor(3, 0, 9), 0.95, 'band 9 final keeps the ladder value');
-  eq(T.skillFor(0, 0, 10), 0.65, 'band 10 round 1 is lifted to its own floor');
-  eq(T.skillFor(2, 0, 10), 0.70, 'band 10 round 3 keeps the higher ladder value');
+  // The ladder is strictly increasing round over round for a floored band —
+  // this is the property `max` broke and the blend exists to restore.
+  var prevBand11 = -1;
+  for (i = 0; i < T.COUNT; i++) {
+    var bandVal = T.skillFor(i, 0, 11);
+    ok(bandVal > prevBand11, 'band 11 round ' + i + ' is harder than the last');
+    prevBand11 = bandVal;
+  }
+  ok(T.skillFor(0, 0, 11) >= 0.80, 'band 11 round 1 is at or above its floor');
+
+  // Band 9 and band 10 are blended too: the whole ladder is rescaled into the
+  // space above their own floor, not just the rounds the floor used to win.
+  eq(T.skillFor(0, 0, 9), 0.5552631578947369, 'band 9 round 1 is lifted above the floor');
+  eq(T.skillFor(1, 0, 9), 0.6868421052631579, 'band 9 round 2 is lifted too');
+  eq(T.skillFor(2, 0, 9), 0.8184210526315789, 'band 9 round 3 is lifted too');
+  eq(T.skillFor(3, 0, 9), 0.95, 'band 9 final keeps the tuned ceiling');
+  eq(T.skillFor(0, 0, 10), 0.7131578947368421, 'band 10 round 1 is lifted above its own floor');
+  eq(T.skillFor(2, 0, 10), 0.8710526315789473, 'band 10 round 3 is lifted too');
 
   // The cap survives a floor and a season bonus at once.
   for (var season = 0; season < 40; season++) {
@@ -1728,7 +1739,7 @@ checkGenerators(11, false);
     }
   }
   eq(T.skillFor(3, 20, 11), 0.95, 'floor plus a full season bonus still caps');
-  eq(T.skillFor(0, 20, 11), 0.80, 'a season bonus below the floor is absorbed by it');
+  eq(T.skillFor(0, 20, 11), 0.8552631578947368, 'a season bonus still lifts round 1 through the blend');
 
   // Backwards compatibility: the two-argument call must be exactly what it was.
   for (season = 0; season < 6; season++) {

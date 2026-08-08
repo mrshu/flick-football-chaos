@@ -115,12 +115,15 @@ var Tournament = (function () {
   // floors at 0 like the young bands. Anything that is not a finite number is
   // treated the same way: `skillFor` runs before a slot has loaded.
   //
-  // The accepted trade-off, stated plainly: this is a maximum, not a rescaling.
-  // A band-11 player's first three rounds therefore all sit at the floor
-  // (0.80, 0.80, 0.80) before the 0.95 final, so the ladder is flatter at the
-  // top of the age range than at the bottom. That was the price of leaving the
-  // 0.95 ceiling alone, which is tuned against the best keeper and should not
-  // move to buy a nicer curve.
+  // `skillFor` does not clamp the ladder up to this floor — that flattens the
+  // first three rounds into repeats of the same match, which defeats the
+  // point of a cup. Instead the floor sets where an older player STARTS: the
+  // ladder's own range is rescaled to run from the floor up to the same 0.95
+  // final, so a band-11 player's first round already opens hard (around
+  // 0.83) and every round after still climbs, exactly as it does for a young
+  // band, arriving at the same tuned final. The 0.95 ceiling itself never
+  // moves — it is tuned against the best keeper — only the rungs beneath it
+  // start higher.
   var BAND_FLOOR = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0.45, 0.65, 0.80];
 
   function skillFloor(band) {
@@ -133,12 +136,16 @@ var Tournament = (function () {
 
   // Later seasons lift the opponent a little so a returning child is not
   // replaying the same four matches, without ever exceeding the cap above.
-  // The age floor is applied last, and only ever upwards: where the ladder is
-  // already the stronger of the two it wins untouched.
+  // The age floor is blended in rather than clamped on afterwards: see the
+  // comment above BAND_FLOOR for why.
   function skillFor(index, season, band) {
+    var CAP = 0.95;
     var base = SKILL[Math.max(0, Math.min(ROUNDS - 1, index))];
     var ladder = base + Math.min(0.15, (season || 0) * 0.05);
-    return Math.min(0.95, Math.max(ladder, skillFloor(band)));
+    var floor = skillFloor(band);
+    if (floor === 0) { return Math.min(CAP, ladder); }
+    var capped = Math.min(CAP, ladder);
+    return floor + (capped / CAP) * (CAP - floor);
   }
 
   function crestFor(index, avoid) {
