@@ -333,6 +333,23 @@ function worthABonus() {
   return true;
 }
 
+// Both question flavours record the same way. Streaks and the fastest
+// correct answer live in slot.stats so they survive across sessions and
+// repair like every other counter.
+function recordAnswer(correct, elapsedMs) {
+  if (!game.slot) { return; }
+  var st = game.slot.stats;
+  st.answered += 1;
+  if (correct) {
+    st.correct += 1;
+    st.curStreak += 1;
+    if (st.curStreak > st.bestStreak) { st.bestStreak = st.curStreak; }
+    if (!st.bestMs || elapsedMs < st.bestMs) { st.bestMs = elapsedMs; }
+  } else {
+    st.curStreak = 0;
+  }
+}
+
 function askQuestion() {
   document.getElementById('quiz').classList.remove('saving');
   if (!game.maths) { game.maths = Maths.newState(game.startBand); }
@@ -346,10 +363,7 @@ function askQuestion() {
     game.maths = Maths.update(game.maths, {
       correct: correct, elapsedMs: elapsedMs, band: q.band, skill: q.skill
     });
-    if (game.slot) {
-      game.slot.stats.answered += 1;
-      if (correct) { game.slot.stats.correct += 1; }
-    }
+    recordAnswer(correct, elapsedMs);
     rememberMaths();
     finishQuestion(correct);
   }, function () {
@@ -380,10 +394,7 @@ function askSaveQuestion() {
     game.maths = Maths.update(game.maths, {
       correct: correct, elapsedMs: elapsedMs, band: q.band, skill: q.skill
     });
-    if (game.slot) {
-      game.slot.stats.answered += 1;
-      if (correct) { game.slot.stats.correct += 1; }
-    }
+    recordAnswer(correct, elapsedMs);
     rememberMaths();
     finishSaveQuestion(correct);
   }, function () {
@@ -1241,7 +1252,12 @@ function showStats(thenHome) {
     ['\u{1F9E4}', 'Goals let in', s.goalsAgainst],
     ['\u{1F9EE}', 'Questions', s.answered],
     // "Correct", not "right first time": there is only ever one attempt.
-    ['✅', 'Correct', s.correct + (s.answered ? ' · ' + pct + '%' : '')]
+    ['✅', 'Correct', s.correct + (s.answered ? ' · ' + pct + '%' : '')],
+    ['\u{1F4C8}', 'Form',
+      Maths.rating(game.slot.maths ? game.slot.maths.difficulty
+                                   : (game.slot.band || 1))],
+    ['⚡', 'Fastest correct', s.bestMs ? (s.bestMs / 1000).toFixed(1) + 's' : '—'],
+    ['\u{1F525}', 'Best streak', s.bestStreak]
   ];
   grid.innerHTML = '';
   rows.forEach(function (r) {

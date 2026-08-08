@@ -1253,7 +1253,8 @@ checkGenerators(11, false);
   eq(Store.repair({ slots: [{ band: 6 }] }).slots[0].band, 6, 'a chosen band survives');
 
   // Every stat counter repairs the same way, including ones a save predates.
-  var STATS = ['correct', 'answered', 'matches', 'wins', 'goalsFor', 'goalsAgainst', 'ms'];
+  var STATS = ['correct', 'answered', 'matches', 'wins', 'goalsFor', 'goalsAgainst', 'ms',
+    'bestMs', 'curStreak', 'bestStreak'];
   var fresh0 = Store.emptySlot();
   STATS.forEach(function (k) {
     eq(fresh0.stats[k], 0, 'a new slot starts ' + k + ' at zero');
@@ -1302,6 +1303,17 @@ checkGenerators(11, false);
     eq(r.band, 11, 'band clamps to the new ceiling');
     eq(r.maths.difficulty, 11, 'difficulty clamps to the new ceiling');
     eq(r.maths.home, 11, 'home clamps to the new ceiling');
+  })();
+
+  // ---- Over-12: personal bests repair like any other counter ----
+  (function () {
+    var r = Store.repairSlot({ stats: { bestMs: 1234, curStreak: 3, bestStreak: 9 } });
+    eq(r.stats.bestMs, 1234, 'fastest-correct survives repair');
+    eq(r.stats.bestStreak, 9, 'best streak survives repair');
+    eq(r.stats.curStreak, 3, 'current streak survives repair');
+    r = Store.repairSlot({});
+    eq(r.stats.bestMs, 0, 'a fresh slot has no fastest yet');
+    eq(r.stats.bestStreak, 0, 'a fresh slot has no streak yet');
   })();
 
   // Slots are isolated: siblings must not drag each other's difficulty around.

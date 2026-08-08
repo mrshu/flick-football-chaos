@@ -51,7 +51,9 @@ var Store = (function () {
         correct: 0, answered: 0,
         matches: 0, wins: 0,
         goalsFor: 0, goalsAgainst: 0,
-        ms: 0                        // time actually spent on a pitch
+        ms: 0,                       // time actually spent on a pitch
+        bestMs: 0,                   // fastest correct answer; 0 = none yet
+        curStreak: 0, bestStreak: 0  // correct-answer streak, current and best
       },
       unlocked: [],
       equipped: { ball: 'classic', pitch: 'day', hat: 'none' },
