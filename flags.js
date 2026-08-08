@@ -177,10 +177,20 @@ var Flags = (function () {
   // The countries kept on the team card itself, so the common case never needs
   // the picker at all. Eleven, not twelve: the twelfth tile in that row is the
   // door into this screen, and the card must not grow by a single row.
+  //
+  // Which eleven is not a matter of taste. The cup's draw already says who the
+  // great sides are in this game's own fiction — they are the ones waiting for
+  // you on the way to the final — so the card carries the best-seeded of them,
+  // in seed order, and a child can choose to BE any team they would otherwise
+  // have to beat. Eleven of them, which is also a team.
+  //
+  // These must stay a subset of Tournament.BY_SEED; the tests hold that line.
+  // Everything not on the card, Slovakia and its neighbours included, is one
+  // tap away behind the globe — and they open the star tab of the picker.
   var QUICK = [
-    '\u{1F1EC}\u{1F1E7}', '\u{1F1FA}\u{1F1F8}', '\u{1F1E9}\u{1F1EA}', '\u{1F1EE}\u{1F1F9}',
-    '\u{1F1F5}\u{1F1F9}', '\u{1F1E6}\u{1F1F7}', '\u{1F1F2}\u{1F1FD}', '\u{1F1F5}\u{1F1F1}',
-    '\u{1F1E8}\u{1F1FF}', '\u{1F1F8}\u{1F1F0}', '\u{1F1FA}\u{1F1E6}'
+    '\u{1F1E7}\u{1F1F7}', '\u{1F1E6}\u{1F1F7}', '\u{1F1EA}\u{1F1F8}', '\u{1F1E9}\u{1F1EA}',
+    '\u{1F1EC}\u{1F1E7}', '\u{1F1F3}\u{1F1F1}', '\u{1F1F5}\u{1F1F9}', '\u{1F1E7}\u{1F1EA}',
+    '\u{1F1ED}\u{1F1F7}', '\u{1F1EE}\u{1F1F9}', '\u{1F1F2}\u{1F1E6}'
   ];
 
   // Which continent a flag belongs to. The world is partitioned by REGIONS, so

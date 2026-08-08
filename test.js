@@ -1894,6 +1894,31 @@ checkGenerators(11, false);
     ok(F.isFlag(q), 'quick flag ' + q + ' is one of the world\'s');
   });
 
+  // Which countries the card carries is decided by the cup, not by taste: they
+  // are the best-seeded sides in the game's own draw, so a child can choose to
+  // be any team they would otherwise have to beat. Eleven of them, because the
+  // twelfth tile in that row is the door into this screen.
+  eq(F.QUICK.length, 11, 'the card carries eleven countries and one door');
+  var seeds = {}, sd;
+  for (sd = 1; sd <= 16; sd++) {
+    if (sd !== 2) { seeds[T.BY_SEED[sd]] = sd; }
+  }
+  var worstOnCard = 0;
+  F.QUICK.forEach(function (q) {
+    ok(!!seeds[q], N.country(q) + ' on the card is one of the cup\'s own sides');
+    if (seeds[q] > worstOnCard) { worstOnCard = seeds[q]; }
+  });
+  // Best-seeded, not just any eleven of the sixteen: nothing left off the card
+  // may outrank something on it.
+  for (sd = 1; sd < worstOnCard; sd++) {
+    if (sd === 2) { continue; }
+    ok(F.QUICK.indexOf(T.BY_SEED[sd]) !== -1,
+       'seed ' + sd + ' (' + N.country(T.BY_SEED[sd]) + ') is not skipped over');
+  }
+  // The whole request started here: Spain must be one tap from the card, not
+  // behind the door.
+  ok(F.QUICK.indexOf('\u{1F1EA}\u{1F1F8}') !== -1, 'Spain is on the card itself');
+
   // The bug this all exists for: Spain is choosable, and it is called Spain.
   var spain = '\u{1F1EA}\u{1F1F8}';
   ok(F.isFlag(spain), 'Spain can be chosen');
