@@ -1,6 +1,8 @@
 'use strict';
 var Maths = require('./maths.js');
 var Formation = require('./formation.js');
+var Store = require('./store.js');
+var Quiz = require('./quiz.js');
 
 var checks = 0, failures = 0;
 
@@ -73,7 +75,7 @@ ok(r1() !== r1(), 'successive values differ');
   eq(Maths.choiceCount(1.26), 3, 'just above 1.25 gives 3 choices');
   eq(Maths.choiceCount(1.75), 3, '1.75 boundary gives 3 choices');
   eq(Maths.choiceCount(1.76), 4, 'just above 1.75 gives 4 choices');
-  eq(Maths.choiceCount(8.0), 4, 'top difficulty gives 4 choices');
+  eq(Maths.choiceCount(8.0), 4, 'the middle of the ladder gives 4 choices');
 
   var rand = makeRng(11), i, c, j;
 
@@ -422,11 +424,21 @@ checkGenerators(9, false);
   }
 })();
 
+// Distinct values in a generator's `near` list: a distractor that is always
+// equal to another one silently shrinks the question's option count.
+function nearDistinct(near) {
+  var seen = {}, n = 0, i;
+  for (i = 0; i < near.length; i++) {
+    if (!seen[near[i]]) { seen[near[i]] = true; n++; }
+  }
+  return n;
+}
+
 // ---- Over-12: band 10 ----
 checkGenerators(10, false);
 
 (function () {
-  var rand = makeRng(101), i, q;
+  var rand = makeRng(101), i, q, triFour = 0;
 
   // simul renders "x+y=s , x−y=d , x=□"; x=(s+d)/2 must be whole and > y ≥ 1.
   for (i = 0; i < 80; i++) {
@@ -448,7 +460,16 @@ checkGenerators(10, false);
        'triangle angles sum to 180');
     ok(q.answer >= 20, 'angleTri unknown stays drawable');
     ok(q.render[0].a >= 30 && q.render[0].b >= 30, 'angleTri knowns stay drawable');
+    // The list used to hold both a+b and 180-c, which are the same number by
+    // construction: four entries, three usable options, at a band showing
+    // five choices. Two of the four can still coincide by accident (`a`
+    // happens to equal c+-10), so require four almost always and never fewer
+    // than three.
+    ok(nearDistinct(q.near) >= 3, 'angleTri never collapses below three distractors');
+    if (nearDistinct(q.near) === 4) { triFour++; }
   }
+  ok(triFour > 70, 'angleTri offers four distinct distractors nearly always (' +
+     triFour + '/80)');
 
   // pythag: legs and answer form a Pythagorean triple.
   for (i = 0; i < 80; i++) {
@@ -459,15 +480,106 @@ checkGenerators(10, false);
     eq(la * la + lb * lb, q.answer * q.answer, 'pythag is a true triple');
   }
 
-  // seqQuad: differences grow by 2; recompute term 5 from terms 3 and 4.
-  for (i = 0; i < 80; i++) {
+  // seqQuad: a*n^2 + c, so the differences grow by a constant second
+  // difference (2a, not always 2); recompute term 5 from terms 3 and 4 and
+  // that constant, and check the coefficient really varies the question -
+  // with `a` fixed at 1 the skill was eleven questions in total.
+  var quadSeen = {}, quadKeys = 0, d1, d2, d3;
+  for (i = 0; i < 300; i++) {
     q = Maths._BANDS[10][3](rand);
     eq(q.skill, 'seqQuad', 'band 10 gen 3 is seqQuad');
     var t = [q.render[0].v, q.render[2].v, q.render[4].v, q.render[6].v];
-    eq(t[1] - t[0] + 2, t[2] - t[1], 'seqQuad differences grow by 2');
-    eq(q.answer, t[3] + (t[3] - t[2]) + 2,
+    d1 = t[1] - t[0]; d2 = t[2] - t[1]; d3 = t[3] - t[2];
+    eq(d2 - d1, d3 - d2, 'seqQuad differences grow by a constant');
+    ok(d2 - d1 > 0, 'seqQuad differences grow, they do not shrink');
+    eq(q.answer, t[3] + d3 + (d3 - d2),
        'seqQuad recomputes the next term from the last difference');
+    eq(nearDistinct(q.near), 4, 'seqQuad offers four distinct distractors');
+    if (!quadSeen[t.join(',')]) { quadSeen[t.join(',')] = true; quadKeys++; }
   }
+  ok(quadKeys >= 25, 'seqQuad draws from a real pool of sequences (' + quadKeys + ')');
+})();
+
+// ---- Over-12: the geometry diagrams (quiz.js) ----
+// The triangle diagram's whole premise is "here is a drawn triangle, two of
+// its angles are labelled, find the third". It used to scale width and height
+// independently, so the drawn angles were NOT the labelled ones: 60/60/60 and
+// 45/45/90 both came out as the same flat 39/39/102 scalene. Measure the
+// picture the code actually produces - the angles at its own vertices - and
+// hold them to the labels. `measure` stands in for canvas text metrics; the
+// clearance margins below are chosen so a wider real font still fits.
+(function () {
+  function measure(txt) { return txt.length * 9; } // wider than Trebuchet bold 14px
+  function vertexAngle(v, p, q) {
+    var a1 = Math.atan2(p.y - v.y, p.x - v.x), a2 = Math.atan2(q.y - v.y, q.x - v.x);
+    var d = Math.abs(a1 - a2) * 180 / Math.PI;
+    return d > 180 ? 360 - d : d;
+  }
+  // Distance from a label's box to a stroke, by sampling the segment.
+  function boxToSegment(L, p, q) {
+    var best = Infinity, t, x, y, dx, dy;
+    for (t = 0; t <= 240; t++) {
+      x = p.x + (q.x - p.x) * t / 240;
+      y = p.y + (q.y - p.y) * t / 240;
+      dx = Math.max(Math.abs(x - L.x) - L.w / 2, 0);
+      dy = Math.max(Math.abs(y - L.y) - 7, 0);
+      best = Math.min(best, Math.sqrt(dx * dx + dy * dy));
+    }
+    return best;
+  }
+  var a, b, g, i, j, worstAngle = 0, minClear = Infinity, offCanvas = 0, maxW = 0, maxH = 0;
+  var angles, labelled;
+  for (a = 30; a <= 100; a++) {
+    for (b = 30; b <= Math.min(100, 160 - a); b++) {
+      g = Quiz._triGeom(a, b, measure);
+      angles = [vertexAngle(g.pts[0], g.pts[1], g.pts[2]),
+                vertexAngle(g.pts[1], g.pts[0], g.pts[2]),
+                vertexAngle(g.pts[2], g.pts[0], g.pts[1])];
+      labelled = [a, b, 180 - a - b];
+      for (i = 0; i < 3; i++) {
+        worstAngle = Math.max(worstAngle, Math.abs(angles[i] - labelled[i]));
+      }
+      for (i = 0; i < 3; i++) {
+        for (j = 0; j < 3; j++) {
+          minClear = Math.min(minClear,
+            boxToSegment(g.labels[i], g.pts[j], g.pts[(j + 1) % 3]));
+        }
+        if (g.labels[i].x - g.labels[i].w / 2 < 0 || g.labels[i].x + g.labels[i].w / 2 > g.W ||
+            g.labels[i].y - 7 < 0 || g.labels[i].y + 7 > g.H) { offCanvas++; }
+      }
+      maxW = Math.max(maxW, g.W); maxH = Math.max(maxH, g.H);
+    }
+  }
+  ok(worstAngle < 0.5, 'every drawn triangle angle equals its label (worst ' +
+     worstAngle.toFixed(6) + ' degrees off)');
+  ok(minClear >= 2, 'no triangle label touches a stroke (closest ' +
+     minClear.toFixed(2) + 'px)');
+  eq(offCanvas, 0, 'every triangle label sits inside its canvas');
+  ok(maxW <= 260 && maxH <= 220, 'the triangle canvas stays panel-sized (' +
+     maxW + 'x' + maxH + ')');
+
+  // Pythagoras: the drawn legs must keep the triple's real proportions, or
+  // the 7 of 7/24/25 lands on the visually longest side.
+  var triples = [[3, 4, 5], [6, 8, 10], [5, 12, 13], [9, 12, 15],
+                 [8, 15, 17], [7, 24, 25], [12, 16, 20], [20, 21, 29]];
+  var k, t, la, lb, pg, ratio, worstRatio = 0, minLeg = Infinity;
+  for (k = 0; k < triples.length; k++) {
+    t = triples[k];
+    for (i = 0; i < 2; i++) {
+      la = i ? t[1] : t[0]; lb = i ? t[0] : t[1];
+      pg = Quiz._pythagGeom(la, lb);
+      ratio = (pg.x1 - pg.x0) / (pg.y0 - pg.y1);
+      worstRatio = Math.max(worstRatio, Math.abs(ratio - la / lb));
+      minLeg = Math.min(minLeg, pg.x1 - pg.x0, pg.y0 - pg.y1);
+      ok(pg.x1 <= 152 && pg.x0 >= 29 && pg.y1 >= 18,
+         'pythag triangle stays in its 180x110 canvas');
+      ok((la > lb) === ((pg.x1 - pg.x0) > (pg.y0 - pg.y1)),
+         'the longer leg is drawn longer (' + la + ',' + lb + ')');
+    }
+  }
+  ok(worstRatio < 1e-9, 'pythag legs are drawn to the triple\'s own ratio');
+  ok(minLeg > 18, 'no pythag leg is drawn too short to label (' +
+     minLeg.toFixed(1) + 'px)');
 })();
 
 // ---- Over-12: band 11 ----
@@ -631,6 +743,19 @@ checkGenerators(11, false);
   ok(s.mastery.div >= 0 && s.mastery.div < 0.1, 'mastery converges towards 0 without going below');
 })();
 
+// The save file keeps its own copy of the ceiling (store.js must stay
+// standalone, it loads before maths.js on some pages). Nothing in the code
+// pins the two together, so pin them here: if Maths.MAX_BAND ever rises
+// without store.js following, every reload would quietly demote a child who
+// had climbed past the old top, and no other test would notice.
+(function () {
+  var high = Store.repairSlot({ band: 99, maths: { difficulty: 99, home: 99 } });
+  eq(high.band, Maths.MAX_BAND, "store's band ceiling matches Maths.MAX_BAND");
+  eq(high.maths.difficulty, Maths.MAX_BAND,
+     "store's difficulty ceiling matches Maths.MAX_BAND");
+  eq(high.maths.home, Maths.MAX_BAND, "store's home ceiling matches Maths.MAX_BAND");
+})();
+
 // ---- Task 4 (over-12): MAX_BAND ceiling ----
 (function () {
   eq(Maths.MAX_BAND, 11, 'the ladder tops out at band 11');
@@ -791,7 +916,13 @@ checkGenerators(11, false);
 
 // ---- Task 10: invariant sweep (spec 12) ----
 (function () {
-  var rand = makeRng(2024), band, i, q, k, tok, nums, ops, failuresBefore = failures;
+  var rand = makeRng(2024), band, i, q, k, tok, nums, ops, plain, failuresBefore = failures;
+
+  // The recomputation below may only run on a render made ENTIRELY of these:
+  // anything else in the row means the row is not "a op b = box". `3x + 4 =
+  // 19 , x = box` (genEqn2) has two numbers, one operator and a trailing box,
+  // so without this list it would be read as 4 + 19.
+  var PLAIN_TOKENS = ['num', 'balls', 'op', 'eq', 'box'];
 
   function numsOf(render) {
     var out = [], k;
@@ -801,7 +932,7 @@ checkGenerators(11, false);
     return out;
   }
 
-  for (band = 1; band <= 8; band++) {
+  for (band = 1; band <= Maths.MAX_BAND; band++) {
     for (i = 0; i < 25; i++) {
       q = Maths.make(band, Maths.newState(band), rand);
 
@@ -815,7 +946,7 @@ checkGenerators(11, false);
           if (band < 8) { ok(q.choices[k] >= 0, 'sweep: no negative choice below band 8'); }
         }
       }
-      ok(q.choices.length >= 2 && q.choices.length <= 4, 'sweep: 2-4 choices');
+      ok(q.choices.length >= 2 && q.choices.length <= 6, 'sweep: 2-6 choices');
       if (typeof q.answer === 'number') {
         ok(isFinite(q.answer), 'sweep: answer is finite');
         if (band < 8) { ok(q.answer >= 0, 'sweep: no negative answer below band 8'); }
@@ -855,9 +986,12 @@ checkGenerators(11, false);
       // the only thing that would stop a future one-operand branch (added
       // for genRoot, say) from misreading those three generators as roots,
       // since they share the same nums=1, ops=1, trailing-box shape.
-      if (nums.length === 2 && ops.length === 1 &&
-          q.render[q.render.length - 1].t === 'box' &&
-          q.render[0].t !== 'frac' && q.render[0].t !== 'pct') {
+      plain = true;
+      for (k = 0; k < q.render.length; k++) {
+        if (PLAIN_TOKENS.indexOf(q.render[k].t) === -1) { plain = false; }
+      }
+      if (plain && nums.length === 2 && ops.length === 1 &&
+          q.render[q.render.length - 1].t === 'box') {
         if (ops[0] === '+') {
           ok(Math.abs(q.answer - (nums[0] + nums[1])) < 1e-9, 'sweep: addition recomputes');
         } else if (ops[0] === '−') {
@@ -962,13 +1096,13 @@ checkGenerators(11, false);
     return Math.abs(d - answer) <= Math.max(3, Math.round(Math.abs(answer) * 0.6));
   }
   var band, i, rand, q, k, difficulty, checked = 0;
-  for (band = 1; band <= 8; band++) {
+  for (band = 1; band <= Maths.MAX_BAND; band++) {
     rand = makeRng(6060 + band);
     for (i = 0; i < 100; i++) {
       // Cycle the fractional part so 2-, 3- and 4-choice layouts (spec 8.6's
       // floor-support rule) are all exercised, not just the 4-choice case.
       difficulty = band + (i % 4) * 0.5;
-      if (difficulty > 8) { difficulty = 8; }
+      if (difficulty > Maths.MAX_BAND) { difficulty = Maths.MAX_BAND; }
       q = Maths.make(difficulty, Maths.newState(difficulty), rand);
       if (typeof q.answer !== 'number') { continue; } // fraction comparisons: no numeric band to check
       for (k = 0; k < q.choices.length; k++) {
