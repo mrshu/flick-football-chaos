@@ -438,9 +438,9 @@ canvas {
   text-shadow: 0 2px 10px rgba(255, 213, 74, .45);
 }
 
-/* A nine-column grid rather than a flex row: the ages must stay on one line at
-   any card width, and wrapping would strand the no-maths button on its own. */
-#teamAges { display: grid; grid-template-columns: repeat(9, 1fr); gap: 6px; }
+/* A six-column grid to match the badge grid above and the expanded age row
+   (now 12 buttons: ages 5–13 plus "14–15", "16+", no-maths). */
+#teamAges { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .ageBtn {
   font: inherit;
   font-weight: 800;
