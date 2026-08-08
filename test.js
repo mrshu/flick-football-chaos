@@ -1238,9 +1238,9 @@ checkGenerators(11, false);
       ok(typeof sl.trophies === 'number' && isFinite(sl.trophies) && sl.trophies >= 0,
          'trophies is always a non-negative number, input ' + i);
       ok(sl.maths === null || (isFinite(sl.maths.difficulty) &&
-         sl.maths.difficulty >= 1 && sl.maths.difficulty <= 8),
-         'difficulty is null or inside [1,8], input ' + i);
-      ok(sl.band >= 0 && sl.band <= 8, 'band is inside [0,8], input ' + i);
+         sl.maths.difficulty >= 1 && sl.maths.difficulty <= 11),
+         'difficulty is null or inside [1,11], input ' + i);
+      ok(sl.band >= 0 && sl.band <= 11, 'band is inside [0,11], input ' + i);
     });
   });
 
@@ -1286,10 +1286,23 @@ checkGenerators(11, false);
   eq(Store.repair(JSON.parse(JSON.stringify(st))).slots[1].maths.home, 2, 'home survives');
   eq(Store.repairSlot({ maths: { difficulty: 5.5, mastery: {} } }).maths.home, 5.5,
      'a save predating home falls back to its own difficulty');
-  eq(Store.repairSlot({ maths: { difficulty: 3, home: 99 } }).maths.home, 8, 'home is clamped');
+  eq(Store.repairSlot({ maths: { difficulty: 3, home: 99 } }).maths.home, 11, 'home is clamped');
   eq(Store.repairSlot({ maths: { difficulty: 3, home: 'x' } }).maths.home, 3,
      'a junk home falls back rather than poisoning the reach');
   eq(back.slots[1].trophies, 2, 'trophies survive');
+
+  // ---- Over-12: saves carry the extended bands ----
+  (function () {
+    var r = Store.repairSlot({ band: 10, maths: { difficulty: 10.4, home: 10 } });
+    eq(r.band, 10, 'an over-12 band survives repair');
+    eq(r.maths.difficulty, 10.4, 'an over-12 difficulty survives repair');
+    eq(r.maths.home, 10, 'an over-12 home survives repair');
+
+    r = Store.repairSlot({ band: 99, maths: { difficulty: 14, home: 14 } });
+    eq(r.band, 11, 'band clamps to the new ceiling');
+    eq(r.maths.difficulty, 11, 'difficulty clamps to the new ceiling');
+    eq(r.maths.home, 11, 'home clamps to the new ceiling');
+  })();
 
   // Slots are isolated: siblings must not drag each other's difficulty around.
   st = Store.emptyState();

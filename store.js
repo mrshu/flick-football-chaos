@@ -18,6 +18,11 @@ var Store = (function () {
   var DEFAULT_BAND = 3;          // age 7: the middle of the range, so a slot
                                  // made without touching the age row still asks
                                  // maths rather than silently switching it off
+  var MAX_BAND = 11;             // must match Maths.MAX_BAND; the ladder's top.
+                                 // Kept as this file's own copy rather than a
+                                 // read of Maths.MAX_BAND, because store.js
+                                 // loads before maths.js on some pages and
+                                 // must stay standalone.
 
   var memory = null;             // used when localStorage is unavailable
   var available = null;          // cached probe result
@@ -68,17 +73,17 @@ var Store = (function () {
     // A save written before ages moved into the team editor has no band; it
     // keeps the default rather than being read as "no maths".
     if (typeof raw.band === 'number' && isFinite(raw.band)) {
-      base.band = Math.max(0, Math.min(8, raw.band | 0));
+      base.band = Math.max(0, Math.min(MAX_BAND, raw.band | 0));
     }
     if (raw.maths && typeof raw.maths.difficulty === 'number' &&
         isFinite(raw.maths.difficulty)) {
       base.maths = {
-        difficulty: Math.min(8, Math.max(1, raw.maths.difficulty)),
+        difficulty: Math.min(MAX_BAND, Math.max(1, raw.maths.difficulty)),
         // The band an adult chose. It bounds how far a hot streak may carry a
         // child, so losing it on reload would quietly let the reach drift up
         // with them, one session at a time. A save from before this existed
         // falls back to the band it is sitting at.
-        home: Math.min(8, Math.max(1,
+        home: Math.min(MAX_BAND, Math.max(1,
           (typeof raw.maths.home === 'number' && isFinite(raw.maths.home))
             ? raw.maths.home : raw.maths.difficulty)),
         mastery: (raw.maths.mastery && typeof raw.maths.mastery === 'object') ? raw.maths.mastery : {}
