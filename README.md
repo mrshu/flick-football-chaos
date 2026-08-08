@@ -1,7 +1,7 @@
 # ⚽ Flick Football Chaos
 
-A turn-based flick-football game that teaches maths to 5–12 year olds by making
-the maths worth doing.
+A turn-based flick-football game that teaches maths from age 5 to 16+ by
+making the maths worth doing.
 
 **[▶ Play it](https://mrshu.github.io/flick-football-chaos/)** — no install, no
 account, works on a phone.
@@ -61,7 +61,7 @@ harder. First to three goals wins.
 
 <img src="docs/img/05-quiz.jpg" width="300" align="right" alt="One half of 28">
 
-Questions are drawn from **eight bands**, roughly ages 5 to 12:
+Questions are drawn from **eleven bands**, ages 5 to 16+:
 
 | Band | Roughly | What it asks |
 |-----:|:--------|:-------------|
@@ -73,6 +73,9 @@ Questions are drawn from **eight bands**, roughly ages 5 to 12:
 | 6 | 10 | within 1000, decimals, comparing fractions |
 | 7 | 11 | percentages, order of operations, ratio |
 | 8 | 12 | negatives, squares, roots, simple equations |
+| 9 | 13 | two-step equations, expanding, angles, sequences |
+| 10 | 14–15 | simultaneous equations, Pythagoras, quadratic sequences |
+| 11 | 16+ | index laws, inequalities, geometric sequences, areas |
 
 You pick a starting band once, when you make a team. After that the game moves
 you.
@@ -96,6 +99,12 @@ questions; one who is struggling drops back within a few.
 At the very bottom the game runs out of easier questions, so it gives ground a
 different way: the number of answer choices falls from four to three to two.
 Being right stays possible.
+
+At the top the same lever runs the other way. From band 9 the choices rise
+to five, then six at band 11 — not because the numbers need it, but because a
+learner who has reached simultaneous equations or index laws deserves a
+format where a lucky guess buys less. The 80% the difficulty curve is aiming
+for should mean something.
 
 ---
 
@@ -134,6 +143,12 @@ a flag and you are that country, pick anything else and you get an invented
 name built from syllables. A dice rerolls it, and once you type your own it
 stops being overwritten.
 
+The age also sets the starting band and, from 13 up, swaps the bright
+playroom look for a restrained "pro" skin — squarer panels, dark broadcast
+colours, calmer motion. Nothing moves or resizes; it is the same markup in
+darker, straighter clothes, because a 16 year old should not have to play on
+a screen built to delight a 6 year old.
+
 Everything lives in `localStorage`, and every read is repaired on the way in —
 a corrupt save yields a fresh slot rather than a broken game.
 
@@ -158,7 +173,7 @@ open index.html          # or: python3 -m http.server 8000
 Run the tests with Node — no framework, no dependencies:
 
 ```sh
-node test.js             # 24,733 checks, ~0.1s
+node test.js             # 32,077 checks, ~0.1s
 ```
 
 The suite is deliberately small for what it covers. It has been checked by
