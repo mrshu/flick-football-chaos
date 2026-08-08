@@ -101,11 +101,44 @@ var Tournament = (function () {
     return out;
   })();
 
-  // Later seasons lift the floor a little so a returning child is not replaying
-  // the same four matches, without ever exceeding the cap above.
-  function skillFor(index, season) {
+  // The lowest opponent strength an age band will accept.
+  //
+  // SKILL above is calibrated for a child climbing the cup over many sessions:
+  // the first round is a pushover on purpose, because that is what makes a
+  // five-year-old believe the thing is winnable at all. An older beginner needs
+  // none of that, and until now got it anyway — a sixteen-year-old's first cup
+  // opponent was the same 0.20 walkover. The band an adult chose is the only
+  // signal of age the game has, so it sets a minimum here rather than letting
+  // someone wade through three walkovers to reach a real match.
+  //
+  // Band 0 means "no maths" was picked, which says nothing about age, so it
+  // floors at 0 like the young bands. Anything that is not a finite number is
+  // treated the same way: `skillFor` runs before a slot has loaded.
+  //
+  // The accepted trade-off, stated plainly: this is a maximum, not a rescaling.
+  // A band-11 player's first three rounds therefore all sit at the floor
+  // (0.80, 0.80, 0.80) before the 0.95 final, so the ladder is flatter at the
+  // top of the age range than at the bottom. That was the price of leaving the
+  // 0.95 ceiling alone, which is tuned against the best keeper and should not
+  // move to buy a nicer curve.
+  var BAND_FLOOR = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0.45, 0.65, 0.80];
+
+  function skillFloor(band) {
+    if (typeof band !== 'number' || !isFinite(band)) { return 0; }
+    var b = Math.floor(band);
+    if (b < 0) { return 0; }
+    if (b >= BAND_FLOOR.length) { b = BAND_FLOOR.length - 1; }
+    return BAND_FLOOR[b];
+  }
+
+  // Later seasons lift the opponent a little so a returning child is not
+  // replaying the same four matches, without ever exceeding the cap above.
+  // The age floor is applied last, and only ever upwards: where the ladder is
+  // already the stronger of the two it wins untouched.
+  function skillFor(index, season, band) {
     var base = SKILL[Math.max(0, Math.min(ROUNDS - 1, index))];
-    return Math.min(0.95, base + Math.min(0.15, (season || 0) * 0.05));
+    var ladder = base + Math.min(0.15, (season || 0) * 0.05);
+    return Math.min(0.95, Math.max(ladder, skillFloor(band)));
   }
 
   function crestFor(index, avoid) {
@@ -135,8 +168,9 @@ var Tournament = (function () {
   return {
     COUNT: ROUNDS, SLOTS: SLOTS, DRAW: DRAW, BY_SEED: BY_SEED, RESERVE: RESERVE,
     SKILL: SKILL, ROUND_ICONS: ROUND_ICONS, OPPONENTS: OPPONENTS,
+    BAND_FLOOR: BAND_FLOOR,
     bracket: bracket, youAt: youAt, roundIcon: roundIcon,
-    skillFor: skillFor, crestFor: crestFor,
+    skillFor: skillFor, skillFloor: skillFloor, crestFor: crestFor,
     recordResult: recordResult, isComplete: isComplete
   };
 })();

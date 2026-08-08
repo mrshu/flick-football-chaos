@@ -1671,6 +1671,84 @@ checkGenerators(11, false);
   });
 })();
 
+// ---- Over-12: age raises the opponent's floor ----
+(function () {
+  var T = require('./tournament.js'), i;
+
+  ok(typeof T.skillFloor === 'function', 'Tournament exposes a band floor');
+
+  // The floor table itself. Everything a child plays is a walkover-friendly 0,
+  // and only the three over-12 bands lift it.
+  eq(T.skillFloor(0), 0, 'band 0 ("no maths") knows no age, so no floor');
+  eq(T.skillFloor(1), 0, 'band 1 has no floor');
+  eq(T.skillFloor(8), 0, 'band 8, the old ceiling, still has no floor');
+  eq(T.skillFloor(9), 0.45, 'band 9 floors at 0.45');
+  eq(T.skillFloor(10), 0.65, 'band 10 floors at 0.65');
+  eq(T.skillFloor(11), 0.80, 'band 11 floors at 0.80');
+
+  // `skillFor` runs before a slot exists, so junk must read as "unknown age".
+  eq(T.skillFloor(undefined), 0, 'a missing band has no floor');
+  eq(T.skillFloor(null), 0, 'a null band has no floor');
+  eq(T.skillFloor(NaN), 0, 'NaN has no floor');
+  eq(T.skillFloor(Infinity), 0, 'an infinite band has no floor');
+  eq(T.skillFloor(-3), 0, 'a negative band has no floor');
+  eq(T.skillFloor(9999), 0.80, 'an absurd band is clamped to the top floor');
+  eq(T.skillFloor('9'), 0, 'a string band is not a number, so no floor');
+
+  // A young band is untouched: the ladder a five-year-old climbs is the one
+  // that was tuned for them.
+  eq(T.skillFor(0, 0, 3), 0.20, 'band 3 round 1 is still the pushover');
+  eq(T.skillFor(1, 0, 3), 0.45, 'band 3 round 2 is unchanged');
+  eq(T.skillFor(2, 0, 3), 0.70, 'band 3 round 3 is unchanged');
+  eq(T.skillFor(3, 0, 3), 0.95, 'band 3 final is unchanged');
+
+  // Band 11 sits at its floor until the ladder overtakes it in the final.
+  eq(T.skillFor(0, 0, 11), 0.80, 'band 11 round 1 starts at the floor');
+  eq(T.skillFor(1, 0, 11), 0.80, 'band 11 round 2 is still the floor');
+  eq(T.skillFor(2, 0, 11), 0.80, 'band 11 round 3 is still the floor');
+  eq(T.skillFor(3, 0, 11), 0.95, 'band 11 final is the tuned ceiling');
+
+  // Band 9's floor is below the later rungs, so the ladder wins where it is
+  // already higher — the floor never makes an opponent weaker.
+  eq(T.skillFor(0, 0, 9), 0.45, 'band 9 round 1 is lifted to the floor');
+  eq(T.skillFor(1, 0, 9), 0.45, 'band 9 round 2 already matched the floor');
+  eq(T.skillFor(2, 0, 9), 0.70, 'band 9 round 3 keeps the ladder value');
+  eq(T.skillFor(3, 0, 9), 0.95, 'band 9 final keeps the ladder value');
+  eq(T.skillFor(0, 0, 10), 0.65, 'band 10 round 1 is lifted to its own floor');
+  eq(T.skillFor(2, 0, 10), 0.70, 'band 10 round 3 keeps the higher ladder value');
+
+  // The cap survives a floor and a season bonus at once.
+  for (var season = 0; season < 40; season++) {
+    for (i = 0; i < T.COUNT; i++) {
+      for (var band = 0; band <= 11; band++) {
+        var v = T.skillFor(i, season, band);
+        ok(v <= 0.95, 'cap holds at round ' + i + ' season ' + season + ' band ' + band);
+        ok(v >= T.skillFor(i, season), 'a floor never weakens an opponent');
+      }
+    }
+  }
+  eq(T.skillFor(3, 20, 11), 0.95, 'floor plus a full season bonus still caps');
+  eq(T.skillFor(0, 20, 11), 0.80, 'a season bonus below the floor is absorbed by it');
+
+  // Backwards compatibility: the two-argument call must be exactly what it was.
+  for (season = 0; season < 6; season++) {
+    for (i = 0; i < T.COUNT; i++) {
+      eq(T.skillFor(i, season), T.skillFor(i, season, 0),
+         'no band argument reads as band 0 at round ' + i + ' season ' + season);
+      eq(T.skillFor(i, season), T.skillFor(i, season, undefined),
+         'an undefined band matches no band at round ' + i + ' season ' + season);
+      ok(T.skillFor(i, season) <= 0.95, 'the old two-arg cap still holds');
+    }
+  }
+  eq(T.skillFor(0, 0), 0.20, 'the two-arg first round is still 0.20');
+  eq(T.skillFor(3, 0), 0.95, 'the two-arg final is still 0.95');
+
+  // Out-of-range rounds must still not throw when a band is supplied.
+  [-5, 99].forEach(function (bad) {
+    ok(isFinite(T.skillFor(bad, 0, 11)), 'skill is finite for index ' + bad + ' with a band');
+  });
+})();
+
 // ---- Team names ----
 (function () {
   var N = require('./names.js');

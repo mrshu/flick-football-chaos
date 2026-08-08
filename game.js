@@ -270,7 +270,7 @@ function loadProgress() {
   game.slot = Store.activeSlot(game.save);
   applySkin();
   if (game.slot.maths) { game.maths = game.slot.maths; }
-  game.aiSkill = Tournament.skillFor(game.slot.cup.index, game.slot.cup.season);
+  game.aiSkill = Tournament.skillFor(game.slot.cup.index, game.slot.cup.season, game.slot.band);
 }
 
 // Adaptive state belongs to the slot, so a sibling on another slot is not
@@ -594,7 +594,7 @@ function gameOver(winner) {
     // The index has already rolled back to zero, so remember that this cup was
     // finished: the bracket owes the child the sight of themselves lifting it.
     game.wonCup = trophyWon;
-    game.aiSkill = Tournament.skillFor(game.slot.cup.index, game.slot.cup.season);
+    game.aiSkill = Tournament.skillFor(game.slot.cup.index, game.slot.cup.season, game.slot.band);
   }
   // After both branches: a friendly still moves the counters above, and losing
   // those on a refresh would make the record quietly wrong.
@@ -1044,7 +1044,7 @@ function refreshStart() {
   paintCup();
   paintNextUnlock();
   if (game.slot && game.slot.maths) {
-    game.aiSkill = Tournament.skillFor(game.slot.cup.index, game.slot.cup.season);
+    game.aiSkill = Tournament.skillFor(game.slot.cup.index, game.slot.cup.season, game.slot.band);
   }
 }
 
