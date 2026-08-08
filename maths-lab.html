@@ -61,7 +61,7 @@
   <div class="row">
     <button class="lab" id="roll">Roll 12 more</button>
     <label style="margin-left:10px">Difficulty</label>
-    <input class="lab" id="diff" type="number" min="1" max="8" step="0.25" value="3">
+    <input class="lab" id="diff" type="number" min="1" max="11" step="0.25" value="3">
     <span class="sub" style="margin:0">— fractional values mix two bands, and set the number of choices</span>
   </div>
   <div class="cards" id="cards"></div>
@@ -74,7 +74,7 @@
   </div>
   <table class="lab" id="simOut"></table>
   <p class="note">
-    Six children of fixed ability on the same 1&ndash;8 scale, each starting at
+    Seven children of fixed ability on the same 1&ndash;11 scale, each starting at
     band&nbsp;4. Their chance of knowing an answer falls off as the difficulty
     passes their ability, and whatever they do not know they guess from the
     choices on offer &mdash; which is what makes the two- and three-choice
@@ -150,10 +150,13 @@
     }
   })();
 
+  // The difficulty box tops out where the engine does, whatever that is.
+  el('diff').max = Maths.MAX_BAND;
+
   el('roll').addEventListener('click', roll);
   el('diff').addEventListener('change', roll);
 
-  // A synthetic learner of fixed ability on the same 1-8 scale. Their chance of
+  // A synthetic learner of fixed ability on the same 1-MAX_BAND scale. Their chance of
   // knowing an answer falls off as difficulty passes their ability, and what
   // they do not know they guess from the choices on offer.
   //
@@ -180,10 +183,13 @@
   el('sim').addEventListener('click', function () {
     var n = Number(el('simN').value) || 4000;
     var html = '<tr><th>Ability</th><th>Settles at band</th><th>Correct</th></tr>';
-    [1.5, 3, 4.5, 6, 7.5, 8.5].forEach(function (ability) {
+    // Abilities span the whole ladder, including the over-12 bands: the lab is
+    // how content and engine get judged, so it must not stop where the engine
+    // no longer does.
+    [1.5, 3, 4.5, 6, 7.5, 9, 10.5].forEach(function (ability) {
       var r = simulate(ability, n);
       // The band should land near their ability, and accuracy near 80%.
-      var bandOk = Math.abs(r.band - Math.min(8, ability)) < 1.2;
+      var bandOk = Math.abs(r.band - Math.min(Maths.MAX_BAND, ability)) < 1.2;
       var accOk = r.accuracy > 0.72 && r.accuracy < 0.88;
       html += '<tr><td>' + ability.toFixed(1) + '</td>' +
               '<td class="' + (bandOk ? 'good' : 'bad') + '">' + r.band.toFixed(2) + '</td>' +

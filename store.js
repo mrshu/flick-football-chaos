@@ -42,7 +42,7 @@ var Store = (function () {
   function emptySlot() {
     return {
       emoji: '', name: '',
-      band: DEFAULT_BAND,        // age band 1-8, or 0 for "no maths"
+      band: DEFAULT_BAND,        // age band 1-MAX_BAND, or 0 for "no maths"
       maths: null,               // {difficulty, mastery} once they have played
       cup: { season: 0, index: 0 },
       // Everything a child might want to look back on. Counters only: no
