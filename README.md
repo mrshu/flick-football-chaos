@@ -207,6 +207,7 @@ maths.js        question generators and the adaptive engine   (pure)
 tournament.js   the sixteen-team draw and its resolution      (pure)
 formation.js    kickoff layouts, keeper geometry, AI aiming   (pure)
 names.js        invented team names and country names         (pure)
+flags.js        every flag in the world, grouped by continent (pure)
 store.js        localStorage, per slot, with repair           (pure-ish)
 quiz.js         the question panel
 test.js         the whole suite

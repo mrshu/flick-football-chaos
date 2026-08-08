@@ -1795,6 +1795,84 @@ checkGenerators(11, false);
   eq(N.make(makeRng(3)), N.make(makeRng(3)), 'the same seed gives the same name');
 })();
 
+// ---- Every flag in the world ----
+(function () {
+  var F = require('./flags.js');
+  var N = require('./names.js');
+  var T = require('./tournament.js');
+
+  ok(F.REGIONS.length >= 5, 'the world is split into continents');
+  var all = F.all();
+  ok(all.length > 190, 'every country is offered: ' + all.length);
+
+  // A flag on two tabs would be a country a child finds twice and a duplicate
+  // in whatever the picker paints.
+  var seen = {}, i;
+  for (i = 0; i < all.length; i++) {
+    ok(!seen[all[i]], 'flag ' + all[i] + ' appears on exactly one tab');
+    seen[all[i]] = true;
+  }
+
+  // The two halves of the data must not drift: a flag with no name fills the
+  // team name field with an invented word, and a name with no flag is a
+  // country nobody can reach.
+  for (i = 0; i < all.length; i++) {
+    ok(!!N.country(all[i]), 'flag ' + all[i] + ' has a country name');
+  }
+  var k;
+  for (k in N.COUNTRIES) {
+    ok(F.isFlag(k), N.COUNTRIES[k] + ' is reachable in the picker');
+  }
+
+  // The tabs are the only navigation this screen has, so each needs its own
+  // glyph and its own flags.
+  var icons = {};
+  F.REGIONS.forEach(function (r) {
+    ok(!!r.icon && !icons[r.icon], 'region ' + r.id + ' has its own glyph');
+    icons[r.icon] = true;
+    ok(r.flags.length > 0, 'region ' + r.id + ' is not empty');
+  });
+
+  // The shortcut row on the team card must be real flags, not a separate list
+  // that can go stale.
+  F.QUICK.forEach(function (q) {
+    ok(F.isFlag(q), 'quick flag ' + q + ' is one of the world\'s');
+  });
+
+  // The bug this all exists for: Spain is choosable, and it is called Spain.
+  var spain = '\u{1F1EA}\u{1F1F8}';
+  ok(F.isFlag(spain), 'Spain can be chosen');
+  eq(N.forBadge(spain, makeRng(1)), 'Spain', 'and the team is called Spain');
+
+  // Every cup opponent, and the reserve that replaces a clashing one, must be
+  // a flag the picker also offers — otherwise the draw shows a country the
+  // child cannot be.
+  var s;
+  for (s = 1; s <= 16; s++) {
+    if (s === 2) { continue; }
+    ok(F.isFlag(T.BY_SEED[s]), 'cup seed ' + s + ' is a real, choosable flag');
+  }
+  ok(F.isFlag(T.RESERVE), 'the reserve is a real, choosable flag');
+
+  // The clash rule, checked against the whole world rather than the twelve
+  // flags the grid used to offer: whichever country a child picks, the draw
+  // must never contain it, and must never contain anything twice — including
+  // the reserve, which is now itself choosable.
+  all.forEach(function (mine) {
+    var cols = T.bracket(0, mine), row = cols[0], flags = {}, n;
+    for (n = 0; n < row.length; n++) {
+      if (row[n].you) { continue; }
+      ok(row[n].flag !== mine, 'the draw has no second ' + mine);
+      ok(!flags[row[n].flag], 'no country is drawn twice against ' + mine);
+      flags[row[n].flag] = true;
+    }
+    for (n = 0; n < T.COUNT; n++) {
+      ok(T.crestFor(n, mine).flag !== mine,
+         'round ' + n + ' opponent is not ' + mine + ' itself');
+    }
+  });
+})();
+
 // ---- Over-12: the form rating is a display of difficulty, nothing more ----
 (function () {
   eq(Maths.rating(1), 47, 'rating floor is 47');

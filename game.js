@@ -971,15 +971,22 @@ function goHome() {
 
 // A curated grid rather than the system emoji picker: it is tap-only, needs no
 // keyboard, and is not overwhelming for a five-year-old.
-var BADGES = ['\u{1F981}','\u{1F42F}','\u{1F438}','\u{1F984}','\u{1F996}','\u{1F419}',
-              '\u{1F41D}','\u{1F98A}','\u{1F43C}','\u{1F992}','\u{1F988}','\u{1F985}',
-              '\u26BD','\u{1F525}','\u26A1','\u2B50','\u{1F308}','\u{1F680}',
-              '\u{1F451}','\u{1F48E}','\u{1F340}','\u{1F3B8}','\u{1F36A}','\u{1F47D}',
-              // Countries, so a child can play as their own — the opponents are
-              // countries too, which is what makes the cup read as a World Cup.
-              '\u{1F1EC}\u{1F1E7}','\u{1F1FA}\u{1F1F8}','\u{1F1E9}\u{1F1EA}','\u{1F1EE}\u{1F1F9}',
-              '\u{1F1F5}\u{1F1F9}','\u{1F1E6}\u{1F1F7}','\u{1F1F2}\u{1F1FD}','\u{1F1F0}\u{1F1F7}',
-              '\u{1F1F5}\u{1F1F1}','\u{1F1E8}\u{1F1FF}','\u{1F1F8}\u{1F1F0}','\u{1F1FA}\u{1F1E6}'];
+var FUN = ['\u{1F981}','\u{1F42F}','\u{1F438}','\u{1F984}','\u{1F996}','\u{1F419}',
+           '\u{1F41D}','\u{1F98A}','\u{1F43C}','\u{1F992}','\u{1F988}','\u{1F985}',
+           '\u26BD','\u{1F525}','\u26A1','\u2B50','\u{1F308}','\u{1F680}',
+           '\u{1F451}','\u{1F48E}','\u{1F340}','\u{1F3B8}','\u{1F36A}','\u{1F47D}'];
+
+// Countries, so a child can play as their own — the opponents are countries
+// too, which is what makes the cup read as a World Cup. Only eleven live on the
+// card. Twenty-four inventions, eleven flags and the door into the flag screen
+// come to thirty-six tiles: six rows, exactly what this grid has always been.
+// The card cannot afford another row — it already scrolls on a short phone — so
+// every other country in the world sits one tap behind that door (flags.js).
+var BADGES = FUN.concat(Flags.QUICK);
+
+// The door tile itself. A globe, not a flag: it stands for all of them, rather
+// than for one country a child might think they had just chosen.
+var FLAG_DOOR = '\u{1F310}';
 
 function slotLabel(slot) { return slot.emoji || '\uFF0B'; }
 
@@ -1062,20 +1069,54 @@ function openTeamEditor(returnTo) {
   var typed = !!game.slot.name;
   var band = paintAges(game.slot.band, function (b) { band = b; });
   grid.innerHTML = '';
+  var tiles = [];
+
+  // A badge the child has not overtyped renames the team with it, so picking a
+  // flag gives you that country rather than a stray invention.
+  function choose(b) {
+    chosen = b;
+    if (!typed) { nameInput.value = Names.forBadge(b, Math.random); }
+    paintChoice();
+    SFX.select();
+  }
+
+  // Which tile wears the highlight. A flag chosen on the other screen has no
+  // tile of its own, so the door wears it instead and shows that flag — the
+  // child can see what they picked without this card growing a row for it.
+  function paintChoice() {
+    var away = Flags.isFlag(chosen) && BADGES.indexOf(chosen) === -1;
+    tiles.forEach(function (t) {
+      t.btn.className = (t.badge === chosen) ? 'on' : '';
+    });
+    door.className = away ? 'door on' : 'door';
+    doorFace.textContent = away ? chosen : FLAG_DOOR;
+    doorPip.textContent = away ? FLAG_DOOR : '';
+  }
+
   BADGES.forEach(function (b) {
     var btn = document.createElement('button');
     btn.type = 'button'; btn.textContent = b;
-    if (b === chosen) { btn.className = 'on'; }
-    btn.addEventListener('click', function () {
-      chosen = b;
-      [].forEach.call(grid.children, function (c) { c.className = (c.textContent === b) ? 'on' : ''; });
-      // A badge the child has not overtyped renames the team with it, so
-      // picking a flag gives you that country rather than a stray invention.
-      if (!typed) { nameInput.value = Names.forBadge(b, Math.random); }
-      SFX.select();
-    });
+    btn.addEventListener('click', function () { choose(b); });
+    tiles.push({ badge: b, btn: btn });
     grid.appendChild(btn);
   });
+
+  // The last tile is a door, not a badge: it opens the flag screen, where the
+  // rest of the world's countries are.
+  var door = document.createElement('button');
+  door.type = 'button';
+  door.setAttribute('aria-label', 'All flags');
+  var doorFace = document.createElement('span');
+  var doorPip = document.createElement('i');
+  doorPip.className = 'pip';
+  door.appendChild(doorFace);
+  door.appendChild(doorPip);
+  door.addEventListener('click', function () {
+    SFX.select();
+    showFlagPicker(chosen, choose);
+  });
+  grid.appendChild(door);
+  paintChoice();
 
   // Never open on an empty field. A child who will not type still leaves with
   // a team that is called something.
@@ -1131,6 +1172,78 @@ function openTeamEditor(returnTo) {
     refreshStart();
   };
 }
+
+/* ---- the flag picker ---- */
+// Every country in the world, on a screen of its own.
+//
+// The team card could not hold them: two hundred tiles is nine more rows on a
+// card that already runs past the bottom of a short phone. So this borrows the
+// shape the cup draw and the locker already established — a full screen, one
+// job, one back arrow — because a child who has learned one of those screens
+// has learned this one too.
+//
+// `chosen` is the badge the editor is currently showing, so the picker opens on
+// the continent that badge is already on and marks it. `onPick` hands the flag
+// back; picking also leaves, because choosing is the only reason to be here.
+function showFlagPicker(chosen, onPick) {
+  var view = el('flagPicker'), tabs = el('flagTabs'), grid = el('flagGrid');
+  var at = Flags.regionOf(chosen);
+  var region = at >= 0 ? at : 0;
+
+  function paintTabs() {
+    [].forEach.call(tabs.children, function (t, i) {
+      t.className = (i === region) ? 'on' : '';
+    });
+  }
+
+  function paintGrid() {
+    var flags = Flags.REGIONS[region].flags;
+    grid.innerHTML = '';
+    // Back to the top on every tab: a child who has scrolled Africa should not
+    // land halfway down Asia with no idea what is above them.
+    grid.scrollTop = 0;
+    flags.forEach(function (f) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = f;
+      btn.setAttribute('aria-label', Names.country(f));
+      if (f === chosen) { btn.className = 'on'; }
+      btn.addEventListener('click', function () {
+        hideFlagPicker();
+        onPick(f);
+      });
+      grid.appendChild(btn);
+    });
+  }
+
+  tabs.innerHTML = '';
+  Flags.REGIONS.forEach(function (r, i) {
+    var tab = document.createElement('button');
+    tab.type = 'button';
+    tab.textContent = r.icon;
+    tab.addEventListener('click', function () {
+      region = i;
+      paintTabs();
+      paintGrid();
+      SFX.select();
+    });
+    tabs.appendChild(tab);
+  });
+
+  paintTabs();
+  paintGrid();
+  view.classList.remove('hidden');
+}
+
+function hideFlagPicker() { el('flagPicker').classList.add('hidden'); }
+
+// Leaving with nothing chosen has to be as cheap as it looks: the same arrow,
+// in the same place, as the cup draw's way out. Nothing is written until the
+// editor's own tick, so backing out here cannot have changed anything.
+el('flagBack').addEventListener('click', function () {
+  SFX.select();
+  hideFlagPicker();
+});
 
 // The tournament as its own screen: the whole sixteen-team draw, read left to
 // right, collapsing into one champion. A list of the child's own four matches

@@ -742,6 +742,99 @@ canvas {
 #teamDelete { color: #fff; background: rgba(255,255,255,.1); }
 #teamDelete.arm { background: #ef4444; }
 
+/* ---- the flag picker: its own screen ---- */
+/* Two hundred flags will not fit on the team card, and the card is already
+   taller than a short phone. So the badge grid keeps one tile — a globe — that
+   opens this, exactly as the cup draw and the locker are screens of their own.
+   Above the editor (z-index 30), because it is opened from it. */
+#flagPicker {
+  position: fixed; inset: 0; z-index: 31;
+  display: flex; align-items: center; justify-content: center; padding: 10px;
+  background: rgba(4, 9, 22, .94); backdrop-filter: blur(4px);
+}
+/* Tabs pinned at the top, the back arrow pinned at the bottom, and only the
+   flags between them scroll — so the way out never scrolls off the screen. */
+#flagCard {
+  width: min(96%, 540px); height: 94%;
+  padding: 12px 12px 12px;
+  border-radius: 22px;
+  background: linear-gradient(160deg, #1d3b6e, #101f3f);
+  border: 1px solid rgba(255, 255, 255, .1);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .6);
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  overflow: hidden;
+}
+
+/* The game has no words, so a continent is a glyph. Three of them are the
+   globe turned to that part of the world; the other two are the thing a small
+   child already reads as that place. Guessing wrong costs one tap. */
+#flagTabs { display: flex; gap: 6px; width: 100%; flex: 0 0 auto; }
+#flagTabs button {
+  flex: 1 1 0; min-width: 0;
+  font: inherit; font-size: clamp(28px, 7vw, 34px); line-height: 1;
+  padding: 13px 0; border-radius: 14px; cursor: pointer;
+  border: 2px solid transparent; background: rgba(255, 255, 255, .06);
+}
+#flagTabs button.on {
+  border-color: #fff;
+  background: linear-gradient(135deg, #ffd54a, #ff8a3d);
+  box-shadow: 0 0 0 3px rgba(255, 213, 74, .3);
+}
+#flagTabs button:active { transform: scale(.94); }
+
+/* Tiles wide enough for a five-year-old's thumb, and as many per row as the
+   screen honestly fits — six on a phone, more on a tablet. */
+#flagGrid {
+  flex: 1 1 auto; width: 100%; overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(54px, 1fr));
+  gap: 8px; padding: 10px;
+  border-radius: 14px;
+  border: 2px solid rgba(255, 255, 255, .09);
+  background: rgba(255, 255, 255, .04);
+  align-content: start;
+}
+#flagGrid button {
+  font: inherit; font-size: clamp(26px, 6.4vw, 34px); line-height: 1;
+  padding: 12px 0; border-radius: 12px; cursor: pointer;
+  border: 2px solid transparent; background: rgba(255, 255, 255, .06);
+}
+#flagGrid button.on {
+  border-color: #fff;
+  background: linear-gradient(135deg, #ffd54a, #ff8a3d);
+  box-shadow: 0 0 0 3px rgba(255, 213, 74, .35);
+}
+#flagGrid button:active { transform: scale(.92); }
+
+/* The same back arrow as the draw, in the same place, doing the same nothing:
+   leaving without a flag must be as cheap as it looks. */
+#flagButtons { flex: 0 0 auto; }
+#flagBack {
+  font: inherit; font-size: 24px; font-weight: 800; cursor: pointer;
+  padding: 11px 40px; border: none; border-radius: 999px;
+  color: #fff; background: rgba(255, 255, 255, .14);
+}
+#flagBack:active { transform: translateY(3px); }
+
+/* The door into that screen, sitting in the badge grid's last tile. It is not
+   a badge, so it does not look like one: a dashed edge says "there is more
+   through here". When the team already wears a flag the grid does not carry,
+   the tile shows that flag instead and keeps a small globe in the corner, so
+   the child can still see what they picked without the card growing a row. */
+#badgeGrid button.door {
+  border-style: dashed; border-color: rgba(255, 213, 74, .55);
+  background: rgba(255, 213, 74, .1);
+  position: relative;
+}
+#badgeGrid button.door.on {
+  border-style: solid;
+}
+#badgeGrid button.door .pip {
+  position: absolute; right: 1px; bottom: 0;
+  font-size: 13px; line-height: 1; font-style: normal;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .6));
+}
+
 /* ---- the tournament: its own screen ---- */
 #bracket {
   position: absolute; inset: 0; z-index: 7;

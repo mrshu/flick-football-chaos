@@ -106,6 +106,20 @@
       </div>
     </div>
 
+    <!-- Every flag in the world, on a screen of its own. The team card has no
+         room for two hundred tiles, so the globe in its badge grid opens this
+         instead: five continent tabs, a grid that scrolls, and a back arrow
+         that changes nothing — the same shape as the cup draw. -->
+    <div id="flagPicker" class="hidden">
+      <div id="flagCard">
+        <div id="flagTabs"></div>
+        <div id="flagGrid"></div>
+        <div id="flagButtons">
+          <button id="flagBack" type="button" aria-label="Back">&#8592;</button>
+        </div>
+      </div>
+    </div>
+
     <div id="statsPanel" class="hidden">
       <div id="statsCard">
         <div id="statsWho"></div>
@@ -161,6 +175,7 @@
 </div>
 <script src="maths.js"></script>
 <script src="names.js"></script>
+<script src="flags.js"></script>
 <script src="store.js"></script>
 <script src="locker.js"></script>
 <script src="tournament.js"></script>
