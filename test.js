@@ -1805,13 +1805,68 @@ checkGenerators(11, false);
   var all = F.all();
   ok(all.length > 190, 'every country is offered: ' + all.length);
 
-  // A flag on two tabs would be a country a child finds twice and a duplicate
-  // in whatever the picker paints.
+  // The continents partition the world: a flag on two of them would be a
+  // country a child finds twice, and one on none is a country nobody reaches.
   var seen = {}, i;
   for (i = 0; i < all.length; i++) {
-    ok(!seen[all[i]], 'flag ' + all[i] + ' appears on exactly one tab');
+    ok(!seen[all[i]], 'flag ' + all[i] + ' is on exactly one continent');
     seen[all[i]] = true;
   }
+
+  // The star tab: what a child sees before tapping anything. It is a shortcut
+  // over the continents, so everything on it must also still be on its own
+  // continent — a shortcut that moved a country would be a trap.
+  eq(F.TABS.length, F.REGIONS.length + 1, 'the star sits in front of the world');
+  eq(F.TABS[0].flags, F.TOP, 'the star is the tab that opens first');
+  // Only the star is marked as the star. It used to share the name `lead` with
+  // the continents' own lead lists, which quietly marked every tab.
+  ok(!!F.TABS[0].star, 'the star is marked as a different kind of tab');
+  F.REGIONS.forEach(function (r) {
+    ok(!r.star, 'continent ' + r.id + ' is not marked as the star');
+  });
+  ok(F.TOP.length <= 30, 'the top view fits a phone without scrolling: ' + F.TOP.length);
+  var inTop = {};
+  F.TOP.forEach(function (f) {
+    ok(!inTop[f], 'the top view lists ' + f + ' once');
+    inTop[f] = true;
+    ok(F.isFlag(f), 'top flag ' + f + ' is still on its continent');
+  });
+
+  // The two things that decided the list, asserted rather than remembered: a
+  // child who just lost to a cup opponent can become it, and nothing that was
+  // already judged good enough for the team card got demoted off the front.
+  var s2;
+  for (s2 = 1; s2 <= 16; s2++) {
+    if (s2 === 2) { continue; }
+    ok(inTop[T.BY_SEED[s2]], 'cup opponent ' + s2 + ' is in the top view');
+  }
+  F.QUICK.forEach(function (q) {
+    ok(inTop[q], 'the card\'s own flag ' + q + ' is in the top view');
+  });
+  // The family playing this is Slovak and Spain is why the screen exists, so
+  // both are in the opening row rather than somewhere down the list.
+  ok(F.TOP.indexOf('\u{1F1F8}\u{1F1F0}') < 5, 'Slovakia opens the top view');
+  ok(F.TOP.indexOf('\u{1F1EA}\u{1F1F8}') < 5, 'Spain is in the opening row');
+
+  // Inside a continent the well-known countries lead, then the alphabet. The
+  // merge must lose nothing and invent nothing.
+  F.REGIONS.forEach(function (r) {
+    eq(r.flags.length, r.alpha.length, r.id + ' keeps every country it had');
+    r.alpha.forEach(function (f) {
+      ok(r.flags.indexOf(f) !== -1, r.id + ' still lists ' + f);
+    });
+    r.lead.forEach(function (f, n) {
+      eq(r.flags[n], f, r.id + ' leads with its well-known countries');
+    });
+  });
+
+  // Where the picker opens. Anything on the star opens on the star; anything
+  // else opens on the continent that actually holds it, so a child already
+  // wearing Tuvalu is not made to hunt for it again.
+  eq(F.tabOf('\u{1F1EA}\u{1F1F8}'), 0, 'Spain opens on the star');
+  eq(F.tabOf('\u{1F1F9}\u{1F1FB}'), F.regionOf('\u{1F1F9}\u{1F1FB}') + 1,
+     'Tuvalu opens on Oceania');
+  eq(F.tabOf('\u{1F981}'), 0, 'a lion is not a country, so it opens on the star');
 
   // The two halves of the data must not drift: a flag with no name fills the
   // team name field with an invented word, and a name with no flag is a

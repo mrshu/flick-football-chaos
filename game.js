@@ -1182,22 +1182,26 @@ function openTeamEditor(returnTo) {
 // job, one back arrow — because a child who has learned one of those screens
 // has learned this one too.
 //
-// `chosen` is the badge the editor is currently showing, so the picker opens on
-// the continent that badge is already on and marks it. `onPick` hands the flag
-// back; picking also leaves, because choosing is the only reason to be here.
+// It opens on the star: the thirty countries a child actually asks for, in
+// reach without a tab, a scroll or a word. The continents behind it are for the
+// long tail. `chosen` is the badge the editor is currently showing, so a child
+// already wearing something the star does not hold opens on the continent that
+// does. `onPick` hands the flag back; picking also leaves, because choosing is
+// the only reason to be here.
 function showFlagPicker(chosen, onPick) {
   var view = el('flagPicker'), tabs = el('flagTabs'), grid = el('flagGrid');
-  var at = Flags.regionOf(chosen);
-  var region = at >= 0 ? at : 0;
+  var region = Flags.tabOf(chosen);
 
   function paintTabs() {
     [].forEach.call(tabs.children, function (t, i) {
-      t.className = (i === region) ? 'on' : '';
+      // The star keeps its own look whether or not it is the open tab, so the
+      // first tab never reads as just another continent.
+      t.className = (i === region ? 'on ' : '') + (Flags.TABS[i].star ? 'top' : '');
     });
   }
 
   function paintGrid() {
-    var flags = Flags.REGIONS[region].flags;
+    var flags = Flags.TABS[region].flags;
     grid.innerHTML = '';
     // Back to the top on every tab: a child who has scrolled Africa should not
     // land halfway down Asia with no idea what is above them.
@@ -1217,7 +1221,7 @@ function showFlagPicker(chosen, onPick) {
   }
 
   tabs.innerHTML = '';
-  Flags.REGIONS.forEach(function (r, i) {
+  Flags.TABS.forEach(function (r, i) {
     var tab = document.createElement('button');
     tab.type = 'button';
     tab.textContent = r.icon;

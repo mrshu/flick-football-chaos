@@ -767,13 +767,22 @@ canvas {
 
 /* The game has no words, so a continent is a glyph. Three of them are the
    globe turned to that part of the world; the other two are the thing a small
-   child already reads as that place. Guessing wrong costs one tap. */
-#flagTabs { display: flex; gap: 6px; width: 100%; flex: 0 0 auto; }
+   child already reads as that place. Guessing wrong costs one tap.
+   Six tabs on a phone: still 50-odd pixels each, which a five-year-old's thumb
+   hits without aiming. */
+#flagTabs { display: flex; gap: 5px; width: 100%; flex: 0 0 auto; }
 #flagTabs button {
   flex: 1 1 0; min-width: 0;
-  font: inherit; font-size: clamp(28px, 7vw, 34px); line-height: 1;
+  font: inherit; font-size: clamp(24px, 6.2vw, 32px); line-height: 1;
   padding: 13px 0; border-radius: 14px; cursor: pointer;
   border: 2px solid transparent; background: rgba(255, 255, 255, .06);
+}
+/* The star is not a place, and must not look like one even when it is not the
+   open tab: it keeps a warm edge of its own, so the first tab reads as a
+   different KIND of thing rather than a sixth continent. */
+#flagTabs button.top {
+  border-color: rgba(255, 213, 74, .45);
+  background: rgba(255, 213, 74, .12);
 }
 #flagTabs button.on {
   border-color: #fff;
