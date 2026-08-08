@@ -899,3 +899,22 @@ canvas {
   box-shadow: 0 6px 0 #1a8a55;
 }
 #roundGo:active { transform: translateY(4px); box-shadow: 0 2px 0 #1a8a55; }
+
+/* ---- the pro skin: broadcast graphics for over-12 teams ---- */
+/* Overrides only. If a rule here needs new markup, it is wrong. */
+body.pro {
+  background: linear-gradient(180deg, #131a24 0%, #0a0f16 70%, #070b10 100%);
+}
+body.pro .team,
+body.pro #turnMsg { border-radius: 4px; }
+body.pro #quiz {
+  border-radius: 8px;
+  background: rgba(10, 16, 24, .96);
+  box-shadow: 0 2px 0 #2b3746, 0 12px 44px rgba(0, 0, 0, .6);
+}
+body.pro #quizPrize {
+  border-radius: 6px;
+  background: linear-gradient(160deg, #35404e, #232c37);
+}
+body.pro #quizChoices button { border-radius: 6px; }
+body.pro #goalFlash { animation: none; }

@@ -257,9 +257,18 @@ function persist() {
   if (game.save) { Store.save(game.save); }
 }
 
+// Teams whose home band is 9+ get the broadcast look. A class on body and
+// CSS overrides only - layout, markup and physics are identical, and a
+// sibling's younger team on the same device is untouched.
+function applySkin() {
+  document.body.classList.toggle('pro',
+    !!(game.slot && game.slot.band >= 9));
+}
+
 function loadProgress() {
   game.save = Store.load();
   game.slot = Store.activeSlot(game.save);
+  applySkin();
   if (game.slot.maths) { game.maths = game.slot.maths; }
   game.aiSkill = Tournament.skillFor(game.slot.cup.index, game.slot.cup.season);
 }
@@ -547,8 +556,10 @@ function goalScored(scorer) {
   updateScore();
   goalFlash.textContent = scorer === 'human' ? 'GOAL!' : 'CPU SCORES!';
   goalFlash.classList.remove('hidden');
-  confetti(scorer === 'human' ? W / 2 : W / 2, scorer === 'human' ? TOP_Y : BOT_Y,
-           scorer === 'human' ? 1 : -1);
+  if (!document.body.classList.contains('pro')) {
+    confetti(scorer === 'human' ? W / 2 : W / 2, scorer === 'human' ? TOP_Y : BOT_Y,
+             scorer === 'human' ? 1 : -1);
+  }
   SFX.goal();
   game.state = 'GOAL_PAUSE';
   game.timer = 1.7;
@@ -993,6 +1004,7 @@ function paintSlots() {
       var was = game.save.active;
       game.save.active = i;
       game.slot = Store.activeSlot(game.save);
+      applySkin();
       persist();
       return was;
     }
@@ -1081,6 +1093,7 @@ function openTeamEditor(returnTo) {
     if (!game.slot.emoji && typeof returnTo === 'number') {
       game.save.active = returnTo;
       game.slot = Store.activeSlot(game.save);
+      applySkin();
       persist();
     }
     ed.classList.add('hidden');
@@ -1107,6 +1120,7 @@ function openTeamEditor(returnTo) {
     if (btn.className !== 'arm') { btn.className = 'arm'; return; }
     Store.clearSlot(game.save, game.save.active);
     game.slot = Store.activeSlot(game.save);
+    applySkin();
     game.maths = null;
     persist();
     ed.classList.add('hidden');
