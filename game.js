@@ -344,7 +344,9 @@ function recordAnswer(correct, elapsedMs) {
     st.correct += 1;
     st.curStreak += 1;
     if (st.curStreak > st.bestStreak) { st.bestStreak = st.curStreak; }
-    if (!st.bestMs || elapsedMs < st.bestMs) { st.bestMs = elapsedMs; }
+    // 0 is the "no record yet" sentinel, so a 0ms (or negative, from a
+    // clock adjustment) elapsed time can never be stored as a record.
+    if (elapsedMs > 0 && (!st.bestMs || elapsedMs < st.bestMs)) { st.bestMs = elapsedMs; }
   } else {
     st.curStreak = 0;
   }
@@ -1254,8 +1256,9 @@ function showStats(thenHome) {
     // "Correct", not "right first time": there is only ever one attempt.
     ['✅', 'Correct', s.correct + (s.answered ? ' · ' + pct + '%' : '')],
     ['\u{1F4C8}', 'Form',
-      Maths.rating(game.slot.maths ? game.slot.maths.difficulty
-                                   : (game.slot.band || 1))],
+      game.slot.band === 0 ? '—'
+        : Maths.rating(game.slot.maths ? game.slot.maths.difficulty
+                                        : (game.slot.band || 1))],
     ['⚡', 'Fastest correct', s.bestMs ? (s.bestMs / 1000).toFixed(1) + 's' : '—'],
     ['\u{1F525}', 'Best streak', s.bestStreak]
   ];
