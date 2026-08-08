@@ -1043,7 +1043,10 @@ function refreshStart() {
   paintSlots();
   paintCup();
   paintNextUnlock();
-  if (game.slot && game.slot.maths) {
+  // Must not be gated on game.slot.maths: changing a team's age is exactly
+  // what clears maths (see the team editor's OK handler), so guarding on it
+  // would skip this recompute at the one moment the band actually changed.
+  if (game.slot) {
     game.aiSkill = Tournament.skillFor(game.slot.cup.index, game.slot.cup.season, game.slot.band);
   }
 }
