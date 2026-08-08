@@ -66,53 +66,119 @@ var Quiz = (function () {
     }
   }
 
+  var DIAG_FONT = '700 14px "Trebuchet MS", Verdana, sans-serif';
+  var LABEL_H = 14; // line box of a one-line label at the font above
+
+  // The unit vector pointing away from a vertex: opposite that vertex's
+  // interior bisector, i.e. away from the other two corners. A label placed
+  // along it always lands outside the shape, and — because the direction is
+  // more than 90° from both edges leaving the vertex — the nearest point of
+  // either edge is the vertex itself, so the distance pushed out IS the
+  // clearance from every stroke.
+  function outward(vx, vy, px, py, qx, qy) {
+    var d1x = px - vx, d1y = py - vy, l1 = Math.sqrt(d1x * d1x + d1y * d1y) || 1;
+    var d2x = qx - vx, d2y = qy - vy, l2 = Math.sqrt(d2x * d2x + d2y * d2y) || 1;
+    var ox = -(d1x / l1 + d2x / l2), oy = -(d1y / l1 + d2y / l2);
+    var ol = Math.sqrt(ox * ox + oy * oy) || 1;
+    return { x: ox / ol, y: oy / ol };
+  }
+
+  // Pure geometry for the triangle diagram, kept out of the drawing code so
+  // the test suite can check the picture against its own labels.
+  //
+  // Base angles can each run up to 100°, so the shapes range from short and
+  // wide to nearly three times taller than the base is long. Solve the
+  // triangle on a unit base with the law of sines, then scale it UNIFORMLY:
+  // an independent x/y scale (what this used to do) draws angles that are not
+  // the labelled ones — 60/60/60 and 45/45/90 both came out as the same flat
+  // 39/39/102 scalene, which is exactly the sanity check a student is meant
+  // to be able to make on this question. Uniform scaling means the canvas
+  // cannot be a fixed box, so the size is computed here too: the drawing is
+  // laid out around the origin, its bounding box (strokes AND labels) is
+  // measured, and everything is shifted into a canvas that just fits.
+  // `measure(text)` returns a label's pixel width.
+  function triGeom(a, b, measure) {
+    var MAX_W = 124, MAX_H = 112, MARGIN = 7, GAP = 11, HALF = 1; // HALF: half the stroke width
+    var ar = a * Math.PI / 180, br = b * Math.PI / 180, cr = Math.PI - ar - br;
+    // Apex of a triangle whose base runs (0,0)-(1,0), angle `a` at (0,0).
+    var ux = Math.sin(br) * Math.cos(ar) / Math.sin(cr);
+    var uy = Math.sin(br) * Math.sin(ar) / Math.sin(cr);
+    var spanX = Math.max(1, ux) - Math.min(0, ux);
+    var s = Math.min(MAX_W / spanX, MAX_H / uy);
+    var pts = [{ x: 0, y: 0 }, { x: s, y: 0 }, { x: ux * s, y: -uy * s }];
+    var texts = [a + '°', b + '°', '?'];
+    var labels = [], i, j, k, dir, tw;
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    function span(x0, y0, x1, y1) {
+      if (x0 < minX) { minX = x0; }
+      if (y0 < minY) { minY = y0; }
+      if (x1 > maxX) { maxX = x1; }
+      if (y1 > maxY) { maxY = y1; }
+    }
+    for (i = 0; i < 3; i++) {
+      j = (i + 1) % 3; k = (i + 2) % 3;
+      dir = outward(pts[i].x, pts[i].y, pts[j].x, pts[j].y, pts[k].x, pts[k].y);
+      tw = measure(texts[i]);
+      // Offset per axis, so a label pushed sideways clears by GAP horizontally
+      // and one pushed up or down clears by GAP vertically.
+      labels.push({
+        text: texts[i], w: tw,
+        x: pts[i].x + dir.x * (GAP + tw / 2),
+        y: pts[i].y + dir.y * (GAP + LABEL_H / 2)
+      });
+      span(pts[i].x - HALF, pts[i].y - HALF, pts[i].x + HALF, pts[i].y + HALF);
+    }
+    for (i = 0; i < labels.length; i++) {
+      span(labels[i].x - labels[i].w / 2, labels[i].y - LABEL_H / 2,
+           labels[i].x + labels[i].w / 2, labels[i].y + LABEL_H / 2);
+    }
+    var dx = MARGIN - minX, dy = MARGIN - minY;
+    for (i = 0; i < 3; i++) { pts[i].x += dx; pts[i].y += dy; }
+    for (i = 0; i < labels.length; i++) { labels[i].x += dx; labels[i].y += dy; }
+    return {
+      W: Math.ceil(maxX - minX) + MARGIN * 2,
+      H: Math.ceil(maxY - minY) + MARGIN * 2,
+      pts: pts, labels: labels
+    };
+  }
+
+  // Pure geometry for the right-angled triangle: the real legs scaled into the
+  // drawable box by ONE factor, so the longer leg is drawn longer. Drawing
+  // both legs at a fixed size (what this used to do) put the "7" of 7/24/25 on
+  // the visually longest side half the time.
+  function pythagGeom(legA, legB) {
+    var BOX_W = 120, BOX_H = 72, LEFT = 30, BASE_Y = 92;
+    var s = Math.min(BOX_W / legA, BOX_H / legB);
+    var w = legA * s, h = legB * s;
+    var x0 = LEFT + (BOX_W - w) / 2;
+    return { x0: x0, y0: BASE_Y, x1: x0 + w, y1: BASE_Y - h, s: s };
+  }
+
   // One diagram per geometry skill, drawn fresh each time. Labels are
   // numerals and the degree sign only; the unknown is always '?'. Sized in
-  // CSS pixels and scaled by devicePixelRatio so lines stay crisp.
+  // CSS pixels and scaled by devicePixelRatio so lines stay crisp. Every
+  // canvas carries its own inline CSS size, because angleTri picks a size to
+  // suit its triangle and the others keep the standard 180x110 box.
   function drawDiag(t) {
-    var W = 180, H = 110, dpr = window.devicePixelRatio || 1;
+    var W = 180, H = 110, dpr = window.devicePixelRatio || 1, i, tri = null;
     var cv = document.createElement('canvas');
     var ctx = cv.getContext('2d');
-    ctx.font = '700 14px "Trebuchet MS", Verdana, sans-serif';
+    ctx.font = DIAG_FONT;
 
-    // areaComp's outline is an L made of two candidate rectangles for the
-    // '?' marker (see below); measure it and decide, before the canvas is
-    // sized, whether either rectangle leaves it real clearance at the
-    // usual scale. Resizing a canvas after drawing starts wipes its
-    // state, so any growing has to happen up front.
-    var ox = 14, oy = 12, sc, pw, ph, nw, nh, leftClear, botClear, grew = false;
-    if (t.kind === 'areaComp') {
-      var qm = ctx.measureText('?');
-      var qw = qm.width;
-      var qh = (typeof qm.actualBoundingBoxAscent === 'number')
-        ? qm.actualBoundingBoxAscent + qm.actualBoundingBoxDescent
-        : 11;
-      var margin = 5, g = 1, tries = 0;
-      do {
-        sc = g * Math.min(150 / t.W, 84 / t.H);
-        pw = t.W * sc; ph = t.H * sc; nw = t.w * sc; nh = t.h * sc;
-        leftClear = Math.min((pw - nw) - (qw + margin * 2), ph - (qh + margin * 2));
-        botClear = Math.min(nw - (qw + margin * 2), (ph - nh) - (qh + margin * 2));
-        tries++;
-        if (leftClear >= 0 || botClear >= 0 || tries >= 6) { break; }
-        g *= 1.15;
-      } while (true);
-      if (g > 1) {
-        H = Math.max(H, Math.ceil(oy + ph + 14));
-        W = Math.max(W, Math.ceil(ox + pw + 16));
-        grew = true;
-      }
+    if (t.kind === 'angleTri') {
+      tri = triGeom(t.a, t.b, function (s) { return ctx.measureText(s).width; });
+      W = tri.W; H = tri.H;
     }
 
     cv.width = W * dpr; cv.height = H * dpr;
+    cv.style.width = W + 'px'; cv.style.height = H + 'px';
     ctx.scale(dpr, dpr);
     ctx.strokeStyle = '#fff';
     ctx.fillStyle = '#fff';
     ctx.lineWidth = 2;
-    ctx.font = '700 14px "Trebuchet MS", Verdana, sans-serif';
+    ctx.font = DIAG_FONT;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    if (grew) { cv.style.width = W + 'px'; cv.style.height = H + 'px'; }
 
     function line(x1, y1, x2, y2) {
       ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
@@ -152,51 +218,31 @@ var Quiz = (function () {
       wedgeLabel((rad + Math.PI) / 2, Math.PI - rad, t.known + '°');
       wedgeLabel(rad / 2, rad, '?');
     } else if (t.kind === 'angleTri') {
-      // Base angles can each run up to 100°, producing shapes from tall
-      // and narrow (both base angles near 90°) to short and wide (both
-      // small). Solve the triangle on a unit base with the law of sines,
-      // then scale width and height independently to fill the drawable
-      // area. That sacrifices true-to-scale proportions (the pythag
-      // diagram below already does this) but guarantees the base labels
-      // always have room to sit apart and the apex always stays on-canvas
-      // — a uniform scale can't promise either for the tall/narrow case.
-      var ar = t.a * Math.PI / 180, br = t.b * Math.PI / 180;
-      var cr = Math.PI - ar - br;
-      var ux = Math.sin(br) * Math.cos(ar) / Math.sin(cr);
-      var uy = Math.sin(br) * Math.sin(ar) / Math.sin(cr); // apex height, unit base = 1
-      var minX = Math.min(0, 1, ux), maxX = Math.max(0, 1, ux);
-      var spanX = maxX - minX, spanY = uy;
-      var padX = 28, padTop = 30, padBottom = 30;
-      var drawW = W - padX * 2, drawH = H - padTop - padBottom;
-      var scaleX = drawW / spanX, scaleY = drawH / spanY;
-      var toCx = function (ux2) { return padX + (ux2 - minX) * scaleX; };
-      var toCy = function (uy2) { return (H - padBottom) - uy2 * scaleY; };
-      var Ax = toCx(0), Ay = toCy(0), Bx = toCx(1), By = toCy(0), Cx = toCx(ux), Cy = toCy(uy);
-      line(Ax, Ay, Bx, By); line(Ax, Ay, Cx, Cy); line(Bx, By, Cx, Cy);
-      // Each label sits just past its own vertex, along the direction
-      // opposite that vertex's interior bisector — i.e. away from the
-      // other two corners — so it always lands outside the triangle no
-      // matter how the shape is skewed.
-      var outward = function (vx, vy, px, py, qx, qy) {
-        var d1x = px - vx, d1y = py - vy, l1 = Math.sqrt(d1x * d1x + d1y * d1y) || 1;
-        var d2x = qx - vx, d2y = qy - vy, l2 = Math.sqrt(d2x * d2x + d2y * d2y) || 1;
-        var ox = -(d1x / l1 + d2x / l2), oy = -(d1y / l1 + d2y / l2);
-        var ol = Math.sqrt(ox * ox + oy * oy) || 1;
-        return { x: ox / ol, y: oy / ol };
-      };
-      var placeAt = function (vx, vy, dir, txt) {
-        ctx.fillText(txt, vx + dir.x * 14, vy + dir.y * 14);
-      };
-      placeAt(Ax, Ay, outward(Ax, Ay, Bx, By, Cx, Cy), t.a + '°');
-      placeAt(Bx, By, outward(Bx, By, Ax, Ay, Cx, Cy), t.b + '°');
-      placeAt(Cx, Cy, outward(Cx, Cy, Ax, Ay, Bx, By), '?');
+      // Vertices and labels were all worked out (and the canvas sized around
+      // them) by triGeom above; here they are only stroked and filled.
+      line(tri.pts[0].x, tri.pts[0].y, tri.pts[1].x, tri.pts[1].y);
+      line(tri.pts[1].x, tri.pts[1].y, tri.pts[2].x, tri.pts[2].y);
+      line(tri.pts[2].x, tri.pts[2].y, tri.pts[0].x, tri.pts[0].y);
+      for (i = 0; i < tri.labels.length; i++) {
+        ctx.fillText(tri.labels[i].text, tri.labels[i].x, tri.labels[i].y);
+      }
     } else if (t.kind === 'pythag') {
-      var x0 = 30, y0 = 96, x1 = 150, y1 = 22;
+      var g = pythagGeom(t.legA, t.legB);
+      var x0 = g.x0, y0 = g.y0, x1 = g.x1, y1 = g.y1;
       line(x0, y0, x1, y0); line(x1, y0, x1, y1); line(x0, y0, x1, y1);
-      line(x1 - 10, y0, x1 - 10, y0 - 10); line(x1 - 10, y0 - 10, x1, y0 - 10);
+      // Right-angle marker, shrunk on the thin triangles so it stays inside.
+      var m = Math.max(5, Math.min(10, Math.min(x1 - x0, y0 - y1) * 0.3));
+      line(x1 - m, y0, x1 - m, y0 - m); line(x1 - m, y0 - m, x1, y0 - m);
       ctx.fillText(String(t.legA), (x0 + x1) / 2, y0 + 9);
-      ctx.fillText(String(t.legB), x1 + (x1 > 160 ? -9 : 12), (y0 + y1) / 2);
-      ctx.fillText('?', (x0 + x1) / 2 - 12, (y0 + y1) / 2 - 10);
+      ctx.fillText(String(t.legB), x1 + 12, (y0 + y1) / 2);
+      // The '?' sits off the hypotenuse's midpoint, pushed along the outward
+      // normal (away from the right-angle corner), so it clears the slope by
+      // the same margin whatever the triple's shape.
+      var hx = x1 - x0, hy = y1 - y0, hl = Math.sqrt(hx * hx + hy * hy) || 1;
+      var nx = hy / hl, ny = -hx / hl; // unit normal, away from the corner at (x1, y0)
+      var qw = ctx.measureText('?').width;
+      ctx.fillText('?', (x0 + x1) / 2 + nx * (9 + qw / 2),
+                        (y0 + y1) / 2 + ny * (9 + LABEL_H / 2));
     } else if (t.kind === 'areaComp') {
       // Outer W×H with the top-right w×h corner notched out, drawn to
       // scale. The brief's original path drew the left edge as the short
@@ -207,8 +253,18 @@ var Quiz = (function () {
       // height on the left, the short H-h edge on the right) draws the
       // shape the generator actually means and its area matches for
       // every W,H,w,h the generator can produce, verified by shoelace.
-      // sc/pw/ph/nw/nh/ox/oy and leftClear/botClear were already worked
-      // out above, before the canvas was sized.
+      var ox = 14, oy = 12, margin = 5;
+      var sc = Math.min(150 / t.W, 84 / t.H);
+      var pw = t.W * sc, ph = t.H * sc, nw = t.w * sc, nh = t.h * sc;
+      var qm = ctx.measureText('?');
+      var qw2 = qm.width;
+      var qh = (typeof qm.actualBoundingBoxAscent === 'number')
+        ? qm.actualBoundingBoxAscent + qm.actualBoundingBoxDescent
+        : 11;
+      // How much room the '?' would have to spare in each of the L's two
+      // rectangles; the larger one wins below.
+      var leftClear = Math.min((pw - nw) - (qw2 + margin * 2), ph - (qh + margin * 2));
+      var botClear = Math.min(nw - (qw2 + margin * 2), (ph - nh) - (qh + margin * 2));
       ctx.beginPath();
       ctx.moveTo(ox, oy);
       ctx.lineTo(ox + pw - nw, oy);
@@ -336,5 +392,11 @@ var Quiz = (function () {
     skipDone = null;
   }
 
-  return { show: show, hide: hide, renderToken: renderToken };
+  return {
+    show: show, hide: hide, renderToken: renderToken,
+    // Exposed for the test suite: pure diagram geometry, no DOM involved.
+    _triGeom: triGeom, _pythagGeom: pythagGeom
+  };
 })();
+
+if (typeof module !== 'undefined') { module.exports = Quiz; }
