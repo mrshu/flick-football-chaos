@@ -20,8 +20,9 @@ then you may play. A child learns very quickly that the game is the reward and
 the maths is the toll.
 
 Here the maths *is* a move. Before some turns you are offered a question, and
-getting it right hands you something you actually wanted a second ago — a
-charged shot, or a goalkeeper who dives the right way. You can always skip it.
+getting it right hands you something you actually wanted a second ago — an
+extra flick, a shooting guide, or a goalkeeper who dives the right way. You can
+always skip it.
 The pitch does not wait for you to be good at arithmetic; it just plays better
 when you are.
 
@@ -50,8 +51,28 @@ harder. First to three goals wins.
   imperfectly is what separates a first-round opponent from a final.
 - Beating it is about **placement**. Against the toughest keeper the middle of
   the goal scores 0% of the time and the corners 42–50%.
-- Occasionally **chaos** strikes — the ball goes slippery, or shots get extra
-  power. It is announced, it lasts a turn or two, and it applies to both sides.
+- In the **no-maths arcade mode**, occasional chaos makes the pitch slippery,
+  the ball bigger, players smaller, or shots more powerful. These effects last
+  one turn and can affect either team.
+
+### Earned bonuses
+
+With maths on, a correct answer earns a football advantage. The offer shows
+its name, a small pitch picture, and what it will do before you answer.
+
+| Bonus | What you get |
+| --- | --- |
+| Keeper feint | The opposing keeper will not dive during your next flick. It still blocks a shot aimed straight at it. |
+| Second chance | One extra flick before the CPU responds, from where the first flick left the pieces. No extra question; either side's goal ends it. |
+| Coaching line | While aiming, see the first contact and the ball's initial direction, stopping at the next obstacle. It does not predict rebounds or a moving keeper. |
+| Run into space | Drag a blue outfield player within its highlighted circle to reposition it, then take your normal flick. You can also tap a player then a destination, or skip setup. Bodies and posts block the run. |
+| Tiny defenders | Red outfield players shrink for your flick. Your players and both keepers stay their normal size. Defenders regain their size in nearby free space without shoving your pieces. |
+| Big striker | A blue striker with room to grow gets bigger, making ball contact easier. Selecting a different blue outfield player transfers the growth if it fits; keepers stay normal. |
+
+Offers avoid immediate repeats and omit situational powers when there is no
+eligible defender, striker, keeper or setup space. A wrong answer or skip still
+gives you your ordinary flick. Save questions continue to offer a keeper dive
+when an actual CPU shot is predicted to score.
 
 <br clear="right">
 
@@ -173,7 +194,7 @@ open index.html          # or: python3 -m http.server 8000
 Run the tests with Node — no framework, no dependencies:
 
 ```sh
-node test.js             # 45,342 checks, ~0.10s
+node test.js             # 45,851 checks, including bonus geometry and turn flow
 ```
 
 The suite is deliberately small for what it covers. It has been checked by
@@ -206,11 +227,12 @@ game.js         the game: physics, turns, AI, rendering, screens
 maths.js        question generators and the adaptive engine   (pure)
 tournament.js   the sixteen-team draw and its resolution      (pure)
 formation.js    kickoff layouts, keeper geometry, AI aiming   (pure)
+bonuses.js      reward descriptions, contact guides, setup moves (pure)
 names.js        invented team names, and every country name   (pure)
 flags.js        the picker: continents sliced out of names.js  (pure)
 store.js        localStorage, per slot, with repair           (pure-ish)
 quiz.js         the question panel
-test.js         the whole suite
+test.js         the whole suite, including the two bonus test files
 ```
 
 The modules marked pure have no DOM, no game state, and no randomness of their

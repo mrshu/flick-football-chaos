@@ -161,13 +161,14 @@ const game = {
   // AI_SAVE_QUESTION: a CPU shot was simulated forward and found to be on
   // target; the modal is up, waiting on the child's save question. No
   // timer drives it - see askSaveQuestion.
-  state: 'START', // START | HUMAN_QUESTION | HUMAN_AIM | MOVING | AI_WAIT | AI_SAVE_QUESTION | GOAL_PAUSE | OVER
+  state: 'START', // START | HUMAN_QUESTION | HUMAN_SETUP | HUMAN_AIM | MOVING | AI_WAIT | AI_SAVE_QUESTION | GOAL_PAUSE | OVER
   mover: 'human',
   maths: null, mathsOn: true,
   mode: 'single',   // 'single' | 'cup' — only the cup advances the draw
   keeperDive: null, // {x, wait} once the AI keeper has read the shot in flight
   turnCount: 0, sinceChaos: 0,
   friction: BASE_FRICTION, powerMult: 1,
+  bonus: null, lastBonus: null, extraFlicks: 0, bigStriker: null, setup: null,
   pendingAiShot: null, pendingSaveX: null,
   score: { human: 0, ai: 0 }, lastScorer: null,
   timer: 0, moveTime: 0, ballRot: 0,
@@ -293,17 +294,137 @@ function activateModifier(id) {
   SFX.chaos();
 }
 function clearModifier() {
+  const restoringDefenders = game.bonus === 'small';
   game.friction = BASE_FRICTION;
   game.powerMult = 1;
   game.ball.r = BALL_R;
   game.players.forEach(p => { p.r = PLAYER_R; });
+  if (restoringDefenders) restoreDefenderSpace();
+  game.bonus = null;
+  game.extraFlicks = 0;
+  game.bigStriker = null;
+  game.setup = null;
+  game.drag = null;
+  game.keeperDive = null;
+  el('bonusAction').classList.add('hidden');
   chaosBanner.classList.add('hidden');
 }
 
+/* ---------- earned football bonuses ---------- */
+const BONUS_BOUNDS = { left: SIDE_L, right: SIDE_R, top: TOP_Y, bottom: BOT_Y };
+
+function restoreDefenderSpace() {
+  // A tiny defender can finish closer to the ball than a full-sized one can.
+  // Restore it into nearby free space before the CPU chooses its shot; do not
+  // let expansion shove the ball or the child's pieces on the next frame.
+  const obstacles = [...movers, ...game.posts];
+  for (const p of game.players.filter(p => p.team === 'ai')) {
+    function fits(x, y) {
+      return x - p.r >= SIDE_L && x + p.r <= SIDE_R &&
+        y - p.r >= TOP_Y && y + p.r <= BOT_Y && obstacles.every(o => o === p ||
+          Math.hypot(o.x - x, o.y - y) >= p.r + o.r + 0.1);
+    }
+    if (fits(p.x, p.y)) continue;
+    const origin = { x: p.x, y: p.y };
+    let found = false;
+    for (let distance = 4; distance < Math.hypot(W, H) && !found; distance += 4) {
+      for (let n = 0; n < 24; n++) {
+        const a = n * Math.PI / 12;
+        const x = origin.x + Math.cos(a) * distance, y = origin.y + Math.sin(a) * distance;
+        if (fits(x, y)) { p.x = x; p.y = y; found = true; break; }
+      }
+    }
+  }
+}
+
+function canGrow(player) {
+  const r = PLAYER_R * Bonuses.GROW;
+  return game.players.includes(player) && player.team === 'human' &&
+    player.x - r >= SIDE_L && player.x + r <= SIDE_R &&
+    player.y - r >= TOP_Y && player.y + r <= BOT_Y &&
+    [...movers, ...game.posts].every(o => o === player ||
+      Math.hypot(o.x - player.x, o.y - player.y) >= o.r + r + 2);
+}
+
+function growStriker(player) {
+  if (game.bigStriker) game.bigStriker.r = PLAYER_R;
+  game.bigStriker = null;
+  if (canGrow(player)) {
+    player.r = PLAYER_R * Bonuses.GROW;
+    game.bigStriker = player;
+  }
+}
+
+function hasSetupSpace() {
+  return game.players.some(p => p.team === 'human' && [0, 1, 2, 3, 4, 5, 6, 7].some(n => {
+    const a = n * Math.PI / 4;
+    const target = Bonuses.moveTarget(p,
+      { x: p.x + Math.cos(a) * Bonuses.MOVE_LIMIT, y: p.y + Math.sin(a) * Bonuses.MOVE_LIMIT },
+      movers, game.posts, BONUS_BOUNDS);
+    return target && Math.hypot(target.x - p.x, target.y - p.y) >= MIN_DRAG;
+  }));
+}
+
+function pickBonus() {
+  const ids = ['second', 'coach'];
+  if (Math.abs(aiKeeper.y - KEEPER_LINE_Y) < KEEPER_R && game.ball.y > KEEPER_LINE_Y) ids.push('feint');
+  if (game.players.some(p => p.team === 'ai' && p.y < game.ball.y + PLAYER_R)) ids.push('small');
+  if (game.players.some(canGrow)) ids.push('big');
+  if (hasSetupSpace()) ids.push('move');
+  // Offer a useful effect and avoid showing the same prize twice running.
+  const fresh = ids.filter(id => id !== game.lastBonus);
+  const id = fresh[(Math.random() * fresh.length) | 0];
+  game.lastBonus = id;
+  return id;
+}
+
+function announceBonus(id, hint) {
+  const def = Bonuses.DEFS[id];
+  const detail = hint || (id === 'second' ? '2 flicks before the CPU' :
+    id === 'move' ? 'Move a blue player, then flick' : 'This flick');
+  chaosBanner.textContent = def.glyph + ' ' + def.name + ' — ' + detail;
+  chaosBanner.classList.remove('hidden');
+}
+
+function activateBonus(id) {
+  game.bonus = id;
+  if (id === 'small') game.players.filter(p => p.team === 'ai').forEach(p => { p.r = PLAYER_R * Bonuses.SHRINK; });
+  if (id === 'big') {
+    const choices = game.players.filter(canGrow).sort((a, b) =>
+      Math.hypot(a.x - game.ball.x, a.y - game.ball.y) - Math.hypot(b.x - game.ball.x, b.y - game.ball.y));
+    if (choices.length) growStriker(choices[0]);
+  }
+  if (id === 'second') game.extraFlicks = 1;
+  if (id === 'move') {
+    game.state = 'HUMAN_SETUP';
+    game.setup = { player: null, target: null, pointer: null, dragging: false, grabbed: false, startPoint: null };
+    el('bonusAction').classList.remove('hidden');
+    setTurnMsg('Move blue, then flick', 'human');
+  }
+  announceBonus(id);
+  SFX.chaos();
+}
+
+function finishSetup(target) {
+  if (target && game.setup && game.setup.player) {
+    Object.assign(game.setup.player, target);
+    SFX.select();
+  }
+  game.setup = null;
+  el('bonusAction').classList.add('hidden');
+  game.state = 'HUMAN_AIM';
+  setTurnMsg('Your turn — drag a blue player', 'human');
+  announceBonus('move', target ? 'New position ready — take your flick' : 'Take your normal flick');
+}
+
+el('bonusAction').addEventListener('click', () => {
+  if (game.state === 'HUMAN_SETUP') finishSetup(null);
+});
+
 /* ---------- human-turn maths question ---------- */
-// A modal precedes every human turn, advertising one of the chaos modifiers
-// as its prize before the question is even shown — the win must be obvious
-// up front. Answering right fires that exact modifier; answering wrong
+// A question advertises a useful football bonus before it is answered.
+// Earned advantages are separate from the maths-off arcade chaos catalogue.
+// Answering right grants that exact advantage; answering wrong
 // still hands the player their flick, and skipping is instant and free.
 // Quiz.js owns the cancellable feedback timer, so the flash-then-continue
 // behaviour lives in one place.
@@ -316,8 +437,7 @@ const BONUS_REPEAT_CHANCE = 0.5;
 // question now follows the same rule, so it arrives when a bonus could win
 // something rather than on every turn.
 function worthABonus() {
-  // Attacking half only: a giant ball or a super shot is worth something when
-  // the ball is up near the CPU's goal, and worth little from your own box.
+  // Attacking half only: offer help when there is an attacking opportunity.
   if (game.ball.y > H / 2) { return false; }
   // Asking on consecutive attacking turns is allowed only sometimes. A hard
   // "never twice" rule caps this at half your turns and made questions too
@@ -356,8 +476,7 @@ function askQuestion() {
   game.state = 'HUMAN_QUESTION';
   setTurnMsg('Your turn', 'human');
   var q = Maths.make(game.maths.difficulty, game.maths, Math.random);
-  var keys = Object.keys(MODIFIERS);
-  var prizeId = keys[(Math.random() * keys.length) | 0];
+  var prizeId = pickBonus();
   Quiz.show(q, prizeId, function (correct, elapsedMs) {
     game.maths = Maths.update(game.maths, {
       correct: correct, elapsedMs: elapsedMs, band: q.band, skill: q.skill
@@ -371,9 +490,9 @@ function askQuestion() {
 }
 
 function finishQuestion(correct, prizeId) {
-  if (correct) { activateModifier(prizeId); }
   game.state = 'HUMAN_AIM';
   setTurnMsg('Your turn — drag a blue player', 'human');
+  if (correct) { activateBonus(prizeId); }
 }
 
 /* ---------- CPU save question ---------- */
@@ -448,6 +567,7 @@ function crossingX(ball) {
 // into the far corner is genuinely harder to reach than one hit at the keeper.
 function keeperReact(dt) {
   if (game.state !== 'MOVING' || game.mover !== 'human') { game.keeperDive = null; return; }
+  if (game.bonus === 'feint') { game.keeperDive = null; return; }
   var k = aiKeeper;
 
   var predicted = crossingX(game.ball);
@@ -482,8 +602,7 @@ function diveKeeper(x) {
 function startTurn(team) {
   game.turnCount++;
   game.sinceChaos++;
-  // Random chaos is only for the maths-off arcade mode; with maths on it is
-  // left for a later pass to redefine how chaos is earned.
+  // Arcade chaos remains random. Maths earns separate player advantages.
   if (!game.mathsOn && game.turnCount > 2 && game.sinceChaos >= 2 && Math.random() < 0.5) {
     const keys = Object.keys(MODIFIERS);
     activateModifier(keys[(Math.random() * keys.length) | 0]);
@@ -506,11 +625,21 @@ function startTurn(team) {
 
 function settle() {
   for (const o of movers) o.vx = o.vy = 0;
+  const again = game.mover === 'human' && game.extraFlicks > 0;
   clearModifier();
+  if (again) {
+    // Keep the settled positions. No question or turn setup here: the prize
+    // is exactly one follow-up flick, so it cannot earn or chain another.
+    game.state = 'HUMAN_AIM';
+    announceBonus('second', 'One more flick before the CPU');
+    setTurnMsg('Second chance — take one more flick', 'human');
+    return;
+  }
   startTurn(opp(game.mover));
 }
 
 function goalScored(scorer) {
+  game.extraFlicks = 0; // either side's goal ends the opportunity
   addShake(SHAKE_MAX);
   game.trail.length = 0;
   game.score[scorer]++;
@@ -818,9 +947,35 @@ function ptFromEvent(e) {
   return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
 }
 
+function updateSetupPointer(point) {
+  const setup = game.setup;
+  setup.pointer = point;
+  // Keep the original grab offset. A tap near a disc's edge selects it; it
+  // must not consume the setup by moving its centre to the finger.
+  const requested = setup.grabbed && setup.player ? {
+    x: setup.player.x + point.x - setup.startPoint.x,
+    y: setup.player.y + point.y - setup.startPoint.y
+  } : point;
+  setup.target = setup.player ? Bonuses.moveTarget(setup.player, requested,
+    movers, game.posts, BONUS_BOUNDS) : null;
+}
+
 canvas.addEventListener('pointerdown', e => {
   e.preventDefault();
   SFX.unlock();
+  if (game.state === 'HUMAN_SETUP') {
+    const point = ptFromEvent(e);
+    const blue = game.players.filter(p => p.team === 'human' &&
+      Math.hypot(p.x - point.x, p.y - point.y) < p.r + 22)
+      .sort((a, b) => Math.hypot(a.x - point.x, a.y - point.y) - Math.hypot(b.x - point.x, b.y - point.y))[0];
+    if (blue) game.setup.player = blue;
+    game.setup.grabbed = !!blue;
+    game.setup.startPoint = point;
+    game.setup.dragging = true;
+    updateSetupPointer(point);
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+    return;
+  }
   if (game.state !== 'HUMAN_AIM') return;
   const p = ptFromEvent(e);
   let best = null, bd = Infinity;
@@ -832,6 +987,11 @@ canvas.addEventListener('pointerdown', e => {
     if (d < pl.r + 22 && d < bd) { bd = d; best = pl; }
   }
   if (best) {
+    if (game.bonus === 'big') {
+      growStriker(best);
+      announceBonus('big', game.bigStriker ? 'Bigger blue striker — line up your flick' :
+        best === humanKeeper ? 'Your keeper keeps its normal size' : 'No room here — try another blue player');
+    }
     game.drag = { player: best, px: p.x, py: p.y };
     try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
     SFX.select();
@@ -839,6 +999,11 @@ canvas.addEventListener('pointerdown', e => {
 });
 
 canvas.addEventListener('pointermove', e => {
+  if (game.state === 'HUMAN_SETUP' && game.setup.dragging) {
+    e.preventDefault();
+    updateSetupPointer(ptFromEvent(e));
+    return;
+  }
   if (!game.drag) return;
   e.preventDefault();
   const p = ptFromEvent(e);
@@ -847,6 +1012,18 @@ canvas.addEventListener('pointermove', e => {
 });
 
 function endDrag(e) {
+  if (game.state === 'HUMAN_SETUP') {
+    e.preventDefault();
+    const setup = game.setup;
+    if (!setup.dragging) return;
+    updateSetupPointer(ptFromEvent(e));
+    setup.dragging = false;
+    const target = setup.target;
+    if (target && setup.player && Math.hypot(target.x - setup.player.x, target.y - setup.player.y) >= MIN_DRAG) {
+      finishSetup(target);
+    }
+    return;
+  }
   if (!game.drag) return;
   e.preventDefault();
   const { player, px, py } = game.drag;
@@ -857,6 +1034,7 @@ function endDrag(e) {
   const sp = Math.min(len / MAX_DRAG, 1) * MAX_LAUNCH * game.powerMult;
   player.vx = (dx / len) * sp;
   player.vy = (dy / len) * sp;
+  game.keeperDive = null;
   game.mover = 'human';
   game.moveTime = 0;
   game.state = 'MOVING';
@@ -864,7 +1042,10 @@ function endDrag(e) {
   SFX.launch();
 }
 canvas.addEventListener('pointerup', endDrag);
-canvas.addEventListener('pointercancel', () => { game.drag = null; });
+canvas.addEventListener('pointercancel', () => {
+  game.drag = null;
+  if (game.setup) { game.setup.dragging = false; game.setup.target = null; }
+});
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
 
@@ -1928,6 +2109,7 @@ function drawAim() {
   if (len < MIN_DRAG) return;
   const power = Math.min(len / MAX_DRAG, 1);
   const nx = dx / len, ny = dy / len;
+  if (game.bonus === 'coach') drawCoachingLine(player, nx, ny, power);
   const col = `hsl(${120 * (1 - power)}, 95%, 55%)`;
 
   ctx.lineCap = 'round';
@@ -1955,6 +2137,93 @@ function drawAim() {
   ctx.lineWidth = 5; ctx.strokeStyle = col; ctx.stroke();
 }
 
+function bonusArrow(from, to, color) {
+  const dx = to.x - from.x, dy = to.y - from.y, length = Math.hypot(dx, dy);
+  if (length < 5) return;
+  const nx = dx / length, ny = dy / length;
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 4;
+  line(from.x, from.y, to.x, to.y);
+  ctx.beginPath();
+  ctx.moveTo(to.x, to.y);
+  ctx.lineTo(to.x - nx * 12 - ny * 7, to.y - ny * 12 + nx * 7);
+  ctx.lineTo(to.x - nx * 12 + ny * 7, to.y - ny * 12 - nx * 7);
+  ctx.closePath(); ctx.fill();
+}
+
+function drawCoachingLine(player, nx, ny, power) {
+  const speed = power * MAX_LAUNCH;
+  const fr = Math.pow(game.friction, STEP * 60);
+  const steps = Math.min(MAX_MOVE_TIME / STEP,
+    Math.max(0, Math.ceil(Math.log(STOP_SPEED / speed) / Math.log(fr))));
+  const travel = speed * STEP * (1 - Math.pow(fr, steps)) / (1 - fr);
+  // A geometric aid for the first collision, not a promise about the goal.
+  // Stop the ball arrow at the next obstacle: keeper reactions and rebounds
+  // remain live football, rather than being portrayed as certain outcomes.
+  const guide = Bonuses.guide(player, { vx: nx * speed, vy: ny * speed }, game.ball,
+    [...movers.filter(o => o !== player && o !== game.ball), ...game.posts], BONUS_BOUNDS, travel);
+  if (!guide) return;
+  ctx.save();
+  ctx.strokeStyle = guide.hitBall ? '#a7f3d0' : '#fbbf24';
+  ctx.lineWidth = 3; ctx.setLineDash([5, 7]);
+  line(player.x, player.y, guide.contact.x, guide.contact.y);
+  ctx.beginPath(); ctx.arc(guide.contact.x, guide.contact.y, player.r, 0, Math.PI * 2); ctx.stroke();
+  ctx.setLineDash([]);
+  if (guide.hitBall) {
+    const b = game.ball, dx = guide.contact.x - b.x, dy = guide.contact.y - b.y;
+    const distance = Math.hypot(dx, dy) || 1;
+    ctx.beginPath(); ctx.arc(b.x + dx / distance * b.r, b.y + dy / distance * b.r, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffeb85'; ctx.fill();
+    if (guide.ballEnd) bonusArrow(b, guide.ballEnd, '#a7f3d0');
+  }
+  ctx.restore();
+}
+
+function drawBonusEffects(t) {
+  if (!game.bonus) return;
+  const pulse = 1 + Math.sin(t * 5) * 0.08;
+  ctx.save();
+  if (game.bonus === 'feint') {
+    ctx.strokeStyle = '#ffeb85'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(aiKeeper.x, aiKeeper.y, (aiKeeper.r + 10) * pulse, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = '#ffeb85';
+    ctx.fillRect(aiKeeper.x - 8, aiKeeper.y - aiKeeper.r - 22, 5, 14);
+    ctx.fillRect(aiKeeper.x + 3, aiKeeper.y - aiKeeper.r - 22, 5, 14);
+  } else if (game.bonus === 'big' && game.bigStriker) {
+    const p = game.bigStriker;
+    ctx.strokeStyle = '#ffeb85'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(p.x, p.y, (p.r + 8) * pulse, 0, Math.PI * 2); ctx.stroke();
+  } else if (game.bonus === 'small') {
+    ctx.strokeStyle = 'rgba(255,235,133,.65)'; ctx.lineWidth = 2; ctx.setLineDash([4, 5]);
+    for (const p of game.players.filter(p => p.team === 'ai')) {
+      ctx.beginPath(); ctx.arc(p.x, p.y, PLAYER_R, 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+  if (game.state === 'HUMAN_SETUP') {
+    const setup = game.setup;
+    if (!setup.player) {
+      ctx.strokeStyle = '#a7f3d0'; ctx.lineWidth = 3;
+      for (const p of game.players.filter(p => p.team === 'human')) {
+        ctx.beginPath(); ctx.arc(p.x, p.y, (p.r + 10) * pulse, 0, Math.PI * 2); ctx.stroke();
+      }
+    } else {
+      const p = setup.player;
+      ctx.fillStyle = 'rgba(59,130,246,.13)'; ctx.strokeStyle = '#a7f3d0'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, Bonuses.MOVE_LIMIT, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      if (setup.target) {
+        bonusArrow(p, setup.target, '#a7f3d0');
+        ctx.globalAlpha = .65;
+        drawDisc({ ...setup.target, r: p.r }, '#3b82f6', '#a7f3d0');
+      } else if (setup.pointer) {
+        ctx.strokeStyle = '#f87171'; ctx.lineWidth = 4;
+        const at = setup.pointer;
+        line(at.x - 9, at.y - 9, at.x + 9, at.y + 9);
+        line(at.x + 9, at.y - 9, at.x - 9, at.y + 9);
+      }
+    }
+  }
+  ctx.restore();
+}
+
 function drawParticles() {
   for (const p of game.particles) {
     ctx.save();
@@ -1980,6 +2249,7 @@ function draw(t) {
   for (const p of game.players) drawPlayer(p, t);
   drawTrail();
   drawBall(game.ball);
+  drawBonusEffects(t);
   drawAim();
   drawParticles();
   if (game.shake > 0) ctx.restore();

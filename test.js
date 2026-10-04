@@ -2310,4 +2310,6 @@ checkGenerators(11, false);
   });
 })();
 
+checks += require('./test-bonuses.js').checks;
+checks += require('./test-game-bonuses.js').checks;
 done();

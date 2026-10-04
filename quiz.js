@@ -1,22 +1,18 @@
 'use strict';
+var Bonuses = (typeof Bonuses !== 'undefined') ? Bonuses : require('./bonuses.js');
 var Quiz = (function () {
 
-  var panel, leadEl, prizeGlyphEl, prizePreviewEl, qEl, choicesEl, skipBtn;
+  var panel, leadEl, prizeGlyphEl, prizePreviewEl, prizeNameEl, prizeHintEl, qEl, choicesEl, skipBtn;
   var shownAt = 0, answered = false, done = null, skipDone = null, current = null, timer = 0;
 
-  // The one place that knows what each chaos modifier looks like: its glyph
-  // and a wordless before/after preview built from CSS shapes. game.js only
-  // ever hands us the modifier id — it has its own MODIFIERS map for the
-  // (worded) in-game banner text, but the prize-card glyph/preview mapping
-  // lives here and nowhere else. `save` is not a chaos modifier at all — it
-  // is the goalkeeper-save question, reusing this same card with a glove
-  // glyph and no before/after preview (kind left unset).
+  // Earned rewards share their copy with the game through Bonuses.DEFS.
+  // Keep the old arcade previews for the maths lab and the save card.
   var PRIZES = {
-    giant:    { glyph: '\u{1F388}', kind: 'dots', from: 'Xs', to: 'Lg', color: '#ffffff' },
-    tiny:     { glyph: '\u{1F41C}', kind: 'dots', from: 'Lg', to: 'Xs', color: '#7db4ff' },
-    super:    { glyph: '\u{1F4A5}', kind: 'bars', from: 'Sm', to: 'Lg', color: '#ffffff' },
-    slippery: { glyph: '\u{1F9CA}', kind: 'trail', color: '#7dd3fc' },
-    save:     { glyph: '\u{1F9E4}' },
+    giant:    { glyph: '\u{1F388}', name: 'Giant ball', kind: 'dots', from: 'Xs', to: 'Lg', color: '#ffffff' },
+    tiny:     { glyph: '\u{1F41C}', name: 'Tiny players', kind: 'dots', from: 'Lg', to: 'Xs', color: '#7db4ff' },
+    super:    { glyph: '\u{1F4A5}', name: 'Super shot', kind: 'bars', from: 'Sm', to: 'Lg', color: '#ffffff' },
+    slippery: { glyph: '\u{1F9CA}', name: 'Slippery pitch', kind: 'trail', color: '#7dd3fc' },
+    save:     { glyph: '\u{1F9E4}', name: 'Keeper save', hint: 'Dive to stop this shot.' },
   };
 
   function shape(cls, extraCls, color) {
@@ -26,8 +22,52 @@ var Quiz = (function () {
     return e;
   }
 
-  function renderPreview(prize) {
+  function footballPreview(id) {
+    var pitch = document.createElement('span');
+    pitch.className = 'pvPitch pv-' + id;
+    pitch.setAttribute('aria-hidden', 'true');
+    function item(cls, x, y, text) {
+      var e = shape(cls);
+      e.style.left = x + '%'; e.style.top = y + '%';
+      if (text) e.textContent = text;
+      pitch.appendChild(e);
+      return e;
+    }
+    if (id === 'small' || id === 'big') {
+      item('pvPlayer ' + (id === 'small' ? 'red before' : 'blue before'), 25, 50);
+      item('pvChange', 48, 50, '➜');
+      item('pvPlayer ' + (id === 'small' ? 'red after' : 'blue after'), 74, 50);
+      item('pvBall', 91, 50);
+    } else if (id === 'move') {
+      item('pvPlayer blue ghost', 20, 70);
+      item('pvChange', 43, 52, '↗');
+      item('pvPlayer blue', 64, 30);
+      item('pvBall', 83, 25);
+    } else {
+      item('pvGoal', 93, 50);
+      item('pvPlayer blue', 14, 62);
+      item('pvBall', 43, 53);
+      if (id === 'feint') {
+        item('pvPlayer keeper', 80, 53);
+        item('pvPause', 80, 20, 'Ⅱ');
+        item('pvChange', 62, 25, '↗');
+      } else if (id === 'second') {
+        item('pvChange', 30, 29, '➜');
+        item('pvChange', 65, 29, '➜');
+        item('pvCount', 65, 72, '2');
+      } else {
+        item('pvGuide incoming', 29, 58);
+        item('pvGuide outgoing', 65, 38);
+        item('pvContact', 42, 53);
+      }
+    }
+    prizePreviewEl.appendChild(pitch);
+  }
+
+  function renderPreview(prize, id) {
     prizePreviewEl.innerHTML = '';
+    prizePreviewEl.classList.toggle('football', !!Bonuses.DEFS[id]);
+    if (Bonuses.DEFS[id]) { footballPreview(id); return; }
     var i;
     if (prize.kind === 'dots') {
       prizePreviewEl.appendChild(shape('pvDot', 'sz' + prize.from, prize.color));
@@ -59,6 +99,8 @@ var Quiz = (function () {
       leadEl = document.getElementById('quizLead');
       prizeGlyphEl = document.getElementById('quizPrizeGlyph');
       prizePreviewEl = document.getElementById('quizPrizePreview');
+      prizeNameEl = document.getElementById('quizPrizeName');
+      prizeHintEl = document.getElementById('quizPrizeHint');
       qEl = document.getElementById('quizQ');
       choicesEl = document.getElementById('quizChoices');
       skipBtn = document.getElementById('quizSkip');
@@ -355,10 +397,12 @@ var Quiz = (function () {
     skipDone = onSkip;
     answered = false;
     leadEl.textContent = lead;
-    var prize = PRIZES[prizeId];
+    var prize = Bonuses.DEFS[prizeId] || PRIZES[prizeId];
     panel.classList.toggle('saving', prizeId === 'save');
     prizeGlyphEl.textContent = prize.glyph;
-    renderPreview(prize);
+    prizeNameEl.textContent = prize.name;
+    prizeHintEl.textContent = prize.hint || '';
+    renderPreview(prize, prizeId);
     qEl.innerHTML = '';
     choicesEl.innerHTML = '';
     var i, t, btn;
