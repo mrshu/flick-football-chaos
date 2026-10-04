@@ -1962,6 +1962,55 @@ checkGenerators(11, false);
   });
 })();
 
+// ---- Football difficulty beyond the aim-error ladder ----
+(function () {
+  var T = require('./tournament.js');
+  function deep(actual, expected, message) {
+    eq(JSON.stringify(actual), JSON.stringify(expected), message);
+  }
+  [0, 3, 9, 11].forEach(function (band) {
+    [0, 1, 6].forEach(function (season) {
+      var previous = null;
+      for (var round = 0; round < T.COUNT; round++) {
+        var p = T.opponentFor(round, season, band);
+        ok(p.shotAttempts >= 1 && p.shotAttempts <= 18,
+           'shot selection has a small bounded budget');
+        ok(p.keeperSpeed >= 240 && p.keeperSpeed <= 318,
+           'keeper travel remains finite and bounded');
+        ok(p.keeperDelay >= 0.10 && p.keeperDelay <= 0.20,
+           'even the strongest keeper has reaction time');
+        ok(p.keeperError >= 26 && p.keeperError <= 86,
+           'keeper reading remains imperfect');
+        if (previous) {
+          ok(p.shotAttempts > previous.shotAttempts, 'every cup round considers more shots');
+          ok(p.keeperSpeed > previous.keeperSpeed, 'every cup round has a quicker keeper');
+          ok(p.keeperDelay < previous.keeperDelay, 'every cup round reacts sooner');
+          ok(p.keeperError < previous.keeperError, 'every cup round reads more accurately');
+        }
+        previous = p;
+      }
+    });
+    for (var round = 0; round < T.COUNT; round++) {
+      var first = T.opponentFor(round, 0, band), later = T.opponentFor(round, 1, band);
+      ok(later.shotAttempts > first.shotAttempts, 'later seasons improve shot selection including the final');
+      ok(later.keeperSpeed > first.keeperSpeed, 'later seasons improve keeper travel including the final');
+      ok(later.keeperDelay < first.keeperDelay, 'later seasons improve keeper reactions including the final');
+      deep(T.opponentFor(round, 6, band), T.opponentFor(round, 100, band),
+           'season progression stops before making an unbeatable opponent');
+    }
+  });
+  [undefined, null, NaN, Infinity, '3', -5].forEach(function (bad) {
+    deep(T.opponentFor(bad, bad, 3), T.opponentFor(0, 0, 3),
+         'invalid or negative cup progress defaults safely');
+  });
+  deep(T.opponentFor(2.8, 1.7, 3), T.opponentFor(2, 1, 3),
+       'fractional progress cannot index between rounds');
+  deep(T.opponentFor(99, 999, 11), T.opponentFor(3, 6, 11),
+       'out-of-range progress stays within the difficulty ceiling');
+  ok(T.opponentFor(0, 0, 11).shotAttempts > T.opponentFor(0, 0, 3).shotAttempts,
+     'older home bands start with stronger shot selection');
+})();
+
 // ---- Team names ----
 (function () {
   var N = require('./names.js');
@@ -2312,4 +2361,5 @@ checkGenerators(11, false);
 
 checks += require('./test-bonuses.js').checks;
 checks += require('./test-game-bonuses.js').checks;
+checks += require('./test-game-opponents.js').checks;
 done();

@@ -48,9 +48,9 @@ harder. First to three goals wins.
   upfield as a clearance — at the real cost of leaving your goal empty.
 - The **opposing keeper** holds still while you aim, then dives once you have
   flicked, at where it reads the ball going. It reads imperfectly, and how
-  imperfectly is what separates a first-round opponent from a final.
-- Beating it is about **placement**. Against the toughest keeper the middle of
-  the goal scores 0% of the time and the corners 42–50%.
+  quickly and accurately it reacts improves through the cup.
+- Beating it is about **placement and timing**. Move closer and hit a quick
+  corner shot to outrun a strong keeper; even the final's reading is imperfect.
 - In the **no-maths arcade mode**, occasional chaos makes the pitch slippery,
   the ball bigger, players smaller, or shots more powerful. These effects last
   one turn and can affect either team.
@@ -71,8 +71,13 @@ its name, a small pitch picture, and what it will do before you answer.
 
 Offers avoid immediate repeats and omit situational powers when there is no
 eligible defender, striker, keeper or setup space. A wrong answer or skip still
-gives you your ordinary flick. Save questions continue to offer a keeper dive
-when an actual CPU shot is predicted to score.
+gives you your ordinary flick. Save questions occasionally offer a keeper dive
+when an actual CPU shot is predicted to score; other threats play normally.
+
+The first two player turns are football only. Bonus and save offers share a
+cooldown: at least two clear player turns between questions, or four after
+you choose **Keep playing**. Eligible attacks and saves do not always ask.
+The smaller question card keeps its answers readable without a pulsing reward.
 
 <br clear="right">
 
@@ -141,6 +146,15 @@ four opponents rise in strength in step with the difficulty curve, with the top
 seed waiting in the final. Rounds you have not reached stay undecided, because
 in a real knockout they have not been played yet either.
 
+Opponents get stronger on the pitch as well: for a younger team's first season,
+an opening opponent tries one imperfect flick, while a final opponent compares
+up to ten plausible shots and chooses a scoring opportunity or useful field
+position. Keepers react sooner,
+move faster and read shots more accurately each round. Older teams start with
+stronger opponents; later seasons add challenge, capped at eighteen shot
+candidates with keepers that can still be beaten. Football strength follows
+cup progress and the team's home age band; maths keeps adapting to answers.
+
 Losing a round replays it. It never eliminates you: a child losing the final
 should not lose the tournament.
 
@@ -194,7 +208,7 @@ open index.html          # or: python3 -m http.server 8000
 Run the tests with Node — no framework, no dependencies:
 
 ```sh
-node test.js             # 45,851 checks, including bonus geometry and turn flow
+node test.js             # 47,115 checks, including bonuses, opponents and pacing
 ```
 
 The suite is deliberately small for what it covers. It has been checked by

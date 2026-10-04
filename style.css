@@ -226,17 +226,15 @@ canvas {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  /* Deliberately large. This panel is the game's whole reason for existing;
-     sized to sit politely on the pitch it read as an interruption to dismiss
-     rather than the thing to do. */
-  width: min(96%, 540px);
+  /* An occasional offer, with room around it to keep the pitch visible. */
+  width: min(92%, 480px);
   max-height: 94%;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 22px 20px 16px;
-  border-radius: 22px;
-  background: rgba(6, 20, 44, .95);
-  box-shadow: 0 12px 44px rgba(0, 0, 0, .6);
+  padding: 16px 16px 12px;
+  border-radius: 18px;
+  background: rgba(6, 20, 44, .93);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .4);
   z-index: 6;
   text-align: center;
 }
@@ -245,47 +243,65 @@ canvas {
    route into it, so the panel lifts clear of the lower half of the pitch. */
 #quiz.saving { top: 34%; }
 
+#quizHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: inherit;
+  margin-bottom: 9px;
+}
+
 #quizLead {
+  flex: 1;
+  text-align: left;
   font-size: clamp(14px, 2.4vh, 19px);
   font-weight: 800;
   letter-spacing: .4px;
   opacity: .8;
-  margin-bottom: 9px;
 }
 
 #quizPrize {
-  display: inline-flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px;
   align-items: center;
-  gap: 2px;
+  gap: 4px 10px;
+  width: 100%;
+  text-align: left;
   margin-bottom: 10px;
-  padding: 10px 28px 9px;
-  border-radius: 16px;
+  padding: 10px 12px;
+  border-radius: 12px;
   background: linear-gradient(160deg, #ffe27a, #ffb43d 55%, #ff8a3d);
   box-shadow: 0 0 0 2px rgba(255, 255, 255, .4) inset, 0 6px 16px rgba(0, 0, 0, .35);
   /* Not `bannerPop`: that keyframe ends on translateX(-50%), which is the
      centring trick for the absolutely-positioned chaos banner. On a normally
      flowed element with fill-mode `both` it sticks, shifting the prize half
      its own width to the left. */
-  animation: prizePop .35s ease both, prizeGlow 1.6s ease-in-out .4s infinite;
+  animation: prizePop .20s ease both;
 }
 
 @keyframes prizePop {
-  from { transform: scale(.4); opacity: 0; }
+  from { transform: scale(.96); opacity: 0; }
   to   { transform: scale(1);  opacity: 1; }
 }
 
-@keyframes prizeGlow {
-  0%, 100% { box-shadow: 0 0 0 2px rgba(255, 255, 255, .4) inset, 0 6px 16px rgba(0, 0, 0, .35), 0 0 0 rgba(255, 138, 61, 0); }
-  50%      { box-shadow: 0 0 0 2px rgba(255, 255, 255, .6) inset, 0 6px 16px rgba(0, 0, 0, .35), 0 0 20px 5px rgba(255, 138, 61, .6); }
-}
-
 #quizPrizeGlyph {
-  font-size: clamp(38px, 8vh, 64px);
+  display: none;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  text-align: center;
+  font-size: 36px;
   line-height: 1;
 }
+#quiz.saving #quizPrizeGlyph { display: block; }
+#quiz.saving #quizPrizePreview { display: none; }
 
 #quizPrizePreview {
+  grid-column: 2;
+  grid-row: 1 / span 2;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -293,11 +309,11 @@ canvas {
   height: clamp(10px, 2.2vh, 16px);
 }
 
-#quizPrizeName { font-size: clamp(16px, 2.8vh, 22px); font-weight: 900; color: #172b4c; }
-#quizPrizeHint { max-width: 310px; font-size: clamp(12px, 2vh, 15px); font-weight: 700; line-height: 1.3; color: #263748; }
-#quizPrizePreview.football { height: clamp(38px, 7.5vh, 58px); margin: 3px 0; }
+#quizPrizeName { grid-column: 1; grid-row: 1; font-size: clamp(16px, 2.5vh, 20px); font-weight: 900; color: #172b4c; }
+#quizPrizeHint { grid-column: 1; grid-row: 2; font-size: clamp(12px, 1.8vh, 14px); font-weight: 700; line-height: 1.3; color: #263748; }
+#quizPrizePreview.football { height: 48px; }
 .pvPitch {
-  display: block; position: relative; width: 155px; height: 100%;
+  display: block; position: relative; width: 112px; height: 100%;
   border: 1px solid rgba(255,255,255,.7); border-radius: 7px;
   background: #237653; overflow: hidden;
 }
@@ -328,10 +344,9 @@ canvas {
 
 @media (max-height: 570px) {
   #quiz { padding: 12px 14px; }
-  #quizPrize { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 4px 10px; padding: 7px 12px; margin-bottom: 6px; }
-  #quizPrizeGlyph { font-size: 28px; }
-  #quizPrizePreview.football { height: 32px; margin: 0; }
-  #quizPrizeHint { flex-basis: 100%; max-width: none; font-size: 12px; }
+  #quizPrize { gap: 3px 10px; padding: 7px 12px; margin-bottom: 6px; }
+  #quizPrizePreview.football { height: 38px; }
+  #quizPrizeHint { font-size: 12px; }
 }
 
 .pvDot { border-radius: 50%; flex: 0 0 auto; }
@@ -387,14 +402,15 @@ canvas {
 #quizChoices button.wrong { background: #ef4444; box-shadow: 0 5px 0 #a51f1f; }
 
 #quizSkip {
-  margin-top: 14px;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 10px 18px;
+  border-radius: 12px;
   border: none;
   background: rgba(255, 255, 255, .1);
-  color: rgba(255, 255, 255, .55);
-  font-size: 15px;
+  color: rgba(255, 255, 255, .85);
+  font: inherit;
+  font-size: 14px;
   line-height: 1;
   cursor: pointer;
 }
@@ -403,9 +419,9 @@ canvas {
 
 @media (max-height: 570px) {
   #quizQ { min-height: 48px; }
-  #quizChoices { margin-top: 8px; }
-  #quizSkip { margin-top: 8px; }
-  #quizLead { margin-bottom: 5px; }
+  #quizChoices { margin-top: 8px; gap: 8px; }
+  #quizChoices button { min-width: 62px; padding: 12px 10px; }
+  #quizHeader { margin-bottom: 5px; }
 }
 
 .qBalls { display: flex; gap: 3px; }

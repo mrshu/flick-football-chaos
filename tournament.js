@@ -8,7 +8,7 @@
 // can see who is waiting on the other side.
 //
 // Pure: no DOM, no game state, no randomness of its own. The game reads
-// `skillFor` when configuring the CPU, `bracket` when drawing the tree, and
+// `opponentFor` when configuring the CPU, `bracket` when drawing the tree, and
 // calls `recordResult` at full time.
 var Tournament = (function () {
 
@@ -33,9 +33,8 @@ var Tournament = (function () {
   // What is at stake in each round, so the cup has a shape a child recognises.
   var ROUND_ICONS = ['\u{1F3DF}', '\u{1F949}', '\u{1F948}', '\u{1F3C6}'];
 
-  // Rising, and deliberately capped below 1. The child cannot be given a
-  // perfect opponent: with no dynamic mercy anywhere in the design, this curve
-  // is the only thing standing between a five-year-old and an unwinnable wall.
+  // Rising, and deliberately capped below 1. Aim remains imperfect even in
+  // the final; opponentFor adds bounded shot selection and keeper progression.
   var SKILL = [0.20, 0.45, 0.70, 0.95];
 
   // A child may pick a country as their own badge, and one of these fifteen
@@ -136,6 +135,26 @@ var Tournament = (function () {
     return floor + (capped / CAP) * (CAP - floor);
   }
 
+  // Football difficulty has more than an aiming-error dial. Later opponents
+  // compare more plausible flicks and their keeper reads and reaches shots
+  // sooner. The home age band sets the starting level; answering a maths
+  // question never secretly changes the football opponent mid-match.
+  function opponentFor(index, season, band) {
+    var round = typeof index === 'number' && isFinite(index) ? Math.floor(index) : 0;
+    round = Math.max(0, Math.min(ROUNDS - 1, round));
+    var year = typeof season === 'number' && isFinite(season) ? Math.floor(season) : 0;
+    year = Math.max(0, Math.min(6, year));
+    var skill = skillFor(round, year, band);
+    var pace = Math.max(0, Math.min(1, (skill - 0.20) / 0.75));
+    return {
+      skill: skill,
+      shotAttempts: [1, 3, 6, 10][round] + Math.round(skillFloor(band) * 3) + year,
+      keeperSpeed: 240 + 60 * pace + year * 3,
+      keeperDelay: Math.max(0.10, 0.20 - 0.08 * pace - year * 0.003),
+      keeperError: Math.max(26, 26 + 74 * (1 - skill) - year * 0.5)
+    };
+  }
+
   function roundIcon(i) {
     return ROUND_ICONS[Math.max(0, Math.min(ROUNDS - 1, i))];
   }
@@ -158,7 +177,7 @@ var Tournament = (function () {
   return {
     COUNT: ROUNDS, SLOTS: SLOTS, DRAW: DRAW, BY_SEED: BY_SEED, RESERVE: RESERVE,
     bracket: bracket, youAt: youAt, roundIcon: roundIcon,
-    skillFor: skillFor, skillFloor: skillFloor,
+    skillFor: skillFor, skillFloor: skillFloor, opponentFor: opponentFor,
     recordResult: recordResult, isComplete: isComplete
   };
 })();

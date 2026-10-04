@@ -53,13 +53,9 @@ const KEEPER_MIN_X = MOUTH_L + KEEPER_R, KEEPER_MAX_X = MOUTH_R - KEEPER_R;
 // puts that the right way round — a well-placed shot is rewarded, and the
 // keeper is beaten by placement rather than by haste.
 const KEEPER_LINE_Y = TOP_Y + KEEPER_Y_INSET;
-const KEEPER_REACT_SPEED = 300;    // px per second once it has read the shot
-const KEEPER_REACT_DELAY = 0.12;   // seconds of reaction time before it moves
-// How badly it can misread the shot. Never zero: a keeper that always dived
-// correctly would make placement pointless, and the cup's rising skill is
-// meant to close this gap, not shut it.
-const KEEPER_READ_BASE = 26;       // px of error even for the best keeper
-const KEEPER_READ_RANGE = 74;      // px more at the worst
+// Tournament.opponentFor controls reaction speed, delay, and reading error.
+// Even the strongest keeper has error and a finite travel speed, so a quick
+// corner shot can still beat it.
 
 /* ---------- DOM ---------- */
 const canvas = document.getElementById('game');
@@ -169,12 +165,14 @@ const game = {
   turnCount: 0, sinceChaos: 0,
   friction: BASE_FRICTION, powerMult: 1,
   bonus: null, lastBonus: null, extraFlicks: 0, bigStriker: null, setup: null,
-  pendingAiShot: null, pendingSaveX: null,
+  plannedAiShot: null, pendingAiShot: null, pendingSaveX: null,
   score: { human: 0, ai: 0 }, lastScorer: null,
   timer: 0, moveTime: 0, ballRot: 0,
-  drag: null, aiChoice: null, askedLastTurn: false, threatPath: null,
+  drag: null, aiChoice: null, threatPath: null,
+  humanTurns: 0, nextQuestionTurn: 3,
   shake: 0, trail: [],
-  save: null, slot: null, aiSkill: 0.55,
+  save: null, slot: null, aiSkill: 0.20,
+  opponent: Tournament.opponentFor(0, 0),
   particles: [], lastHitSfx: 0,
 };
 
@@ -232,12 +230,15 @@ function restart() {
   game.kickoffAt = Date.now();
   game.score.human = game.score.ai = 0;
   game.turnCount = 0;
+  game.humanTurns = 0;
+  game.nextQuestionTurn = 3;
   game.sinceChaos = 0;
   game.particles = [];
   game.lastScorer = null;
   clearModifier();
   resetPositions();
   Quiz.hide();
+  game.plannedAiShot = null;
   game.pendingAiShot = null;
   game.pendingSaveX = null;
   game.threatPath = null;
@@ -428,29 +429,19 @@ el('bonusAction').addEventListener('click', () => {
 // still hands the player their flick, and skipping is instant and free.
 // Quiz.js owns the cancellable feedback timer, so the flash-then-continue
 // behaviour lives in one place.
-// Chance of allowing a bonus question on the turn straight after one. 0 gives
-// roughly a question every 4.4 turns, 1 gives every 2.9.
-const BONUS_REPEAT_CHANCE = 0.5;
+// Both flavours share one cooldown. Start with two football-only turns and
+// leave at least two ordinary human turns between offers. Skipping buys a
+// longer break without changing the learner's maths level or costing a flick.
+const QUESTION_GAP = 3, SKIP_QUESTION_GAP = 5;
+const BONUS_QUESTION_CHANCE = 0.40, SAVE_QUESTION_CHANCE = 0.55;
 
-// A question before every single shot reads as a tax on playing. The save
-// question already only fires when the CPU actually threatens; the bonus
-// question now follows the same rule, so it arrives when a bonus could win
-// something rather than on every turn.
+function questionReady() { return game.humanTurns >= game.nextQuestionTurn; }
+function reserveQuestion() { game.nextQuestionTurn = game.humanTurns + QUESTION_GAP; }
+function skipQuestion() { game.nextQuestionTurn = game.humanTurns + SKIP_QUESTION_GAP; }
+
 function worthABonus() {
   // Attacking half only: offer help when there is an attacking opportunity.
-  if (game.ball.y > H / 2) { return false; }
-  // Asking on consecutive attacking turns is allowed only sometimes. A hard
-  // "never twice" rule caps this at half your turns and made questions too
-  // sparse; removing it entirely puts you back to one every turn whenever you
-  // camp in their half, which was too much. This is the dial between those.
-  // The flag tracks attacking turns, not all turns: the early return above
-  // leaves it alone, so turns spent in your own half neither ask nor count.
-  if (game.askedLastTurn && Math.random() >= BONUS_REPEAT_CHANCE) {
-    game.askedLastTurn = false;
-    return false;
-  }
-  game.askedLastTurn = true;
-  return true;
+  return game.ball.y <= H / 2 && questionReady() && Math.random() < BONUS_QUESTION_CHANCE;
 }
 
 // Both question flavours record the same way. Streaks and the fastest
@@ -472,6 +463,7 @@ function recordAnswer(correct, elapsedMs) {
 }
 
 function askQuestion() {
+  reserveQuestion();
   if (!game.maths) { game.maths = Maths.newState(game.slot.band); }
   game.state = 'HUMAN_QUESTION';
   setTurnMsg('Your turn', 'human');
@@ -485,8 +477,9 @@ function askQuestion() {
     rememberMaths();
     finishQuestion(correct, prizeId);
   }, function () {
+    skipQuestion();
     finishQuestion(false, prizeId); // skip: no penalty, but no prize either
-  }, 'Answer for a bonus');
+  }, 'Optional bonus');
 }
 
 function finishQuestion(correct, prizeId) {
@@ -502,6 +495,7 @@ function finishQuestion(correct, prizeId) {
 // the pending shot on target. No timer: the game waits for the child, the
 // same as the bonus question.
 function askSaveQuestion() {
+  reserveQuestion();
   if (!game.maths) { game.maths = Maths.newState(game.slot.band); }
   setTurnMsg('CPU shoots — save it!', 'ai');
   var q = Maths.make(game.maths.difficulty, game.maths, Math.random);
@@ -513,8 +507,9 @@ function askSaveQuestion() {
     rememberMaths();
     finishSaveQuestion(correct);
   }, function () {
+    skipQuestion();
     finishSaveQuestion(false); // skip: shot stands, but no Maths.update - declining says nothing about ability
-  }, 'Answer to save!');
+  }, 'Save chance');
 }
 
 function finishSaveQuestion(correct) {
@@ -562,9 +557,8 @@ function crossingX(ball) {
 // ball — imperfectly. The misread is drawn once per shot, not per frame, or the
 // errors would average out and leave a perfect tracker.
 //
-// Weaker keepers misread by more, which is most of what the cup's rising skill
-// actually buys. It moves at a fixed speed from wherever it stands, so a shot
-// into the far corner is genuinely harder to reach than one hit at the keeper.
+// Later keepers also react sooner and move faster. They still travel from
+// where they stand, so a quick far-corner shot can outrun even the final's.
 function keeperReact(dt) {
   if (game.state !== 'MOVING' || game.mover !== 'human') { game.keeperDive = null; return; }
   if (game.bonus === 'feint') { game.keeperDive = null; return; }
@@ -574,15 +568,15 @@ function keeperReact(dt) {
   if (predicted === null) { return; }        // not coming: hold position
 
   if (game.keeperDive === null) {
-    var spread = KEEPER_READ_BASE + KEEPER_READ_RANGE * (1 - game.aiSkill);
+    var spread = game.opponent.keeperError;
     game.keeperDive = {
       x: predicted + (Math.random() * 2 - 1) * spread,
-      wait: KEEPER_REACT_DELAY
+      wait: game.opponent.keeperDelay
     };
   }
   if (game.keeperDive.wait > 0) { game.keeperDive.wait -= dt; return; }
 
-  k.x = Formation.keeperStep(k.x, game.keeperDive.x, KEEPER_REACT_SPEED * dt,
+  k.x = Formation.keeperStep(k.x, game.keeperDive.x, game.opponent.keeperSpeed * dt,
                              KEEPER_MIN_X, KEEPER_MAX_X);
   // Along the line only. Nudging it forward would take it out of its own goal
   // and hand the child an empty net for missing.
@@ -609,6 +603,7 @@ function startTurn(team) {
     game.sinceChaos = 0;
   }
   if (team === 'human') {
+    game.humanTurns++;
     if (game.mathsOn && worthABonus()) {
       askQuestion();
     } else {
@@ -619,6 +614,7 @@ function startTurn(team) {
     game.state = 'AI_WAIT';
     game.timer = 0.9;
     game.aiChoice = pickAiPlayer();
+    game.plannedAiShot = computeAiShot();
     setTurnMsg('CPU is thinking…', 'ai');
   }
 }
@@ -685,7 +681,7 @@ function gameOver(winner) {
     // The index has already rolled back to zero, so remember that this cup was
     // finished: the bracket owes the child the sight of themselves lifting it.
     game.wonCup = trophyWon;
-    game.aiSkill = Tournament.skillFor(game.slot.cup.index, game.slot.cup.season, game.slot.band);
+    configureOpponent();
   }
   // Anything the match earned is revealed here, at full time — never while a
   // question is open, so the questions stay a move and not a shop. The ledger
@@ -722,23 +718,16 @@ function gameOver(winner) {
 /* ---------- AI ---------- */
 // Shooter selection is angle-aware (Formation.chooseShooter): it scores each
 // CPU player by whether hitting the ball from their position would actually
-// send it goalward, not just by raw distance. Cheap vector maths only - no
-// simulation or search, so the AI stays light.
+// send it goalward, not just by raw distance.
 function pickAiPlayer() {
   const aiPlayers = game.players.filter(p => p.team === 'ai');
   return Formation.chooseShooter(aiPlayers, game.ball, BOT_Y);
 }
 
-// Computes the CPU's shot without mutating anything, so it can be tried
-// out in simulateAiShot before it is committed to. Aims at the goal-mouth
-// corner furthest from the human keeper (Formation.farCorner) rather than
-// dead centre - "aim away from the keeper", the owner's instruction - with
-// a small random margin off the post so the exact target still varies shot
-// to shot. Aim error and power randomness both scale with skill (see below),
-// and the power floor was lifted to 0.6, now that the save question gives the
-// child a second line of defence - see aiLaunch and the playtest notes for
-// why this stayed modest.
-function computeAiShot() {
+// Each candidate is an ordinary, imperfect flick toward the open goal corner.
+// A stronger opponent gets more chances to notice a blocked or poorly aimed
+// candidate before committing. It cannot exceed the human's launch power.
+function candidateAiShot() {
   const p = game.aiChoice;
   const b = game.ball;
   const keeper = humanKeeper;   // defends the goal the CPU shoots at
@@ -767,6 +756,21 @@ function computeAiShot() {
   return { player: p, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp };
 }
 
+function computeAiShot() {
+  let best = null, bestValue = -Infinity;
+  for (let i = 0; i < game.opponent.shotAttempts; i++) {
+    const shot = candidateAiShot();
+    const preview = simulateAiShot(shot);
+    shot.preview = preview;
+    if (preview.scores) { return shot; }
+    // Prefer useful settled field position over a brief advance that rebounds
+    // back into danger. An own goal is worse than any non-scoring alternative.
+    const value = preview.ownGoal ? -Infinity : -Math.hypot(preview.ballX - W / 2, BOT_Y - preview.ballY);
+    if (best === null || value > bestValue) { best = shot; bestValue = value; }
+  }
+  return best;
+}
+
 // Actually fires a computed shot: assigns the velocity and starts the
 // move. Split out from aiLaunch so the "shot missed" path and the "save
 // failed or was skipped" path commit the exact same shot object that was
@@ -779,23 +783,20 @@ function commitAiShot(shot) {
   game.moveTime = 0;
   game.state = 'MOVING';
   game.aiChoice = null;
+  game.plannedAiShot = null;
   setTurnMsg('CPU shoots!', 'ai');
   SFX.launch();
 }
 
-// The save mechanic's gate (owner instruction: "simulate its shot forward
-// ... and check whether it would score"). Only a shot simulateAiShot finds
-// on target pauses for a save question - otherwise play proceeds exactly
-// as before. Gating matters for three reasons: it keeps the question from
-// appearing on every single turn, it makes the moment mean something, and
-// it teaches the child this is the dangerous moment - a question over a
-// shot that was never going in would just be noise. Also skipped entirely
-// in no-maths mode, since there is no maths to answer with.
+// A save is an occasional earned rescue, not an answer prompt over every CPU
+// goal. It shares the bonus cooldown and is only offered for a real scoring
+// threat. Commit the exact planned shot whether an offer is shown or not.
 function aiLaunch() {
-  const shot = computeAiShot();
-  if (!game.mathsOn) { commitAiShot(shot); return; }
-  const sim = simulateAiShot(shot);
-  if (!sim.scores) { commitAiShot(shot); return; }
+  const shot = game.plannedAiShot || computeAiShot();
+  const sim = shot.preview;
+  if (!game.mathsOn || !questionReady() || !sim.scores || Math.random() >= SAVE_QUESTION_CHANCE) {
+    commitAiShot(shot); return;
+  }
   game.pendingAiShot = shot;
   game.pendingSaveX = sim.x;
   game.threatPath = sim.path;
@@ -906,14 +907,13 @@ function cloneBody(o) {
   return { x: o.x, y: o.y, vx: o.vx, vy: o.vy, r: o.r, invM: o.invM };
 }
 
-// The save mechanic's forward lookahead (owner instruction: "simulate its
-// shot forward ... and check whether it would score"). Clones every mover
+// Shared lookahead for CPU shot choice and earned saves. Clones every mover
 // (posts are immovable - invM 0 - so the real ones are safe to reuse
 // as-is) and replays advanceBodies/resolveCollisions on the clones only,
 // so nothing here touches the real game state or plays a sound
 // (simActive silences hitSfx for the duration). Bounded to MAX_MOVE_TIME
-// worth of steps, same ceiling a real move gets, then gives up - one shot
-// played out once, not a search over shot choices, so this stays cheap.
+// worth of steps, same ceiling a real move gets. Shot search is also bounded
+// by the opponent's small candidate budget and stops at the first scorer.
 function simulateAiShot(shot) {
   const clones = movers.map(cloneBody);
   const shooterIdx = movers.indexOf(shot.player);
@@ -922,22 +922,19 @@ function simulateAiShot(shot) {
   clones[shooterIdx].vy = shot.vy;
   simActive = true;
   const maxSteps = Math.ceil(MAX_MOVE_TIME / STEP);
-  let scores = false, crossX = null;
+  let scores = false, ownGoal = false, crossX = null;
   const path = [];
   for (let i = 0; i < maxSteps; i++) {
     advanceBodies(clones, game.friction, STEP);
     resolveCollisions(clones, simBall);
     if (i % 6 === 0) { path.push(simBall.x, simBall.y); }
     if (simBall.y - simBall.r > BOT_Y) { scores = true; crossX = simBall.x; break; } // would score for ai
-    if (simBall.y + simBall.r < TOP_Y) { break; }                                     // own-goal fluke: not this shot's target
+    if (simBall.y + simBall.r < TOP_Y) { ownGoal = true; break; }
     if (allStopped(clones)) { break; }                                                // settled without scoring
   }
   simActive = false;
-  // Only a shot that would actually go in. Widening this to near-misses took
-  // the save question to 80% of CPU turns, which with the bonus question meant
-  // roughly one question every turn — the owner playing it reported questions
-  // "all the time". A save is worth asking for when there is a goal to stop.
-  return { scores: scores, x: crossX, path: path };
+  return { scores: scores, ownGoal: ownGoal, x: crossX, path: path,
+           ballX: simBall.x, ballY: simBall.y };
 }
 
 
@@ -1174,6 +1171,11 @@ function paintSlots() {
   });
 }
 
+function configureOpponent() {
+  game.opponent = Tournament.opponentFor(game.slot.cup.index, game.slot.cup.season, game.slot.band);
+  game.aiSkill = game.opponent.skill;
+}
+
 function refreshStart() {
   paintSlots();
   paintCup();
@@ -1181,7 +1183,7 @@ function refreshStart() {
   // Must not be gated on game.slot.maths: changing a team's age is exactly
   // what clears maths (see the team editor's OK handler), so guarding on it
   // would skip this recompute at the one moment the band actually changed.
-  game.aiSkill = Tournament.skillFor(game.slot.cup.index, game.slot.cup.season, game.slot.band);
+  configureOpponent();
 }
 
 // Making a team is where a child says who they are: badge, name, and age. Age
