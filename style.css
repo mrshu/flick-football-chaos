@@ -33,11 +33,16 @@ body {
 }
 
 .team {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
   font-weight: 800;
   font-size: clamp(15px, 2.4vh, 20px);
   letter-spacing: .5px;
-  padding: 6px 12px;
-  border-radius: 999px;
+  padding: 6px 10px;
+  border-radius: 13px;
   background: rgba(255, 255, 255, .08);
   white-space: nowrap;
 }
@@ -45,9 +50,15 @@ body {
 .team b { font-size: clamp(18px, 3vh, 24px); margin: 0 2px; }
 .team.blue { color: #7db4ff; border: 2px solid #3b82f6; }
 .team.red  { color: #ff9e9e; border: 2px solid #ef4444; }
+.teamIdentity { display: flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; }
+.teamIdentity > span:first-child { font-size: 21px; line-height: 1.2; flex-shrink: 0; }
+.teamIdentity > span:last-child { overflow: hidden; text-overflow: ellipsis; font-size: 13px; letter-spacing: 0; }
+.teamScore { display: flex; align-items: center; justify-content: center; gap: 5px; }
+.teamScore small { font-size: 10px; letter-spacing: 0; }
 
 #turnMsg {
-  flex: 1;
+  flex: 0 1 150px;
+  min-width: 0;
   text-align: center;
   font-weight: 700;
   font-size: clamp(13px, 2vh, 17px);
@@ -57,6 +68,12 @@ body {
 }
 #turnMsg.human { color: #9cc7ff; }
 #turnMsg.ai    { color: #ffb3b3; }
+@media (max-width: 420px) {
+  #hud { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; }
+  #hud .team.blue { grid-column: 1; grid-row: 1; }
+  #hud .team.red { grid-column: 2; grid-row: 1; }
+  #turnMsg { grid-column: 1 / -1; grid-row: 2; padding: 2px 4px; font-size: 13px; }
+}
 
 #streakHud {
   width: min(96vw, 560px);
@@ -267,7 +284,8 @@ canvas {
   top: 42%;
   left: 50%;
   transform: translate(-50%, -50%);
-  font-size: clamp(48px, 10vh, 90px);
+  width: 96%; text-align: center;
+  font-size: clamp(32px, 8vw, 68px);
   font-weight: 900;
   color: #fff;
   -webkit-text-stroke: 3px #0a5c34;
@@ -311,6 +329,8 @@ canvas {
 
 #overTitle { font-size: clamp(30px, 6vh, 46px); margin-bottom: 8px; }
 #overSub   { opacity: .85; margin-bottom: 22px; font-size: clamp(15px, 2.4vh, 19px); }
+#overOpponent { color: #ffb3b3; font-size: 14px; font-weight: 700; margin: -10px 0 18px; }
+#overNext { color: #ffd54a; font-size: 14px; line-height: 1.5; margin: 0 0 20px; }
 
 #again {
   font: inherit;
@@ -700,6 +720,64 @@ canvas {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18);
 }
 #cupPips .pip.done { background: #2ec27e; box-shadow: 0 0 8px rgba(46, 194, 126, .6); }
+#cupOpponent { color: #ffd54a; font-size: 12px; font-weight: 700; margin-top: 9px; }
+
+#opponentChoice { border: none; margin: 0 0 14px; }
+#opponentChoice legend { width: 100%; font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+#opponentLevels { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+#opponentLevels button {
+  min-height: 55px; font: inherit; padding: 5px; cursor: pointer;
+  color: #cbdcf0; background: #102743;
+  border: 2px solid #506787; border-radius: 10px;
+}
+#opponentLevels b { display: block; font-size: 23px; line-height: 1.1; }
+#opponentLevels span { display: block; font-size: 11px; margin-top: 3px; }
+#opponentLevels button[aria-pressed="true"] { background: #ffd54a; color: #34290c; border-color: #ffd54a; }
+#opponentChoiceHint { color: #cbdcf0; font-size: 12px; line-height: 1.4; margin-top: 8px; min-height: 34px; }
+
+.levelBadge {
+  display: inline-block; color: #ffd54a; font-weight: 800; font-size: 13px;
+  border: 1px solid rgba(255, 213, 74, .5); border-radius: 7px;
+  background: rgba(255, 213, 74, .08); padding: 5px 10px;
+}
+#matchmaking {
+  position: absolute; inset: 0; z-index: 8; padding: 10px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(4, 9, 22, .93); backdrop-filter: blur(4px);
+}
+#matchCard {
+  width: min(100%, 460px); max-height: 96%; overflow: auto;
+  padding: 24px 22px; border-radius: 22px; text-align: center;
+  background: linear-gradient(160deg, #1d3b6e, #101f3f);
+  border: 1px solid rgba(255, 255, 255, .15);
+}
+#matchTitle { font-size: clamp(19px, 3.4vh, 27px); margin: 5px 0 20px; }
+#matchRound { color: #9cc7ff; font-size: 13px; font-weight: 700; }
+#matchLineup { display: flex; align-items: center; gap: 12px; margin: 0 0 18px; }
+.matchSide { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.matchFlag {
+  display: grid; place-items: center; width: 84px; height: 84px;
+  font-size: 54px; line-height: 1; border-radius: 50%;
+  background: #102743; border: 2px solid #7db4ff;
+}
+.rival .matchFlag { border-color: #ff9e9e; background: #472739; }
+.matchSide b { font-size: 18px; max-width: 100%; overflow-wrap: anywhere; }
+.matchSide small { font-size: 12px; color: #cbdcf0; }
+.matchVs { font-weight: 800; color: #9cc7ff; font-size: 15px; }
+#matchHint { font-size: 13px; line-height: 1.5; color: #cbdcf0; margin: 10px 0 5px; }
+#matchSeason { color: #ffd54a; font-size: 12px; line-height: 1.4; }
+#matchSearch { position: relative; height: 24px; max-width: 180px; margin: 8px auto; overflow: hidden; }
+#matchSearch::before { content: ''; position: absolute; left: 0; right: 0; top: 11px; height: 1px; background: #506787; }
+#matchSearch span { position: absolute; left: 0; font-size: 20px; animation: findOpponent .7s ease-in-out infinite alternate; }
+@keyframes findOpponent { to { left: calc(100% - 24px); transform: rotate(180deg); } }
+.computerNote { color: #a5bbd6; font-size: 11px; margin: 12px 0 16px; }
+#matchButtons { display: flex; gap: 10px; justify-content: center; }
+#matchButtons button { font: inherit; font-size: 16px; font-weight: 800; min-height: 46px; padding: 10px 20px; border-radius: 999px; cursor: pointer; }
+#matchBack { color: #fff; background: transparent; border: 2px solid #6b819c; }
+#matchGo { color: #06230f; background: #57e389; border: 2px solid #57e389; }
+#matchGo:disabled { opacity: .45; cursor: default; }
+#matchButtons button:focus-visible, #opponentLevels button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { #matchSearch span { animation: none; left: calc(50% - 12px); } }
 
 #startButtons { display: flex; gap: 12px; align-items: center; justify-content: center; }
 #startBack {
@@ -1025,8 +1103,10 @@ canvas {
   border: 1px solid rgba(255, 255, 255, .1);
   box-shadow: 0 18px 50px rgba(0, 0, 0, .6);
   display: flex; flex-direction: column; align-items: center; gap: 8px;
-  overflow: hidden;
+  overflow: auto;
+  flex-shrink: 0;
 }
+#bracketCard > * { flex-shrink: 0; }
 
 #bracketTitle { font-size: 22px; line-height: 1; font-weight: 900; }
 
@@ -1048,14 +1128,18 @@ canvas {
   font-size: 11px; font-weight: 700; opacity: .8; max-width: 100%;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
+#tieFoeCountry { color: #cbdcf0; font-size: 10px; }
+#tieChallenge { color: #cbdcf0; font-size: 12px; line-height: 1.4; text-align: center; }
+#tieSeason { color: #ffd54a; font-size: 11px; text-align: center; }
 #bracketTie .vs { flex: 0 0 auto; font-size: 26px; line-height: 1; }
 
 /* One cup per column of winners, so it is clear what each round is worth. */
 #bracketRounds { display: flex; width: 100%; }
 #bracketRounds div {
   flex: 1 1 0; min-width: 0; text-align: center;
-  font-size: 15px; line-height: 1; opacity: .45;
+  font-size: 15px; line-height: 1; opacity: .65;
 }
+#bracketRounds small { display: block; font-size: 9px; margin-top: 5px; color: #ffd54a; }
 #bracketRounds div.on {
   opacity: 1; transform: scale(1.25);
   filter: drop-shadow(0 0 6px rgba(255, 213, 74, .95));
@@ -1067,7 +1151,7 @@ canvas {
    exactly level with the midpoint of the pair that feeds them. That is what
    draws the tree: no measuring, no absolute rows. */
 #bracketTree {
-  display: flex; width: 100%; height: min(52vh, 380px);
+  display: flex; width: 100%; height: min(43vh, 320px);
 }
 .col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
 .col + .col { padding-left: 12px; }
@@ -1168,6 +1252,39 @@ canvas {
   box-shadow: 0 6px 0 #1a8a55;
 }
 #roundGo:active { transform: translateY(4px); box-shadow: 0 2px 0 #1a8a55; }
+
+/* In landscape, the lineup and draw sit beside the match information so the
+   kickoff stays visible even when the pitch is only a few hundred pixels tall. */
+@media (min-width: 520px) and (max-height: 570px) {
+  #matchCard { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: min(100%, 600px); padding: 12px 16px; gap: 5px 16px; }
+  #matchRound { grid-column: 1 / -1; }
+  #matchTitle { grid-column: 1 / -1; margin: 0 0 7px; }
+  #matchLineup { grid-column: 1; grid-row: 3 / 8; margin: 0; }
+  .matchFlag { width: 60px; height: 60px; font-size: 40px; }
+  .matchSide b { font-size: 14px; }
+  #matchLevel { grid-column: 2; grid-row: 3; justify-self: center; }
+  #matchHint { grid-column: 2; grid-row: 4; margin: 0; font-size: 12px; }
+  #matchSeason { grid-column: 2; grid-row: 5; font-size: 10px; }
+  #matchSearch { display: none; }
+  .computerNote { grid-column: 2; grid-row: 6; margin: 2px 0; }
+  #matchButtons { grid-column: 2; grid-row: 7; }
+  #matchButtons button { padding: 7px 15px; font-size: 14px; min-height: 42px; }
+
+  #bracketCard { display: grid; grid-template-columns: 190px minmax(0, 1fr); width: min(98%, 700px); padding: 10px 14px; gap: 4px 16px; }
+  #bracketTitle { display: none; }
+  #bracketCaption { grid-column: 1; margin: 0; font-size: 11px; }
+  #bracketTie { grid-column: 1; padding: 4px 8px; }
+  #bracketTie .bdg { font-size: 28px; }
+  #tieLevel { grid-column: 1; justify-self: center; font-size: 12px; padding: 4px 8px; }
+  #tieChallenge { grid-column: 1; font-size: 11px; line-height: 1.2; }
+  #tieSeason { grid-column: 1; font-size: 10px; line-height: 1.2; }
+  #bracketButtons { grid-column: 1; margin-top: 2px; justify-content: center; }
+  #bracketBack, #roundGo { padding-top: 7px; padding-bottom: 7px; }
+  #bracketRounds { grid-column: 2; grid-row: 1; align-self: start; }
+  #bracketTree { grid-column: 2; grid-row: 2 / 7; height: 190px; }
+  #bracketTree .cell { padding: 1px 0; }
+  #bracketTree .bx { font-size: 11px; }
+}
 
 /* ---- the pro skin: broadcast graphics for over-12 teams ---- */
 /* Overrides only. If a rule here needs new markup, it is wrong. */

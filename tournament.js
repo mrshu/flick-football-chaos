@@ -42,6 +42,69 @@ var Tournament = (function () {
   // a reserve, so every flag in the tree stands for exactly one team.
   var RESERVE = '\u{1F1E8}\u{1F1ED}';   // Switzerland
 
+  // These are relative football challenge tiers. The home age band still
+  // tunes each tier, while the cup's season is shown separately from its level.
+  var LEVELS = [
+    { level: 1, name: 'Starter', hint: 'Fewer shot choices and a slower keeper.' },
+    { level: 2, name: 'Sharp', hint: 'Better shot choices and quicker saves.' },
+    { level: 3, name: 'Tough', hint: 'Accurate shots and a quick keeper.' },
+    { level: 4, name: 'Elite', hint: 'Most shot choices and the fastest keeper.' }
+  ];
+  var ROUND_NAMES = ['Round of 16', 'Quarter-final', 'Semi-final', 'Final'];
+  var CAPTAIN_BY_SEED = {
+    1: 'Rafa', 3: 'Nico', 4: 'Alex', 5: 'Leon', 6: 'Charlie',
+    7: 'Sam', 8: 'Tiago', 9: 'Noor', 10: 'Luka', 11: 'Marco',
+    12: 'Amine', 13: 'Ren', 14: 'Jordan', 15: 'Mateo', 16: 'Min'
+  };
+  var CAPTAINS = {};
+  Object.keys(BY_SEED).forEach(function (seed) {
+    CAPTAINS[BY_SEED[seed]] = CAPTAIN_BY_SEED[seed];
+  });
+  CAPTAINS[RESERVE] = 'Sasha';
+
+  function boundedInteger(value, fallback, min, max) {
+    return typeof value === 'number' && isFinite(value)
+      ? Math.max(min, Math.min(max, Math.floor(value))) : fallback;
+  }
+  function roundName(index) {
+    return ROUND_NAMES[boundedInteger(index, 0, 0, ROUNDS - 1)];
+  }
+  function captainName(flag) {
+    return Object.prototype.hasOwnProperty.call(CAPTAINS, flag) ? CAPTAINS[flag] : 'Rival';
+  }
+
+  // Choose an identity once for a match. Rendering the reveal, HUD or result
+  // must reuse this object rather than choosing a new friendly every time.
+  function matchFor(mode, level, cup, band, avoidFlag, rng) {
+    var round, year, flag;
+    if (mode === 'cup') {
+      cup = cup && typeof cup === 'object' ? cup : {};
+      round = boundedInteger(cup.index, 0, 0, ROUNDS - 1);
+      year = boundedInteger(cup.season, 0, 0, Number.MAX_SAFE_INTEGER - 1);
+      var cols = bracket(round, avoidFlag);
+      flag = cols[round][youAt(cols, round) ^ 1].flag;
+      return {
+        level: round + 1, name: captainName(flag), flag: flag,
+        round: roundName(round), season: year + 1,
+        profile: opponentFor(round, year, band)
+      };
+    }
+    level = boundedInteger(level, 1, 1, ROUNDS);
+    var flags = Object.keys(BY_SEED).map(function (seed) { return BY_SEED[seed]; })
+      .filter(function (candidate) { return candidate !== avoidFlag; });
+    var sample;
+    try { sample = (typeof rng === 'function' ? rng : Math.random)(); }
+    catch (e) { sample = 0; }
+    if (typeof sample !== 'number' || !isFinite(sample)) { sample = 0; }
+    var index = Math.min(flags.length - 1,
+      Math.floor(Math.max(0, Math.min(1, sample)) * flags.length));
+    flag = flags[index];
+    return {
+      level: level, name: captainName(flag), flag: flag, round: null, season: null,
+      profile: opponentFor(level - 1, 0, band)
+    };
+  }
+
   function entrant(seed, avoid) {
     if (seed === YOU_SEED) { return { you: true, seed: seed }; }
     var flag = BY_SEED[seed];
@@ -176,6 +239,7 @@ var Tournament = (function () {
 
   return {
     COUNT: ROUNDS, SLOTS: SLOTS, DRAW: DRAW, BY_SEED: BY_SEED, RESERVE: RESERVE,
+    LEVELS: LEVELS, roundName: roundName, captainName: captainName, matchFor: matchFor,
     bracket: bracket, youAt: youAt, roundIcon: roundIcon,
     skillFor: skillFor, skillFloor: skillFloor, opponentFor: opponentFor,
     recordResult: recordResult, isComplete: isComplete

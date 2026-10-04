@@ -157,10 +157,12 @@ const game = {
   // AI_SAVE_QUESTION: a CPU shot was simulated forward and found to be on
   // target; the modal is up, waiting on the child's save question. No
   // timer drives it - see askSaveQuestion.
-  state: 'START', // START | HUMAN_QUESTION | HUMAN_SETUP | HUMAN_AIM | MOVING | AI_WAIT | AI_SAVE_QUESTION | GOAL_PAUSE | OVER
+  state: 'START', // START | MATCHMAKING | HUMAN_QUESTION | HUMAN_SETUP | HUMAN_AIM | MOVING | AI_WAIT | AI_SAVE_QUESTION | GOAL_PAUSE | OVER
   mover: 'human',
   maths: null, mathsOn: true,
   mode: 'single',   // 'single' | 'cup' — only the cup advances the draw
+  friendlyLevel: 1,
+  matchOpponent: null, matchReady: false, // identity stays fixed through full time
   keeperDive: null, // {x, wait} once the AI keeper has read the shot in flight
   turnCount: 0, sinceChaos: 0,
   friction: BASE_FRICTION, powerMult: 1,
@@ -226,6 +228,14 @@ function resetPositions() {
 }
 
 function restart() {
+  // The introduction chooses the rival once. Direct restarts also prepare a
+  // match, but goals and cup advancement never replace the active identity.
+  if (game.state !== 'MATCHMAKING' || !game.matchOpponent) {
+    game.matchOpponent = Tournament.matchFor(game.mode, game.friendlyLevel,
+      game.slot.cup, game.slot.band, game.slot.emoji, Math.random);
+  }
+  game.opponent = game.matchOpponent.profile;
+  game.aiSkill = game.opponent.skill;
   // Time on a pitch, measured from kickoff to full time. Wall-clock from the
   // start screen would count a tablet left face-up on a sofa as practice.
   game.kickoffAt = Date.now();
@@ -247,6 +257,9 @@ function restart() {
   goalFlash.classList.add('hidden');
   updateScore();
   startTurn('human');
+  el('hud').classList.remove('hidden');
+  refreshOpponentHud();
+  fitCanvas();
 }
 
 /* ---------- persistence ---------- */
@@ -284,6 +297,89 @@ function setTurnMsg(text, team) {
   hudTurn.textContent = text;
   hudTurn.className = team;
 }
+
+function rivalName() { return game.matchOpponent ? game.matchOpponent.name : 'Opponent'; }
+
+function levelLabel(level) {
+  return 'Level ' + level + ' · ' + Tournament.LEVELS[level - 1].name;
+}
+
+function seasonHint(opponent) {
+  if (!opponent || !opponent.season || opponent.season < 2) return '';
+  return 'Season ' + opponent.season + ' — tougher than the first cup';
+}
+
+function refreshOpponentHud() {
+  el('hudYouFlag').textContent = game.slot.emoji || '⚽';
+  el('hudYouName').textContent = game.slot.name || 'You';
+  if (game.matchOpponent) {
+    el('hudFoeFlag').textContent = game.matchOpponent.flag;
+    el('hudFoeName').textContent = game.matchOpponent.name;
+    el('hudFoeLevel').textContent = 'Level ' + game.matchOpponent.level;
+    el('hudFoeName').title = game.matchOpponent.name + ' · ' + Names.country(game.matchOpponent.flag);
+  }
+}
+
+// Matching is a short local reveal, with an explicit kickoff. Nothing starts
+// while the child is reading it, and backing out leaves cup progress intact.
+function findOpponent() {
+  el('hud').classList.add('hidden');
+  clearModifier();
+  Quiz.hide();
+  overlay.classList.add('hidden');
+  goalFlash.classList.add('hidden');
+  game.matchOpponent = Tournament.matchFor(game.mode, game.friendlyLevel,
+    game.slot.cup, game.slot.band, game.slot.emoji, Math.random);
+  game.state = 'MATCHMAKING';
+  game.matchReady = false;
+  game.timer = .7;
+  game.plannedAiShot = game.pendingAiShot = null;
+  game.pendingSaveX = game.threatPath = null;
+  const foe = game.matchOpponent;
+  el('matchRound').textContent = foe.round || 'One match';
+  el('matchTitle').textContent = 'Finding an opponent…';
+  el('matchYouFlag').textContent = game.slot.emoji;
+  el('matchYouName').textContent = game.slot.name || 'You';
+  el('matchFoeFlag').textContent = '?';
+  el('matchFoeName').textContent = 'Searching…';
+  el('matchFoeCountry').textContent = '';
+  el('matchLevel').textContent = levelLabel(foe.level);
+  el('matchHint').textContent = Tournament.LEVELS[foe.level - 1].hint;
+  el('matchSeason').textContent = seasonHint(foe);
+  el('matchGo').disabled = true;
+  el('matchSearch').classList.remove('hidden');
+  el('matchmaking').classList.remove('hidden');
+  if (el('matchBack').focus) el('matchBack').focus();
+  game.score.human = game.score.ai = 0;
+  updateScore();
+  refreshStreakHud();
+  // In a cup the draw already found the rival: introduce that known opponent.
+  if (game.mode === 'cup') revealOpponent();
+}
+
+function revealOpponent() {
+  if (game.state !== 'MATCHMAKING' || game.matchReady) return;
+  const foe = game.matchOpponent;
+  game.matchReady = true;
+  el('matchTitle').textContent = game.mode === 'cup' ? 'Meet your opponent' : 'Opponent found!';
+  el('matchFoeFlag').textContent = foe.flag;
+  el('matchFoeName').textContent = foe.name;
+  el('matchFoeCountry').textContent = Names.country(foe.flag);
+  el('matchGo').disabled = false;
+  el('matchSearch').classList.add('hidden');
+  refreshOpponentHud();
+}
+
+el('matchGo').addEventListener('click', () => {
+  if (game.state !== 'MATCHMAKING' || !game.matchReady) return;
+  SFX.unlock();
+  el('matchmaking').classList.add('hidden');
+  restart();
+});
+el('matchBack').addEventListener('click', () => {
+  SFX.select();
+  goHome();
+});
 
 /* ---------- chaos modifiers ---------- */
 function activateModifier(id) {
@@ -328,7 +424,7 @@ function refreshStreakHud() {
     if (node.textContent !== text) node.textContent = text;
   }
   const visible = game.mathsOn && game.slot &&
-    !['START', 'OVER'].includes(game.state);
+    !['START', 'MATCHMAKING', 'OVER'].includes(game.state);
   hud.classList.toggle('hidden', !visible);
   if (visible) {
     const streak = game.slot.stats.curStreak;
@@ -466,7 +562,7 @@ function announceBonus(id, hint) {
   const def = Bonuses.DEFS[id];
   const streakFlicks = game.activeStreakPowers.includes(id) && game.slot.streakPowers[id];
   const detail = hint || (streakFlicks ? streakFlicks + ' streak flicks earned' :
-    id === 'second' ? '2 flicks before the CPU' :
+    id === 'second' ? '2 flicks before ' + rivalName() :
     id === 'move' ? 'Move a blue player, then flick' : 'This flick');
   chaosBanner.textContent = def.glyph + ' ' + def.name + ' — ' + detail;
   chaosBanner.classList.remove('hidden');
@@ -592,7 +688,7 @@ function finishQuestion(correct, prizeId) {
 function askSaveQuestion() {
   reserveQuestion();
   if (!game.maths) { game.maths = Maths.newState(game.slot.band); }
-  setTurnMsg('CPU shoots — save it!', 'ai');
+  setTurnMsg(rivalName() + ' shoots — save it!', 'ai');
   var q = Maths.make(game.maths.difficulty, game.maths, Math.random);
   Quiz.show(q, 'save', function (correct, elapsedMs) {
     game.maths = Maths.update(game.maths, {
@@ -712,7 +808,7 @@ function startTurn(team) {
     game.timer = 0.9;
     game.aiChoice = pickAiPlayer();
     game.plannedAiShot = computeAiShot();
-    setTurnMsg('CPU is thinking…', 'ai');
+    setTurnMsg(rivalName() + ' is thinking…', 'ai');
   }
   refreshStreakHud();
 }
@@ -726,7 +822,7 @@ function settle() {
     // is exactly one follow-up flick, so it cannot earn or chain another.
     game.state = 'HUMAN_AIM';
     applyStreakPowers();
-    announceBonus('second', 'One more flick before the CPU');
+    announceBonus('second', 'One more flick before ' + rivalName());
     setTurnMsg('Second chance — take one more flick', 'human');
     return;
   }
@@ -743,7 +839,7 @@ function goalScored(scorer) {
   // not of what the cup made of it.
   game.slot.stats[scorer === 'human' ? 'goalsFor' : 'goalsAgainst'] += 1;
   updateScore();
-  goalFlash.textContent = scorer === 'human' ? 'GOAL!' : 'CPU SCORES!';
+  goalFlash.textContent = scorer === 'human' ? 'GOAL!' : rivalName() + ' scores!';
   goalFlash.classList.remove('hidden');
   if (!document.body.classList.contains('pro')) {
     confetti(scorer === 'human' ? TOP_Y : BOT_Y, scorer === 'human' ? 1 : -1);
@@ -766,6 +862,7 @@ function afterGoal() {
 }
 
 function gameOver(winner) {
+  const finishedOpponent = game.matchOpponent;
   var trophyWon = false;
   game.slot.stats.matches += 1;
   if (winner === 'human') { game.slot.stats.wins += 1; }
@@ -781,7 +878,6 @@ function gameOver(winner) {
     // The index has already rolled back to zero, so remember that this cup was
     // finished: the bracket owes the child the sight of themselves lifting it.
     game.wonCup = trophyWon;
-    configureOpponent();
   }
   // Anything the match earned is revealed here, at full time — never while a
   // question is open, so the questions stay a move and not a shop. The ledger
@@ -805,13 +901,25 @@ function gameOver(winner) {
   persist();
   game.state = 'OVER';
   refreshStreakHud();
-  overTitle.textContent = winner === 'human' ? 'You Win! \u{1F3C6}' : 'CPU Wins \u{1F916}';
+  overTitle.textContent = winner === 'human' ? 'You Win! \u{1F3C6}' : rivalName() + ' wins!';
   overSub.textContent = `Final score ${game.score.human} – ${game.score.ai}`;
+  el('overOpponent').textContent = finishedOpponent
+    ? finishedOpponent.flag + ' ' + finishedOpponent.name + ' · ' + levelLabel(finishedOpponent.level)
+    : '';
+  const cupNext = game.mode === 'cup' && !trophyWon;
+  el('overNext').classList.toggle('hidden', !cupNext);
+  if (cupNext) {
+    const next = Tournament.matchFor('cup', 1, game.slot.cup, game.slot.band, game.slot.emoji);
+    el('overNext').textContent = winner === 'human'
+      ? 'Up next: ' + next.flag + ' ' + next.name + ' · Level ' + next.level + ' — a tougher opponent'
+      : 'Try Level ' + next.level + ' again. Your cup progress is safe.';
+  }
   // The button does different things per mode, so it should not promise the
   // same one: in the cup it goes to the next round, in a friendly it finishes.
-  el('again').textContent = game.mode === 'cup' ? 'Next round' : 'Finish';
+  el('again').textContent = game.mode !== 'cup' ? 'Finish' :
+    trophyWon ? 'See your cup' : winner === 'human' ? 'Next round' : 'Try again';
   overlay.classList.remove('hidden');
-  setTurnMsg(winner === 'human' ? 'Champion!' : 'Better luck next time!', winner);
+  setTurnMsg(trophyWon ? 'Cup champion!' : 'Full time', winner);
   SFX.win(winner === 'human');
   if (trophyWon) { overTitle.textContent = '\u{1F3C6} CUP WON \u{1F3C6}'; }
 }
@@ -885,7 +993,7 @@ function commitAiShot(shot) {
   game.state = 'MOVING';
   game.aiChoice = null;
   game.plannedAiShot = null;
-  setTurnMsg('CPU shoots!', 'ai');
+  setTurnMsg(rivalName() + ' shoots!', 'ai');
   SFX.launch();
 }
 
@@ -1171,7 +1279,7 @@ el('again').addEventListener('click', () => {
 el('roundGo').addEventListener('click', () => {
   SFX.unlock();
   hideBracket();
-  if (bracketFinal) { bracketFinal = false; goHome(); } else { restart(); }
+  if (bracketFinal) { bracketFinal = false; goHome(); } else { findOpponent(); }
 });
 
 // The draw is a screen a child can arrive at and decide against. Leaving it
@@ -1189,6 +1297,9 @@ el('bracketBack').addEventListener('click', () => {
 // into.
 function goHome() {
   game.state = 'START';
+  el('hud').classList.add('hidden');
+  game.matchReady = false;
+  el('matchmaking').classList.add('hidden');
   clearModifier();
   game.plannedAiShot = game.pendingAiShot = null;
   game.pendingSaveX = game.threatPath = null;
@@ -1278,7 +1389,9 @@ function paintSlots() {
 }
 
 function configureOpponent() {
-  game.opponent = Tournament.opponentFor(game.slot.cup.index, game.slot.cup.season, game.slot.band);
+  game.opponent = game.mode === 'cup'
+    ? Tournament.opponentFor(game.slot.cup.index, game.slot.cup.season, game.slot.band)
+    : Tournament.opponentFor(game.friendlyLevel - 1, 0, game.slot.band);
   game.aiSkill = game.opponent.skill;
 }
 
@@ -1290,6 +1403,8 @@ function refreshStart() {
   // what clears maths (see the team editor's OK handler), so guarding on it
   // would skip this recompute at the one moment the band actually changed.
   configureOpponent();
+  paintOpponentChoice();
+  refreshOpponentHud();
   refreshStreakHud();
 }
 
@@ -1500,6 +1615,7 @@ function bracketBox(cell, state) {
 }
 
 function showBracket(played) {
+  el('hud').classList.add('hidden');
   var view = el('bracket'), tree = el('bracketTree'), heads = el('bracketRounds');
   if (typeof played !== 'number') { played = game.slot.cup.index; }
   // Winning the cup has to be an ending. On the champion view this screen's
@@ -1508,6 +1624,7 @@ function showBracket(played) {
   // which reads as the win not having counted.
   bracketFinal = played >= Tournament.COUNT;
   el('roundGo').textContent = bracketFinal ? '\u{1F3E0}' : '▶';
+  el('roundGo').setAttribute('aria-label', bracketFinal ? 'Go home' : 'Meet your opponent');
   // On the champion view the main button already goes home; a second one
   // beside it would just be two ways to do the same thing.
   el('bracketBack').classList.toggle('hidden', bracketFinal);
@@ -1516,15 +1633,21 @@ function showBracket(played) {
   // The child's next opponent is the other half of their pair in this round.
   var foeRow = played < Tournament.COUNT ? (Tournament.youAt(cols, played) ^ 1) : -1;
   var foe = foeRow >= 0 ? cols[played][foeRow] : null;
+  var next = foe ? Tournament.matchFor('cup', 1, game.slot.cup, game.slot.band, mine) : null;
 
   // The one thing they need off this screen is who they play next, so it is
   // stated once at full size; the draw behind it is context for that tie.
   el('tieMe').textContent = mine;
   el('tieMeName').textContent = game.slot.name || '';
   el('tieFoe').textContent = foe ? foe.flag : '\u{1F3C6}';
-  el('tieFoeName').textContent = foe ? (Names.country(foe.flag) || '') : '';
+  el('tieFoeName').textContent = next ? next.name : '';
+  el('tieFoeCountry').textContent = foe ? (Names.country(foe.flag) || '') : '';
   el('tieRound').textContent = foe ? Tournament.roundIcon(played) : '\u{1F389}';
-  el('bracketCaption').textContent = foe ? 'Next match' : 'You won the cup!';
+  el('bracketCaption').textContent = foe ? Tournament.roundName(played) : 'You won the cup!';
+  el('tieLevel').textContent = next ? levelLabel(next.level) : '';
+  el('tieLevel').classList.toggle('hidden', !next);
+  el('tieChallenge').textContent = next ? Tournament.LEVELS[next.level - 1].hint : '';
+  el('tieSeason').textContent = seasonHint(next);
 
   tree.innerHTML = '';
   for (c = 0; c < cols.length; c++) {
@@ -1555,6 +1678,11 @@ function showBracket(played) {
     head = document.createElement('div');
     head.className = (c === played + 1) ? 'on' : '';
     head.textContent = c === 0 ? '' : Tournament.roundIcon(c - 1);
+    if (c > 0) {
+      var label = document.createElement('small');
+      label.textContent = 'Lv ' + c;
+      head.appendChild(label);
+    }
     heads.appendChild(head);
   }
 
@@ -1588,6 +1716,29 @@ function paintCup() {
   }
   var n = Math.min(12, game.slot.trophies);
   shelf.textContent = n ? new Array(n + 1).join('\u{1F3C6}') : '';
+  el('cupOpponent').textContent = 'Next: Level ' + (game.slot.cup.index + 1) +
+    ' · ' + Tournament.roundName(game.slot.cup.index) +
+    (game.slot.cup.season > 0 ? ' · Season ' + (game.slot.cup.season + 1) : '');
+}
+
+function paintOpponentChoice() {
+  Tournament.LEVELS.forEach(function (choice) {
+    var button = el('level' + choice.level);
+    button.setAttribute('aria-pressed', String(choice.level === game.friendlyLevel));
+    // Keep the visible names in sync with the shared opponent catalogue.
+    button.querySelector('span').textContent = choice.name;
+  });
+  el('opponentChoiceHint').textContent = Tournament.LEVELS[game.friendlyLevel - 1].hint +
+    (game.slot.band > 0 ? ' Matched to your team’s age.' : '');
+}
+
+for (let level = 1; level <= 4; level++) {
+  el('level' + level).addEventListener('click', function () {
+    game.friendlyLevel = level;
+    configureOpponent();
+    paintOpponentChoice();
+    SFX.select();
+  });
 }
 
 
@@ -1820,6 +1971,7 @@ function showStep(step) {
   el('teamStep').classList.toggle('hidden', step !== 'team');
   // Cup progress belongs to the cup. In a friendly it is noise.
   el('cupProgress').classList.toggle('hidden', game.mode !== 'cup');
+  el('opponentChoice').classList.toggle('hidden', game.mode !== 'single');
 }
 
 function pickMode(mode) {
@@ -1841,7 +1993,7 @@ function startPlaying() {
   el('startScreen').classList.add('hidden');
   // A team entering the cup meets its next opponent on the draw, not by being
   // dropped straight onto the pitch.
-  if (game.mode === 'cup') { showBracket(); } else { restart(); }
+  if (game.mode === 'cup') { showBracket(); } else { findOpponent(); }
 }
 
 el('pickSingle').addEventListener('click', function () { pickMode('single'); });
@@ -2373,7 +2525,12 @@ function frame(now) {
   last = now;
   if (dt > 0.1) dt = 0.1;
 
-  if (game.state === 'AI_WAIT') {
+  if (game.state === 'MATCHMAKING') {
+    if (!game.matchReady) {
+      game.timer -= dt;
+      if (game.timer <= 0) revealOpponent();
+    }
+  } else if (game.state === 'AI_WAIT') {
     game.timer -= dt;
     if (game.timer <= 0) aiLaunch();
   } else if (game.state === 'GOAL_PAUSE') {
@@ -2404,8 +2561,8 @@ function frame(now) {
 /* ---------- boot ---------- */
 // The pitch renders immediately (as a static backdrop, same trick the win
 // overlay already relies on) but nothing is playable: game.state stays
-// 'START', which is what blocks the pointerdown handler, until something
-// calls restart() - the Play button in a friendly, the draw's kickoff in a cup.
+// 'START', which blocks pointer input until the match introduction's Kick off
+// calls restart(). Finding a rival and reading the cup draw never start play.
 init();
 loadProgress();
 // After loadProgress, not before: the start-screen block runs at parse time,

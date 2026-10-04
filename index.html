@@ -22,7 +22,7 @@
           <button id="pickCup" type="button">
             <span class="modeIcon">&#127942;</span>
             <span class="modeName">Tournament</span>
-            <span class="modeHint">Win the cup</span>
+            <span class="modeHint">Climb the opponent levels</span>
           </button>
         </div>
       </div>
@@ -33,7 +33,18 @@
         <div id="cupProgress">
           <div id="trophyShelf"></div>
           <div id="cupPips"></div>
+          <p id="cupOpponent"></p>
         </div>
+        <fieldset id="opponentChoice">
+          <legend>Opponent level</legend>
+          <div id="opponentLevels">
+            <button id="level1" type="button" aria-pressed="true"><b>1</b><span>Starter</span></button>
+            <button id="level2" type="button" aria-pressed="false"><b>2</b><span>Sharp</span></button>
+            <button id="level3" type="button" aria-pressed="false"><b>3</b><span>Tough</span></button>
+            <button id="level4" type="button" aria-pressed="false"><b>4</b><span>Elite</span></button>
+          </div>
+          <p id="opponentChoiceHint"></p>
+        </fieldset>
         <button id="nextUnlock" type="button" class="hidden" title="Locker" aria-label="Next unlock">
           <canvas id="nextUnlockArt" width="44" height="44"></canvas>
         </button>
@@ -47,10 +58,16 @@
     </div>
   </div>
 
-  <header id="hud">
-    <span class="team blue">YOU <b id="scoreHuman">0</b></span>
+  <header id="hud" class="hidden">
+    <span class="team blue">
+      <span class="teamIdentity"><span id="hudYouFlag">⚽</span><span id="hudYouName">You</span></span>
+      <span class="teamScore"><b id="scoreHuman">0</b><small>You</small></span>
+    </span>
     <span id="turnMsg" class="human">Your turn</span>
-    <span class="team red"><b id="scoreAi">0</b> CPU</span>
+    <span class="team red">
+      <span class="teamIdentity"><span id="hudFoeFlag">⚽</span><span id="hudFoeName">Opponent</span></span>
+      <span class="teamScore"><b id="scoreAi">0</b><small id="hudFoeLevel">Level 1</small></span>
+    </span>
   </header>
 
   <div id="streakHud" class="hidden" role="status" aria-label="Maths answer streak and earned powers" aria-live="polite">
@@ -78,6 +95,26 @@
     <div id="chaosBanner" class="hidden"></div>
     <div id="goalFlash" class="hidden"></div>
     <button id="bonusAction" type="button" class="hidden">Skip setup &#8618;</button>
+    <div id="matchmaking" class="hidden" role="dialog" aria-modal="true" aria-labelledby="matchTitle">
+      <div id="matchCard">
+        <p id="matchRound"></p>
+        <h2 id="matchTitle" aria-live="polite">Finding an opponent…</h2>
+        <div id="matchLineup">
+          <div class="matchSide"><span class="matchFlag" id="matchYouFlag"></span><b id="matchYouName"></b><small>Your team</small></div>
+          <span class="matchVs">vs</span>
+          <div class="matchSide rival"><span class="matchFlag" id="matchFoeFlag">?</span><b id="matchFoeName">Searching…</b><small id="matchFoeCountry"></small></div>
+        </div>
+        <p class="levelBadge" id="matchLevel"></p>
+        <p id="matchHint"></p>
+        <p id="matchSeason"></p>
+        <div id="matchSearch" aria-hidden="true"><span>⚽</span></div>
+        <p class="computerNote">Computer opponent</p>
+        <div id="matchButtons">
+          <button id="matchBack" type="button">Back</button>
+          <button id="matchGo" type="button" disabled>Kick off</button>
+        </div>
+      </div>
+    </div>
     <div id="quiz" class="hidden">
       <div id="quizHeader">
         <div id="quizLead"></div>
@@ -171,14 +208,17 @@
         <div id="bracketTie">
           <div class="side"><span class="bdg" id="tieMe"></span><span class="nm" id="tieMeName"></span></div>
           <div class="vs"><span id="tieRound">&#127942;</span></div>
-          <div class="side"><span class="bdg" id="tieFoe"></span><span class="nm" id="tieFoeName"></span></div>
+          <div class="side"><span class="bdg" id="tieFoe"></span><span class="nm" id="tieFoeName"></span><small id="tieFoeCountry"></small></div>
+        </div>
+        <p class="levelBadge" id="tieLevel"></p>
+        <p id="tieChallenge"></p>
+        <p id="tieSeason"></p>
+        <div id="bracketButtons">
+          <button id="bracketBack" type="button" aria-label="Back">&#8592;</button>
+          <button id="roundGo" type="button" aria-label="Meet your opponent">&#9654;</button>
         </div>
         <div id="bracketRounds"></div>
         <div id="bracketTree"></div>
-        <div id="bracketButtons">
-          <button id="bracketBack" type="button" aria-label="Back">&#8592;</button>
-          <button id="roundGo" type="button">&#9654;</button>
-        </div>
       </div>
     </div>
 
@@ -186,6 +226,8 @@
       <div id="overCard">
         <h1 id="overTitle"></h1>
         <p id="overSub"></p>
+        <p id="overOpponent"></p>
+        <p id="overNext" class="hidden"></p>
         <div id="overUnlocks" class="hidden">
           <p class="caption">Unlocked!</p>
           <div id="overUnlockRow"></div>

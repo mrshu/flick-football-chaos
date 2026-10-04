@@ -177,6 +177,17 @@ stronger opponents; later seasons add challenge, capped at eighteen shot
 candidates with keepers that can still be beaten. Football strength follows
 cup progress and the team's home age band; maths keeps adapting to answers.
 
+Football levels are visible throughout the cup: Level 1 Starter, Level 2 Sharp,
+Level 3 Tough and Level 4 Elite. The draw, pre-match introduction, scoreboard
+and result show your rival's fictional captain name, country flag and level.
+Later cups show their season separately, so a new opening round is never
+presented as harder than the previous final.
+
+For a single match, choose any of the four opponent levels before playing.
+A brief local "Finding an opponent" reveal introduces your computer rival,
+then waits for you to kick off. Friendly difficulty follows your selection and
+team's age, independently of cup progress; matches still leave the cup intact.
+
 Losing a round replays it. It never eliminates you: a child losing the final
 should not lose the tournament.
 
@@ -230,7 +241,7 @@ open index.html          # or: python3 -m http.server 8000
 Run the tests with Node — no framework, no dependencies:
 
 ```sh
-node test.js             # 47,376 checks, including bonuses, streaks and opponents
+node test.js             # 48,240 checks, including bonuses, streaks and opponents
 ```
 
 The suite is deliberately small for what it covers. It has been checked by

@@ -22,9 +22,10 @@ function deep(actual, expected, message) {
 function noop() {}
 function node() {
   return {
-    style: {}, classList: { add: noop, remove: noop, toggle: noop,
+    style: {}, clientWidth: 600, clientHeight: 900,
+    classList: { add: noop, remove: noop, toggle: noop,
       contains: function () { return false; } },
-    addEventListener: noop, getContext: function () { return {}; },
+    addEventListener: noop, getContext: function () { return { setTransform: noop }; },
     getBoundingClientRect: function () {
       return { left: 0, top: 0, width: 600, height: 900 };
     },
