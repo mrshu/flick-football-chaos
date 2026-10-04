@@ -74,14 +74,14 @@ vm.runInContext('var opponentSimulationCalls = 0; ' +
 function simulationCalls() { return vm.runInContext('opponentSimulationCalls', context); }
 function resetCalls() { vm.runInContext('opponentSimulationCalls = 0', context); }
 
-function fixture(scene, round, season, band) {
+function fixture(scene, round, season, band, profile) {
   testMath.random = random;
   seed = 1000 + (scene || 0);
   api.init();
   api.clearModifier();
   game.slot = Store.emptySlot(); game.slot.band = band || 3;
   game.save = Store.emptyState(); game.save.slots[0] = game.slot;
-  game.opponent = Tournament.opponentFor(round || 0, season || 0, game.slot.band);
+  game.opponent = profile || Tournament.opponentFor(round || 0, season || 0, game.slot.band);
   game.aiSkill = game.opponent.skill;
   game.aiChoice = api.pickAiPlayer();
   game.plannedAiShot = null;
@@ -122,6 +122,35 @@ ok(counts[3] >= scenes * repetitions * 0.45,
 ok(counts[3] < scenes * repetitions * 0.95, 'the final still has missed opportunities');
 ok(counts[3] - counts[0] >= scenes * repetitions * 0.25,
   'the final is materially more threatening than the opener');
+
+// Sample the actual published level scale as well as the legacy cup anchors.
+// Reuse identical formations and candidate seeds; only the configured profile
+// changes. Aggregate extremes matter more than empirical adjacent ordering.
+var scaleLevels = [0, 2, 5, 8, 10], scaleCounts = [];
+var scaleScenes = 12, scaleRepetitions = 3;
+scaleLevels.forEach(function (level) {
+  var goals = 0, profile = Tournament.profileForLevel(level);
+  for (var scene = 0; scene < scaleScenes; scene++) {
+    for (var rep = 0; rep < scaleRepetitions; rep++) {
+      fixture(scene, 0, 0, 3, profile);
+      seed = 3000 + scene * 100 + rep;
+      var shot = api.computeAiShot();
+      ok(simulationCalls() >= 1 && simulationCalls() <= profile.shotAttempts,
+        'Level ' + level + ' respects its actual configured shot budget');
+      ok(simulationCalls() <= 18, 'published levels stay below eighteen simulations');
+      if (shot.preview.scores) goals++;
+    }
+  }
+  scaleCounts.push(goals);
+});
+var scaleTotal = scaleScenes * scaleRepetitions;
+ok(scaleCounts[4] - scaleCounts[0] >= scaleTotal * 0.25,
+  'Level10 finds materially more real goals than practice');
+ok(scaleCounts[4] > scaleCounts[1], 'elite shot selection is more threatening than the starter');
+ok(scaleCounts[3] > scaleCounts[0], 'the tough level is more threatening than practice');
+ok(scaleCounts[0] < scaleTotal * 0.30, 'practice retains plenty of missed opportunities');
+ok(scaleCounts[4] >= scaleTotal * 0.45, 'elite creates a real scoring threat in the shared corpus');
+ok(scaleCounts[4] < scaleTotal * 0.95, 'even Level10 retains missed opportunities');
 
 // A planned shot and its preview must remain the same after the thinking
 // animation: no second random shot, phantom collisions or preview side effects.
@@ -172,8 +201,8 @@ ok(preview.ballY + game.ball.r < 72, 'own-goal prediction ends inside the correc
 // Direct ball shots isolate the keeper from outfield congestion. Central
 // distant shots should become harder; a fast, well-placed close corner remains
 // a route to a goal against the final's keeper.
-function humanGoal(round, shotY, targetX, speed, randomSeed) {
-  fixture(0, round);
+function humanGoal(round, shotY, targetX, speed, randomSeed, profile) {
+  fixture(0, round, 0, 3, profile);
   seed = randomSeed;
   game.players.forEach(function (player, i) {
     player.x = i % 2 ? 530 : 70; player.y = 400 + i * 55;
@@ -210,6 +239,16 @@ for (rep = 0; rep < 32; rep++) {
   }
 }
 ok(closeCorners >= 24, 'accurate fast close corners still beat the final keeper');
+var eliteCloseCorners = 0, eliteCentral = 0;
+for (rep = 0; rep < 24; rep++) {
+  var eliteProfile = Tournament.profileForLevel(10);
+  if (humanGoal(0, 230, rep % 2 ? 227 : 373, 1300, rep * 7919 + 20, eliteProfile)) {
+    eliteCloseCorners++;
+  }
+  if (humanGoal(0, 450, 300, 1100, rep * 7919 + 20, eliteProfile)) eliteCentral++;
+}
+ok(eliteCloseCorners >= 18, 'well-placed close corners remain beatable against the actual Level10 keeper');
+ok(eliteCentral < eliteCloseCorners, 'Level10 rewards corner placement over a distant central shot');
 
 // Maths has one cooldown shared by attacking bonuses and goalkeeper saves.
 fixture(0);
@@ -289,5 +328,7 @@ if (require.main === module) {
   console.log('Opponent/pacing checks: ' + checks + ' passed.');
   console.log('Seeded cup goals: ' + counts.join('/') + ' of ' + (scenes * repetitions) +
     '; keeper central goals: ' + central.join('/') + ' of 32; close corners: ' + closeCorners + ' of 32.');
+  console.log('Levels ' + scaleLevels.join('/') + ' goals: ' + scaleCounts.join('/') + ' of ' + scaleTotal +
+    '; Level10 close corners: ' + eliteCloseCorners + ' of 24; central goals: ' + eliteCentral + ' of 24.');
 }
 module.exports = { checks: checks };

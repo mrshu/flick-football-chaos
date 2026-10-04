@@ -133,6 +133,9 @@ const SFX = (() => {
   return {
     unlock() { try { ctxAudio(); } catch (e) {} },
     select() { blip(520, 0.07, 'square', 0.07); },
+    match() {
+      [147, 196, 294].forEach((f, i) => setTimeout(() => blip(f, .16, 'triangle', .06), i * 100));
+    },
     launch() { blip(200, 0.18, 'sawtooth', 0.1, 460); },
     hit(v)   { blip(140 + v * 120, 0.06, 'triangle', Math.min(0.14, 0.04 + v * 0.06)); },
     chaos()  { blip(330, 0.1, 'square', 0.1, 660); },
@@ -161,8 +164,9 @@ const game = {
   mover: 'human',
   maths: null, mathsOn: true,
   mode: 'single',   // 'single' | 'cup' — only the cup advances the draw
-  friendlyLevel: 1,
+  friendlyLevel: 2,
   matchOpponent: null, matchReady: false, // identity stays fixed through full time
+  matchPreviewTimer: 0, matchPreviewIndex: 0, matchReducedMotion: false,
   keeperDive: null, // {x, wait} once the AI keeper has read the shot in flight
   turnCount: 0, sinceChaos: 0,
   friction: BASE_FRICTION, powerMult: 1,
@@ -301,12 +305,12 @@ function setTurnMsg(text, team) {
 function rivalName() { return game.matchOpponent ? game.matchOpponent.name : 'Opponent'; }
 
 function levelLabel(level) {
-  return 'Level ' + level + ' · ' + Tournament.LEVELS[level - 1].name;
+  return 'Level ' + level + ' · ' + Tournament.LEVELS[level].name;
 }
 
 function seasonHint(opponent) {
   if (!opponent || !opponent.season || opponent.season < 2) return '';
-  return 'Season ' + opponent.season + ' — tougher than the first cup';
+  return 'Season ' + opponent.season;
 }
 
 function refreshOpponentHud() {
@@ -320,7 +324,7 @@ function refreshOpponentHud() {
   }
 }
 
-// Matching is a short local reveal, with an explicit kickoff. Nothing starts
+// Matching is a local match introduction, with an explicit kickoff. Nothing starts
 // while the child is reading it, and backing out leaves cup progress intact.
 function findOpponent() {
   el('hud').classList.add('hidden');
@@ -332,7 +336,10 @@ function findOpponent() {
     game.slot.cup, game.slot.band, game.slot.emoji, Math.random);
   game.state = 'MATCHMAKING';
   game.matchReady = false;
-  game.timer = .7;
+  game.matchReducedMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  game.timer = game.matchReducedMotion ? .7 : 2.8;
+  game.matchPreviewTimer = .12;
+  game.matchPreviewIndex = 0;
   game.plannedAiShot = game.pendingAiShot = null;
   game.pendingSaveX = game.threatPath = null;
   const foe = game.matchOpponent;
@@ -344,9 +351,13 @@ function findOpponent() {
   el('matchFoeName').textContent = 'Searching…';
   el('matchFoeCountry').textContent = '';
   el('matchLevel').textContent = levelLabel(foe.level);
-  el('matchHint').textContent = Tournament.LEVELS[foe.level - 1].hint;
+  el('matchHint').textContent = Tournament.LEVELS[foe.level].hint;
   el('matchSeason').textContent = seasonHint(foe);
+  el('matchStatus').textContent = 'Scouting the opposition…';
   el('matchGo').disabled = true;
+  el('matchReveal').classList.remove('hidden');
+  el('matchmaking').classList.remove('opponentFound');
+  el('matchmaking').classList.remove('closingIn');
   el('matchSearch').classList.remove('hidden');
   el('matchmaking').classList.remove('hidden');
   if (el('matchBack').focus) el('matchBack').focus();
@@ -355,6 +366,29 @@ function findOpponent() {
   refreshStreakHud();
   // In a cup the draw already found the rival: introduce that known opponent.
   if (game.mode === 'cup') revealOpponent();
+}
+
+function updateOpponentSearch(dt) {
+  game.timer -= dt;
+  if (game.timer <= 0) { revealOpponent(); return; }
+  if (game.matchReducedMotion) return;
+  const closingIn = game.timer < 1.2;
+  el('matchmaking').classList.toggle('closingIn', closingIn);
+  if (closingIn && el('matchStatus').textContent !== 'A challenger approaches…') {
+    el('matchStatus').textContent = 'A challenger approaches…';
+  }
+  game.matchPreviewTimer -= dt;
+  if (game.matchPreviewTimer <= 0) {
+    // The scouting reel is visual only. It never draws fresh randomness or
+    // changes the selected rival, their difficulty, or the kickoff formation.
+    const flags = Object.keys(Tournament.BY_SEED).map(seed => Tournament.BY_SEED[seed])
+      .filter(flag => flag !== game.slot.emoji && flag !== game.matchOpponent.flag);
+    const flag = flags[game.matchPreviewIndex++ % flags.length];
+    el('matchFoeFlag').textContent = flag;
+    el('matchFoeName').textContent = Tournament.captainName(flag);
+    el('matchFoeCountry').textContent = Names.country(flag);
+    game.matchPreviewTimer = closingIn ? .38 : game.timer < 1.8 ? .22 : .11;
+  }
 }
 
 function revealOpponent() {
@@ -366,9 +400,19 @@ function revealOpponent() {
   el('matchFoeName').textContent = foe.name;
   el('matchFoeCountry').textContent = Names.country(foe.flag);
   el('matchGo').disabled = false;
+  el('matchStatus').textContent = foe.name + ' is ready to play';
+  el('matchReveal').classList.add('hidden');
+  el('matchmaking').classList.add('opponentFound');
+  el('matchmaking').classList.remove('closingIn');
   el('matchSearch').classList.add('hidden');
   refreshOpponentHud();
+  SFX.match();
 }
+
+el('matchReveal').addEventListener('click', () => {
+  revealOpponent();
+  if (game.state === 'MATCHMAKING' && game.matchReady && el('matchGo').focus) el('matchGo').focus();
+});
 
 el('matchGo').addEventListener('click', () => {
   if (game.state !== 'MATCHMAKING' || !game.matchReady) return;
@@ -1389,9 +1433,10 @@ function paintSlots() {
 }
 
 function configureOpponent() {
-  game.opponent = game.mode === 'cup'
-    ? Tournament.opponentFor(game.slot.cup.index, game.slot.cup.season, game.slot.band)
-    : Tournament.opponentFor(game.friendlyLevel - 1, 0, game.slot.band);
+  const level = game.mode === 'cup'
+    ? Tournament.levelForCup(game.slot.cup.index, game.slot.cup.season, game.slot.band)
+    : game.friendlyLevel;
+  game.opponent = Tournament.profileForLevel(level);
   game.aiSkill = game.opponent.skill;
 }
 
@@ -1646,7 +1691,7 @@ function showBracket(played) {
   el('bracketCaption').textContent = foe ? Tournament.roundName(played) : 'You won the cup!';
   el('tieLevel').textContent = next ? levelLabel(next.level) : '';
   el('tieLevel').classList.toggle('hidden', !next);
-  el('tieChallenge').textContent = next ? Tournament.LEVELS[next.level - 1].hint : '';
+  el('tieChallenge').textContent = next ? Tournament.LEVELS[next.level].hint : '';
   el('tieSeason').textContent = seasonHint(next);
 
   tree.innerHTML = '';
@@ -1680,7 +1725,7 @@ function showBracket(played) {
     head.textContent = c === 0 ? '' : Tournament.roundIcon(c - 1);
     if (c > 0) {
       var label = document.createElement('small');
-      label.textContent = 'Lv ' + c;
+      label.textContent = 'Lv ' + Tournament.levelForCup(c - 1, game.slot.cup.season, game.slot.band);
       head.appendChild(label);
     }
     heads.appendChild(head);
@@ -1716,30 +1761,32 @@ function paintCup() {
   }
   var n = Math.min(12, game.slot.trophies);
   shelf.textContent = n ? new Array(n + 1).join('\u{1F3C6}') : '';
-  el('cupOpponent').textContent = 'Next: Level ' + (game.slot.cup.index + 1) +
+  el('cupOpponent').textContent = 'Next: Level ' + Tournament.levelForCup(game.slot.cup.index, game.slot.cup.season, game.slot.band) +
     ' · ' + Tournament.roundName(game.slot.cup.index) +
     (game.slot.cup.season > 0 ? ' · Season ' + (game.slot.cup.season + 1) : '');
 }
 
 function paintOpponentChoice() {
-  Tournament.LEVELS.forEach(function (choice) {
-    var button = el('level' + choice.level);
-    button.setAttribute('aria-pressed', String(choice.level === game.friendlyLevel));
-    // Keep the visible names in sync with the shared opponent catalogue.
-    button.querySelector('span').textContent = choice.name;
-  });
-  el('opponentChoiceHint').textContent = Tournament.LEVELS[game.friendlyLevel - 1].hint +
-    (game.slot.band > 0 ? ' Matched to your team’s age.' : '');
+  const choice = Tournament.LEVELS[game.friendlyLevel];
+  el('opponentLevelInput').value = game.friendlyLevel;
+  el('opponentLevelInput').setAttribute('aria-valuetext', levelLabel(game.friendlyLevel));
+  el('opponentLevelValue').textContent = game.friendlyLevel;
+  el('opponentLevelName').textContent = choice.name;
+  el('opponentChoiceHint').textContent = choice.hint;
+  el('levelDown').disabled = game.friendlyLevel === 0;
+  el('levelUp').disabled = game.friendlyLevel === 10;
 }
 
-for (let level = 1; level <= 4; level++) {
-  el('level' + level).addEventListener('click', function () {
-    game.friendlyLevel = level;
-    configureOpponent();
-    paintOpponentChoice();
-    SFX.select();
-  });
+function chooseOpponentLevel(level, playSound) {
+  game.friendlyLevel = Number.isFinite(level) ? Math.max(0, Math.min(10, Math.floor(level))) : 2;
+  configureOpponent();
+  paintOpponentChoice();
+  if (playSound !== false) SFX.select();
 }
+el('opponentLevelInput').addEventListener('input', function () { chooseOpponentLevel(Number(this.value), false); });
+el('opponentLevelInput').addEventListener('change', function () { SFX.select(); });
+el('levelDown').addEventListener('click', function () { chooseOpponentLevel(game.friendlyLevel - 1); });
+el('levelUp').addEventListener('click', function () { chooseOpponentLevel(game.friendlyLevel + 1); });
 
 
 // What this team has done, as icons and numbers. No text, so it reads the same
@@ -2526,10 +2573,7 @@ function frame(now) {
   if (dt > 0.1) dt = 0.1;
 
   if (game.state === 'MATCHMAKING') {
-    if (!game.matchReady) {
-      game.timer -= dt;
-      if (game.timer <= 0) revealOpponent();
-    }
+    if (!game.matchReady) updateOpponentSearch(dt);
   } else if (game.state === 'AI_WAIT') {
     game.timer -= dt;
     if (game.timer <= 0) aiLaunch();

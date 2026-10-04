@@ -170,23 +170,30 @@ in a real knockout they have not been played yet either.
 
 Opponents get stronger on the pitch as well: for a younger team's first season,
 an opening opponent tries one imperfect flick, while a final opponent compares
-up to ten plausible shots and chooses a scoring opportunity or useful field
-position. Keepers react sooner,
+up to eighteen plausible shots and chooses a scoring opportunity or useful
+field position. Keepers react sooner,
 move faster and read shots more accurately each round. Older teams start with
 stronger opponents; later seasons add challenge, capped at eighteen shot
-candidates with keepers that can still be beaten. Football strength follows
-cup progress and the team's home age band; maths keeps adapting to answers.
+candidates with keepers that can still be beaten. Cup progress and the team's
+home age band choose the opponent's visible football level; maths keeps
+adapting to answers.
 
-Football levels are visible throughout the cup: Level 1 Starter, Level 2 Sharp,
-Level 3 Tough and Level 4 Elite. The draw, pre-match introduction, scoreboard
-and result show your rival's fictional captain name, country flag and level.
-Later cups show their season separately, so a new opening round is never
-presented as harder than the previous final.
+Football difficulty runs from Level 0 Practice to Level 10 Elite. Every step
+improves aiming and keeper reactions, with intermediate levels between the
+existing tuned profiles. A younger team's first cup climbs through Levels
+2, 5, 8 and 10. Older teams and later cups start higher, while all four rounds
+still increase in difficulty and cap at Level 10. The draw, introduction,
+scoreboard and result show your rival's fictional captain, flag and level.
 
-For a single match, choose any of the four opponent levels before playing.
-A brief local "Finding an opponent" reveal introduces your computer rival,
-then waits for you to kick off. Friendly difficulty follows your selection and
-team's age, independently of cup progress; matches still leave the cup intact.
+For a single match, choose any level from 0 to 10 with the slider or step buttons.
+The same level always means the same football strength, independently of age,
+maths and cup progress. Level 0 has loose aim and a slow keeper for practice;
+even Level 10 has imperfect aiming and finite keeper speed.
+
+The local "Finding an opponent" introduction cycles through rival badges,
+slows down, then reveals your opponent with a crest entrance and short fanfare.
+"Reveal now" jumps ahead; the match always waits for "Kick off". Reduced-motion
+settings use a shorter, still reveal. Friendly matches leave the cup intact.
 
 Losing a round replays it. It never eliminates you: a child losing the final
 should not lose the tournament.
@@ -241,7 +248,7 @@ open index.html          # or: python3 -m http.server 8000
 Run the tests with Node — no framework, no dependencies:
 
 ```sh
-node test.js             # 48,240 checks, including bonuses, streaks and opponents
+node test.js             # 49,832 checks, including bonuses, streaks and opponents
 ```
 
 The suite is deliberately small for what it covers. It has been checked by

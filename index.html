@@ -37,12 +37,13 @@
         </div>
         <fieldset id="opponentChoice">
           <legend>Opponent level</legend>
-          <div id="opponentLevels">
-            <button id="level1" type="button" aria-pressed="true"><b>1</b><span>Starter</span></button>
-            <button id="level2" type="button" aria-pressed="false"><b>2</b><span>Sharp</span></button>
-            <button id="level3" type="button" aria-pressed="false"><b>3</b><span>Tough</span></button>
-            <button id="level4" type="button" aria-pressed="false"><b>4</b><span>Elite</span></button>
+          <div id="opponentLevelControl">
+            <button id="levelDown" type="button" aria-label="Easier opponent">−</button>
+            <output id="opponentLevelReadout" for="opponentLevelInput">Level <b id="opponentLevelValue">2</b><span id="opponentLevelName">Starter</span></output>
+            <button id="levelUp" type="button" aria-label="Harder opponent">+</button>
           </div>
+          <input id="opponentLevelInput" type="range" min="0" max="10" step="1" value="2" aria-label="Opponent level">
+          <div id="opponentScale" aria-hidden="true"><span>0 · Practice</span><span>10 · Elite</span></div>
           <p id="opponentChoiceHint"></p>
         </fieldset>
         <button id="nextUnlock" type="button" class="hidden" title="Locker" aria-label="Next unlock">
@@ -101,16 +102,18 @@
         <h2 id="matchTitle" aria-live="polite">Finding an opponent…</h2>
         <div id="matchLineup">
           <div class="matchSide"><span class="matchFlag" id="matchYouFlag"></span><b id="matchYouName"></b><small>Your team</small></div>
-          <span class="matchVs">vs</span>
+          <span class="matchVs">VS</span>
           <div class="matchSide rival"><span class="matchFlag" id="matchFoeFlag">?</span><b id="matchFoeName">Searching…</b><small id="matchFoeCountry"></small></div>
         </div>
         <p class="levelBadge" id="matchLevel"></p>
         <p id="matchHint"></p>
         <p id="matchSeason"></p>
+        <p id="matchStatus">Scouting the opposition…</p>
         <div id="matchSearch" aria-hidden="true"><span>⚽</span></div>
         <p class="computerNote">Computer opponent</p>
         <div id="matchButtons">
           <button id="matchBack" type="button">Back</button>
+          <button id="matchReveal" type="button">Reveal now</button>
           <button id="matchGo" type="button" disabled>Kick off</button>
         </div>
       </div>

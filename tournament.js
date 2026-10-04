@@ -7,9 +7,9 @@
 // whole draw, not just their next opponent, is what makes it a tournament: they
 // can see who is waiting on the other side.
 //
-// Pure: no DOM, no game state, no randomness of its own. The game reads
-// `opponentFor` when configuring the CPU, `bracket` when drawing the tree, and
-// calls `recordResult` at full time.
+// Pure: no DOM or game state. Friendly matchmaking accepts a random source;
+// cup opponents follow the seeded draw. The game reads `matchFor` to configure
+// a match, `bracket` to draw the tree, and calls `recordResult` at full time.
 var Tournament = (function () {
 
   var ROUNDS = 4;                  // 16 -> 8 -> 4 -> 2 -> 1
@@ -33,8 +33,8 @@ var Tournament = (function () {
   // What is at stake in each round, so the cup has a shape a child recognises.
   var ROUND_ICONS = ['\u{1F3DF}', '\u{1F949}', '\u{1F948}', '\u{1F3C6}'];
 
-  // Rising, and deliberately capped below 1. Aim remains imperfect even in
-  // the final; opponentFor adds bounded shot selection and keeper progression.
+  // Legacy skill anchors, deliberately capped below 1. The absolute level
+  // scale reuses their tuned aim, shot-selection and goalkeeper profiles.
   var SKILL = [0.20, 0.45, 0.70, 0.95];
 
   // A child may pick a country as their own badge, and one of these fifteen
@@ -42,13 +42,20 @@ var Tournament = (function () {
   // a reserve, so every flag in the tree stands for exactly one team.
   var RESERVE = '\u{1F1E8}\u{1F1ED}';   // Switzerland
 
-  // These are relative football challenge tiers. The home age band still
-  // tunes each tier, while the cup's season is shown separately from its level.
+  // A level means the same football challenge in every mode and age band.
+  // Age and cup progress choose a visible level, never hidden extra strength.
   var LEVELS = [
-    { level: 1, name: 'Starter', hint: 'Fewer shot choices and a slower keeper.' },
-    { level: 2, name: 'Sharp', hint: 'Better shot choices and quicker saves.' },
-    { level: 3, name: 'Tough', hint: 'Accurate shots and a quick keeper.' },
-    { level: 4, name: 'Elite', hint: 'Most shot choices and the fastest keeper.' }
+    { level: 0, name: 'Practice', hint: 'Loose aim and a slow keeper give you room to practise.' },
+    { level: 1, name: 'Gentle', hint: 'A patient keeper and a little more accurate shooting.' },
+    { level: 2, name: 'Starter', hint: 'Simple shot choices and a steady keeper.' },
+    { level: 3, name: 'Steady', hint: 'Better aim and quicker reactions.' },
+    { level: 4, name: 'Skilled', hint: 'More shot choices and sharper saves.' },
+    { level: 5, name: 'Sharp', hint: 'Careful shot choices and a quick keeper.' },
+    { level: 6, name: 'Strong', hint: 'Accurate shots and faster keeper movement.' },
+    { level: 7, name: 'Advanced', hint: 'Find gaps against confident shooting and sharp saves.' },
+    { level: 8, name: 'Tough', hint: 'Strong shooting and quick reactions reward good placement.' },
+    { level: 9, name: 'Expert', hint: 'Many shot choices and a very quick keeper.' },
+    { level: 10, name: 'Elite', hint: 'The strongest shooting and fastest keeper; corners still count.' }
   ];
   var ROUND_NAMES = ['Round of 16', 'Quarter-final', 'Semi-final', 'Final'];
   var CAPTAIN_BY_SEED = {
@@ -83,13 +90,14 @@ var Tournament = (function () {
       year = boundedInteger(cup.season, 0, 0, Number.MAX_SAFE_INTEGER - 1);
       var cols = bracket(round, avoidFlag);
       flag = cols[round][youAt(cols, round) ^ 1].flag;
+      level = levelForCup(round, year, band);
       return {
-        level: round + 1, name: captainName(flag), flag: flag,
+        level: level, name: captainName(flag), flag: flag,
         round: roundName(round), season: year + 1,
-        profile: opponentFor(round, year, band)
+        profile: profileForLevel(level)
       };
     }
-    level = boundedInteger(level, 1, 1, ROUNDS);
+    level = boundedInteger(level, 2, 0, 10);
     var flags = Object.keys(BY_SEED).map(function (seed) { return BY_SEED[seed]; })
       .filter(function (candidate) { return candidate !== avoidFlag; });
     var sample;
@@ -101,7 +109,7 @@ var Tournament = (function () {
     flag = flags[index];
     return {
       level: level, name: captainName(flag), flag: flag, round: null, season: null,
-      profile: opponentFor(level - 1, 0, band)
+      profile: profileForLevel(level)
     };
   }
 
@@ -115,8 +123,8 @@ var Tournament = (function () {
   // many rounds the child has won, which is also the round they are now in.
   //
   // Every match not involving the child is settled by seed. That is not a
-  // shortcut: it is what makes their four opponents rise in strength exactly as
-  // SKILL does, with the top seed waiting in the final. Rounds the child has
+  // shortcut: it is what makes their four opponents rise in strength, with the
+  // top seed waiting in the final. Rounds the child has
   // not reached stay undecided, because in a real knockout they have not been
   // played yet either.
   //
@@ -218,6 +226,46 @@ var Tournament = (function () {
     };
   }
 
+  // Keep the established football profiles as anchors. Interpolating these
+  // makes all eleven steps meaningful without giving a keeper perfect aim,
+  // instant reactions, or more shot searches than the previous hardest cup.
+  var PROFILE_ANCHORS = [
+    { level: 0, profile: { skill: 0.03, shotAttempts: 1, keeperSpeed: 150,
+      keeperDelay: 0.35, keeperError: 105 } },
+    { level: 2, profile: opponentFor(0, 0, 0) },
+    { level: 5, profile: opponentFor(1, 0, 0) },
+    { level: 8, profile: opponentFor(2, 0, 0) },
+    { level: 10, profile: opponentFor(3, 6, 11) }
+  ];
+
+  function profileForLevel(level) {
+    level = boundedInteger(level, 2, 0, 10);
+    for (var i = 0; i < PROFILE_ANCHORS.length; i++) {
+      var upper = PROFILE_ANCHORS[i];
+      if (level === upper.level) { return Object.assign({}, upper.profile); }
+      if (level < upper.level) {
+        var lower = PROFILE_ANCHORS[i - 1];
+        var fraction = (level - lower.level) / (upper.level - lower.level);
+        var profile = {};
+        Object.keys(lower.profile).forEach(function (key) {
+          profile[key] = lower.profile[key] + (upper.profile[key] - lower.profile[key]) * fraction;
+        });
+        profile.shotAttempts = Math.round(profile.shotAttempts);
+        return profile;
+      }
+    }
+  }
+
+  function levelForCup(index, season, band) {
+    var round = boundedInteger(index, 0, 0, ROUNDS - 1);
+    var ageLift = Math.round(skillFloor(band) * 6);
+    var seasonLift = boundedInteger(season, 0, 0, 3);
+    var base = Math.min(7, 2 + ageLift + seasonLift);
+    // Reserve a higher visible level for every remaining round, even once
+    // age and season have brought the opening opponent near the ceiling.
+    return Math.min(7 + round, base + [0, 3, 6, 8][round]);
+  }
+
   function roundIcon(i) {
     return ROUND_ICONS[Math.max(0, Math.min(ROUNDS - 1, i))];
   }
@@ -240,6 +288,7 @@ var Tournament = (function () {
   return {
     COUNT: ROUNDS, SLOTS: SLOTS, DRAW: DRAW, BY_SEED: BY_SEED, RESERVE: RESERVE,
     LEVELS: LEVELS, roundName: roundName, captainName: captainName, matchFor: matchFor,
+    profileForLevel: profileForLevel, levelForCup: levelForCup,
     bracket: bracket, youAt: youAt, roundIcon: roundIcon,
     skillFor: skillFor, skillFloor: skillFloor, opponentFor: opponentFor,
     recordResult: recordResult, isComplete: isComplete
