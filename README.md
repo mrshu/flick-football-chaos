@@ -79,6 +79,28 @@ cooldown: at least two clear player turns between questions, or four after
 you choose **Keep playing**. Eligible attacks and saves do not always ask.
 The smaller question card keeps its answers readable without a pulsing reward.
 
+### Streak powers
+
+Correct answers in a row also earn powers for **three of your flicks**:
+
+| Correct-answer streak | Lasting power |
+| --- | --- |
+| 3 | Coaching line |
+| 5 | Big striker |
+| 8 | Tiny defenders |
+
+The footballs beside your streak fill toward the next reward, and earned-power
+badges show the flicks remaining. Milestones repeat: six correct refreshes
+Coaching line, ten refreshes Big striker, and so on. A refresh restores three
+uses rather than stacking an unlimited advantage.
+
+Both bonus and save answers count. Wrong answers break the streak but keep
+earned powers; skipping preserves both. Powers carry across goals, matches and
+reloads for that team. They combine with ordinary bonuses and only spend uses
+on actual human flicks, including an earned extra flick. Big striker keeps its
+use if your selected player cannot grow or is the keeper. No-maths mode keeps
+the saved powers for later.
+
 <br clear="right">
 
 ---
@@ -208,7 +230,7 @@ open index.html          # or: python3 -m http.server 8000
 Run the tests with Node — no framework, no dependencies:
 
 ```sh
-node test.js             # 47,115 checks, including bonuses, opponents and pacing
+node test.js             # 47,376 checks, including bonuses, streaks and opponents
 ```
 
 The suite is deliberately small for what it covers. It has been checked by

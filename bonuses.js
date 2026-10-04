@@ -6,6 +6,11 @@
 var Bonuses = (function () {
   var EPS = 1e-7;
   var SHRINK = 0.62, GROW = 1.35, MOVE_LIMIT = 85;
+  var STREAK_REWARDS = [
+    { at: 3, id: 'coach', flicks: 3 },
+    { at: 5, id: 'big', flicks: 3 },
+    { at: 8, id: 'small', flicks: 3 }
+  ];
   var DEFS = {
     feint: {
       glyph: '↪', name: 'Keeper feint', kind: 'football',
@@ -34,6 +39,30 @@ var Bonuses = (function () {
   };
 
   function finite(n) { return typeof n === 'number' && isFinite(n); }
+  function streakNumber(n) {
+    return finite(n) && n >= 0 && Math.floor(n) === n && n <= Number.MAX_SAFE_INTEGER;
+  }
+  function streakRewards(streak) {
+    if (!streakNumber(streak) || streak === 0) { return []; }
+    return STREAK_REWARDS.filter(function (reward) {
+      return streak % reward.at === 0;
+    }).map(function (reward) {
+      return { at: reward.at, id: reward.id, flicks: reward.flicks };
+    });
+  }
+  function nextStreakReward(streak) {
+    if (!streakNumber(streak)) { streak = 0; }
+    var next = null, nearest = Infinity;
+    STREAK_REWARDS.forEach(function (reward) {
+      var distance = reward.at - streak % reward.at;
+      // Ties use the published order: coaching line, big striker, defenders.
+      if (distance < nearest) {
+        nearest = distance;
+        next = { at: streak + distance, id: reward.id, flicks: reward.flicks };
+      }
+    });
+    return next;
+  }
   function point(p) { return p && finite(p.x) && finite(p.y); }
   function circle(p) { return point(p) && finite(p.r) && p.r >= 0; }
   function inset(bounds, r) {
@@ -187,6 +216,8 @@ var Bonuses = (function () {
 
   return {
     DEFS: DEFS, SHRINK: SHRINK, GROW: GROW, MOVE_LIMIT: MOVE_LIMIT,
+    STREAK_REWARDS: STREAK_REWARDS,
+    streakRewards: streakRewards, nextStreakReward: nextStreakReward,
     guide: guide, moveTarget: moveTarget
   };
 }());

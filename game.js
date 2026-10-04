@@ -165,6 +165,7 @@ const game = {
   turnCount: 0, sinceChaos: 0,
   friction: BASE_FRICTION, powerMult: 1,
   bonus: null, lastBonus: null, extraFlicks: 0, bigStriker: null, setup: null,
+  activeStreakPowers: [], // armed for this human flick, including its final use
   plannedAiShot: null, pendingAiShot: null, pendingSaveX: null,
   score: { human: 0, ai: 0 }, lastScorer: null,
   timer: 0, moveTime: 0, ballRot: 0,
@@ -295,13 +296,14 @@ function activateModifier(id) {
   SFX.chaos();
 }
 function clearModifier() {
-  const restoringDefenders = game.bonus === 'small';
+  const restoringDefenders = isBonusActive('small');
   game.friction = BASE_FRICTION;
   game.powerMult = 1;
   game.ball.r = BALL_R;
   game.players.forEach(p => { p.r = PLAYER_R; });
   if (restoringDefenders) restoreDefenderSpace();
   game.bonus = null;
+  game.activeStreakPowers = [];
   game.extraFlicks = 0;
   game.bigStriker = null;
   game.setup = null;
@@ -309,10 +311,89 @@ function clearModifier() {
   game.keeperDive = null;
   el('bonusAction').classList.add('hidden');
   chaosBanner.classList.add('hidden');
+  refreshStreakHud();
 }
 
 /* ---------- earned football bonuses ---------- */
 const BONUS_BOUNDS = { left: SIDE_L, right: SIDE_R, top: TOP_Y, bottom: BOT_Y };
+
+function isBonusActive(id) {
+  return game.bonus === id || game.activeStreakPowers.includes(id);
+}
+
+function refreshStreakHud() {
+  const hud = el('streakHud'), oldHeight = hud.offsetHeight;
+  function write(id, value) {
+    const node = el(id), text = String(value);
+    if (node.textContent !== text) node.textContent = text;
+  }
+  const visible = game.mathsOn && game.slot &&
+    !['START', 'OVER'].includes(game.state);
+  hud.classList.toggle('hidden', !visible);
+  if (visible) {
+    const streak = game.slot.stats.curStreak;
+    const next = Bonuses.nextStreakReward(streak);
+    const interval = Bonuses.STREAK_REWARDS.find(reward => reward.id === next.id).at;
+    const needed = next.at - streak;
+    const progress = interval - needed;
+    hud.classList.toggle('hot', streak >= 3);
+    write('streakCount', streak);
+    write('streakProgress', needed + ' more for ' + Bonuses.DEFS[next.id].name);
+    write('streakTarget', Bonuses.DEFS[next.id].glyph);
+    for (let i = 0; i < 8; i++) {
+      const pip = el('streakPip' + i);
+      pip.classList.toggle('hidden', i >= interval);
+      pip.classList.toggle('complete', i < progress);
+      pip.classList.toggle('next', i === progress);
+    }
+    let any = false;
+    for (const reward of Bonuses.STREAK_REWARDS) {
+      const id = reward.id, remaining = game.slot.streakPowers[id];
+      const inUse = game.state === 'MOVING' && game.mover === 'human' &&
+        game.activeStreakPowers.includes(id);
+      const chipId = 'streak' + id[0].toUpperCase() + id.slice(1);
+      const chip = el(chipId);
+      const show = remaining > 0 || inUse;
+      chip.classList.toggle('hidden', !show);
+      if (show) {
+        const count = remaining > 0 ? remaining + (remaining === 1 ? ' flick' : ' flicks') : 'last flick';
+        write(chipId + 'Count', count);
+        any = true;
+      }
+    }
+    el('streakPowers').classList.toggle('hidden', !any);
+  }
+  // Refit when the strip changes height so portrait input stays aligned.
+  if (hud.offsetHeight !== oldHeight) fitCanvas();
+}
+
+function prepareBigStriker() {
+  const choices = game.players.filter(canGrow).sort((a, b) =>
+    Math.hypot(a.x - game.ball.x, a.y - game.ball.y) - Math.hypot(b.x - game.ball.x, b.y - game.ball.y));
+  if (choices.length) growStriker(choices[0]);
+}
+
+function applyStreakPowers() {
+  game.activeStreakPowers = game.mathsOn ? Bonuses.STREAK_REWARDS
+    .filter(reward => game.slot.streakPowers[reward.id] > 0).map(reward => reward.id) : [];
+  if (game.activeStreakPowers.includes('small')) {
+    game.players.filter(p => p.team === 'ai').forEach(p => { p.r = PLAYER_R * Bonuses.SHRINK; });
+  }
+  if (game.activeStreakPowers.includes('big') && !game.bigStriker) prepareBigStriker();
+  refreshStreakHud();
+}
+
+function consumeStreakPowers(player) {
+  let used = false;
+  for (const id of game.activeStreakPowers) {
+    // A keeper or a striker without growth space should not waste this perk.
+    if (id === 'big' && (game.bigStriker !== player || player.r <= PLAYER_R)) continue;
+    game.slot.streakPowers[id] = Math.max(0, game.slot.streakPowers[id] - 1);
+    used = true;
+  }
+  if (used) persist();
+  refreshStreakHud();
+}
 
 function restoreDefenderSpace() {
   // A tiny defender can finish closer to the ball than a full-sized one can.
@@ -367,21 +448,25 @@ function hasSetupSpace() {
 }
 
 function pickBonus() {
-  const ids = ['second', 'coach'];
+  const ids = ['second'];
+  if (!isBonusActive('coach')) ids.push('coach');
   if (Math.abs(aiKeeper.y - KEEPER_LINE_Y) < KEEPER_R && game.ball.y > KEEPER_LINE_Y) ids.push('feint');
-  if (game.players.some(p => p.team === 'ai' && p.y < game.ball.y + PLAYER_R)) ids.push('small');
-  if (game.players.some(canGrow)) ids.push('big');
+  if (!isBonusActive('small') && game.players.some(p => p.team === 'ai' && p.y < game.ball.y + PLAYER_R)) ids.push('small');
+  if (!isBonusActive('big') && game.players.some(canGrow)) ids.push('big');
   if (hasSetupSpace()) ids.push('move');
   // Offer a useful effect and avoid showing the same prize twice running.
   const fresh = ids.filter(id => id !== game.lastBonus);
-  const id = fresh[(Math.random() * fresh.length) | 0];
+  const choices = fresh.length ? fresh : ids;
+  const id = choices[(Math.random() * choices.length) | 0];
   game.lastBonus = id;
   return id;
 }
 
 function announceBonus(id, hint) {
   const def = Bonuses.DEFS[id];
-  const detail = hint || (id === 'second' ? '2 flicks before the CPU' :
+  const streakFlicks = game.activeStreakPowers.includes(id) && game.slot.streakPowers[id];
+  const detail = hint || (streakFlicks ? streakFlicks + ' streak flicks earned' :
+    id === 'second' ? '2 flicks before the CPU' :
     id === 'move' ? 'Move a blue player, then flick' : 'This flick');
   chaosBanner.textContent = def.glyph + ' ' + def.name + ' — ' + detail;
   chaosBanner.classList.remove('hidden');
@@ -390,11 +475,7 @@ function announceBonus(id, hint) {
 function activateBonus(id) {
   game.bonus = id;
   if (id === 'small') game.players.filter(p => p.team === 'ai').forEach(p => { p.r = PLAYER_R * Bonuses.SHRINK; });
-  if (id === 'big') {
-    const choices = game.players.filter(canGrow).sort((a, b) =>
-      Math.hypot(a.x - game.ball.x, a.y - game.ball.y) - Math.hypot(b.x - game.ball.x, b.y - game.ball.y));
-    if (choices.length) growStriker(choices[0]);
-  }
+  if (id === 'big') prepareBigStriker();
   if (id === 'second') game.extraFlicks = 1;
   if (id === 'move') {
     game.state = 'HUMAN_SETUP';
@@ -454,12 +535,25 @@ function recordAnswer(correct, elapsedMs) {
     st.correct += 1;
     st.curStreak += 1;
     if (st.curStreak > st.bestStreak) { st.bestStreak = st.curStreak; }
+    const rewards = Bonuses.streakRewards(st.curStreak);
+    for (const reward of rewards) {
+      game.slot.streakPowers[reward.id] = Math.max(game.slot.streakPowers[reward.id], reward.flicks);
+    }
+    if (rewards.length) {
+      const hud = el('streakHud');
+      hud.classList.remove('earned');
+      void hud.offsetWidth; // restart the short, answer-triggered celebration
+      hud.classList.add('earned');
+    }
     // 0 is the "no record yet" sentinel, so a 0ms (or negative, from a
     // clock adjustment) elapsed time can never be stored as a record.
     if (elapsedMs > 0 && (!st.bestMs || elapsedMs < st.bestMs)) { st.bestMs = elapsedMs; }
   } else {
     st.curStreak = 0;
   }
+  // A save answer can earn future powers, but must not change the bodies of
+  // the CPU shot already queued against this exact pitch geometry.
+  refreshStreakHud();
 }
 
 function askQuestion() {
@@ -485,6 +579,7 @@ function askQuestion() {
 function finishQuestion(correct, prizeId) {
   game.state = 'HUMAN_AIM';
   setTurnMsg('Your turn — drag a blue player', 'human');
+  applyStreakPowers();
   if (correct) { activateBonus(prizeId); }
 }
 
@@ -604,6 +699,8 @@ function startTurn(team) {
   }
   if (team === 'human') {
     game.humanTurns++;
+    game.state = 'HUMAN_AIM';
+    applyStreakPowers();
     if (game.mathsOn && worthABonus()) {
       askQuestion();
     } else {
@@ -617,6 +714,7 @@ function startTurn(team) {
     game.plannedAiShot = computeAiShot();
     setTurnMsg('CPU is thinking…', 'ai');
   }
+  refreshStreakHud();
 }
 
 function settle() {
@@ -627,6 +725,7 @@ function settle() {
     // Keep the settled positions. No question or turn setup here: the prize
     // is exactly one follow-up flick, so it cannot earn or chain another.
     game.state = 'HUMAN_AIM';
+    applyStreakPowers();
     announceBonus('second', 'One more flick before the CPU');
     setTurnMsg('Second chance — take one more flick', 'human');
     return;
@@ -651,6 +750,7 @@ function goalScored(scorer) {
   }
   SFX.goal();
   game.state = 'GOAL_PAUSE';
+  refreshStreakHud();
   game.timer = 1.7;
 }
 
@@ -704,6 +804,7 @@ function gameOver(winner) {
   // those on a refresh would make the record quietly wrong.
   persist();
   game.state = 'OVER';
+  refreshStreakHud();
   overTitle.textContent = winner === 'human' ? 'You Win! \u{1F3C6}' : 'CPU Wins \u{1F916}';
   overSub.textContent = `Final score ${game.score.human} – ${game.score.ai}`;
   // The button does different things per mode, so it should not promise the
@@ -984,10 +1085,12 @@ canvas.addEventListener('pointerdown', e => {
     if (d < pl.r + 22 && d < bd) { bd = d; best = pl; }
   }
   if (best) {
-    if (game.bonus === 'big') {
+    if (isBonusActive('big')) {
       growStriker(best);
-      announceBonus('big', game.bigStriker ? 'Bigger blue striker — line up your flick' :
-        best === humanKeeper ? 'Your keeper keeps its normal size' : 'No room here — try another blue player');
+      if (game.bonus === 'big') {
+        announceBonus('big', game.bigStriker ? 'Bigger blue striker — line up your flick' :
+          best === humanKeeper ? 'Your keeper keeps its normal size' : 'No room here — try another blue player');
+      }
     }
     game.drag = { player: best, px: p.x, py: p.y };
     try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
@@ -1035,6 +1138,7 @@ function endDrag(e) {
   game.mover = 'human';
   game.moveTime = 0;
   game.state = 'MOVING';
+  consumeStreakPowers(player);
   setTurnMsg('Nice flick!', 'human');
   SFX.launch();
 }
@@ -1085,7 +1189,9 @@ el('bracketBack').addEventListener('click', () => {
 // into.
 function goHome() {
   game.state = 'START';
-  game.drag = null;
+  clearModifier();
+  game.plannedAiShot = game.pendingAiShot = null;
+  game.pendingSaveX = game.threatPath = null;
   Quiz.hide();
   overlay.classList.add('hidden');
   refreshStart();
@@ -1184,6 +1290,7 @@ function refreshStart() {
   // what clears maths (see the team editor's OK handler), so guarding on it
   // would skip this recompute at the one moment the band actually changed.
   configureOpponent();
+  refreshStreakHud();
 }
 
 // Making a team is where a child says who they are: badge, name, and age. Age
@@ -2111,7 +2218,7 @@ function drawAim() {
   if (len < MIN_DRAG) return;
   const power = Math.min(len / MAX_DRAG, 1);
   const nx = dx / len, ny = dy / len;
-  if (game.bonus === 'coach') drawCoachingLine(player, nx, ny, power);
+  if (isBonusActive('coach')) drawCoachingLine(player, nx, ny, power);
   const col = `hsl(${120 * (1 - power)}, 95%, 55%)`;
 
   ctx.lineCap = 'round';
@@ -2181,7 +2288,7 @@ function drawCoachingLine(player, nx, ny, power) {
 }
 
 function drawBonusEffects(t) {
-  if (!game.bonus) return;
+  if (!game.bonus && !game.activeStreakPowers.length) return;
   const pulse = 1 + Math.sin(t * 5) * 0.08;
   ctx.save();
   if (game.bonus === 'feint') {
@@ -2190,11 +2297,13 @@ function drawBonusEffects(t) {
     ctx.fillStyle = '#ffeb85';
     ctx.fillRect(aiKeeper.x - 8, aiKeeper.y - aiKeeper.r - 22, 5, 14);
     ctx.fillRect(aiKeeper.x + 3, aiKeeper.y - aiKeeper.r - 22, 5, 14);
-  } else if (game.bonus === 'big' && game.bigStriker) {
+  }
+  if (isBonusActive('big') && game.bigStriker) {
     const p = game.bigStriker;
     ctx.strokeStyle = '#ffeb85'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.arc(p.x, p.y, (p.r + 8) * pulse, 0, Math.PI * 2); ctx.stroke();
-  } else if (game.bonus === 'small') {
+  }
+  if (isBonusActive('small')) {
     ctx.strokeStyle = 'rgba(255,235,133,.65)'; ctx.lineWidth = 2; ctx.setLineDash([4, 5]);
     for (const p of game.players.filter(p => p.team === 'ai')) {
       ctx.beginPath(); ctx.arc(p.x, p.y, PLAYER_R, 0, Math.PI * 2); ctx.stroke();

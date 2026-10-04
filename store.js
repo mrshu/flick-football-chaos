@@ -57,6 +57,9 @@ var Store = (function () {
         bestMs: 0,                   // fastest correct answer; 0 = none yet
         curStreak: 0, bestStreak: 0  // correct-answer streak, current and best
       },
+      // Earned assists survive the next kickoff and reload. Each has at most
+      // three paid flicks, so repeated milestones refresh rather than stack.
+      streakPowers: { coach: 0, big: 0, small: 0 },
       unlocked: [],
       equipped: { ball: 'classic', pitch: 'day', hat: 'none' },
       trophies: 0
@@ -110,6 +113,13 @@ var Store = (function () {
       for (k in base.stats) {
         if (typeof raw.stats[k] === 'number' && isFinite(raw.stats[k])) {
           base.stats[k] = Math.max(0, Math.floor(raw.stats[k]));
+        }
+      }
+    }
+    if (raw.streakPowers && typeof raw.streakPowers === 'object') {
+      for (k in base.streakPowers) {
+        if (typeof raw.streakPowers[k] === 'number' && isFinite(raw.streakPowers[k])) {
+          base.streakPowers[k] = Math.max(0, Math.min(3, Math.floor(raw.streakPowers[k])));
         }
       }
     }

@@ -58,6 +58,121 @@ body {
 #turnMsg.human { color: #9cc7ff; }
 #turnMsg.ai    { color: #ffb3b3; }
 
+#streakHud {
+  width: min(96vw, 560px);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+#streakTrack {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background: rgba(9, 27, 52, .7);
+  border: 1px solid rgba(156, 199, 255, .2);
+  border-radius: 12px;
+}
+.streakScore {
+  flex: 0 0 48px;
+  text-align: center;
+  border-right: 1px solid rgba(156, 199, 255, .25);
+  padding-right: 12px;
+  color: #9cc7ff;
+}
+.streakScore b { display: block; font-size: 24px; line-height: 1; font-weight: 900; font-variant-numeric: tabular-nums; }
+.streakScore span { display: block; margin-top: 3px; font-size: 10px; white-space: nowrap; }
+#streakHud.hot .streakScore { color: #ffd54a; }
+.streakRun { flex: 1; min-width: 0; }
+#streakPips { display: flex; gap: 5px; margin-bottom: 4px; }
+#streakPips i {
+  position: relative;
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid #6b819c;
+  background: #102743;
+  transition: background .2s, border-color .2s;
+}
+#streakPips i::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  background: #6b819c;
+  clip-path: polygon(50% 0, 100% 38%, 80% 100%, 20% 100%, 0 38%);
+}
+#streakPips i.complete { background: #ffd54a; border-color: #ffd54a; }
+#streakPips i.complete::after { background: #775219; }
+#streakPips i.next { border: 2px solid #9cc7ff; }
+#streakProgress { display: block; font-size: 12px; font-weight: 700; color: #cbdcf0; line-height: 1.3; }
+#streakTarget {
+  display: grid;
+  place-items: center;
+  flex: 0 0 32px;
+  height: 32px;
+  border: 1px dashed #ffd54a;
+  border-radius: 9px;
+  background: rgba(255, 213, 74, .08);
+  color: #ffd54a;
+  font-size: 22px;
+}
+#streakPowers { display: flex; justify-content: center; flex-wrap: wrap; gap: 5px; }
+.streakChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 5px 4px 9px;
+  border: 1px solid rgba(167, 243, 208, .4);
+  border-radius: 8px;
+  background: #102b36;
+  font-size: 11px;
+  font-weight: 700;
+  color: #d6f9e6;
+  white-space: nowrap;
+}
+.streakChip b { padding: 3px 5px; border-radius: 4px; background: #a7f3d0; color: #133728; font-size: 10px; }
+#streakHud.earned .streakScore { animation: streakEarned .6s ease-out; }
+@keyframes streakEarned {
+  0% { transform: scale(1.25); color: #fff; }
+  100% { transform: scale(1); color: #ffd54a; }
+}
+@media (max-height: 570px) {
+  #streakTrack { padding: 4px 10px; gap: 9px; }
+  .streakScore b { font-size: 20px; }
+  #streakPips i { width: 14px; height: 14px; }
+  #streakPips i::after { inset: 3px; }
+  #streakProgress { font-size: 11px; }
+  #streakTarget { height: 28px; flex-basis: 28px; font-size: 19px; }
+  #streakHud { gap: 3px; }
+  .streakChip { padding-top: 2px; padding-bottom: 2px; }
+}
+@media (orientation: landscape) and (max-height: 570px) {
+  /* Use the spare sideline space instead of shortening the football pitch. */
+  #streakHud {
+    position: absolute;
+    left: 14px;
+    top: 70px;
+    width: min(260px, calc(50vw - 124px));
+    max-height: calc(100dvh - 90px);
+    overflow-y: auto;
+    z-index: 2;
+  }
+  #streakTrack { display: grid; grid-template-columns: 38px minmax(0, 1fr); padding: 8px; gap: 8px; }
+  .streakScore { padding-right: 8px; }
+  #streakPips { flex-wrap: wrap; gap: 3px; }
+  #streakTarget { display: none; }
+  #streakPowers { gap: 4px; }
+  .streakChip { width: 100%; justify-content: space-between; }
+  .streakChip > span { white-space: normal; }
+  .streakChip b { flex-shrink: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #streakHud.earned .streakScore { animation: none; }
+  #streakPips i { transition: none; }
+}
+
 #stage {
   position: relative;
   flex: 1;
@@ -1073,4 +1188,7 @@ body.pro #quizPrize {
 body.pro #quizPrizeName { color: #ffeb85; }
 body.pro #quizPrizeHint { color: #e2e8f0; }
 body.pro #quizChoices button { border-radius: 6px; }
+body.pro #streakTrack { border-radius: 4px; background: #172433; }
+body.pro #streakTarget,
+body.pro .streakChip { border-radius: 4px; }
 body.pro #goalFlash { animation: none; }

@@ -2362,4 +2362,6 @@ checkGenerators(11, false);
 checks += require('./test-bonuses.js').checks;
 checks += require('./test-game-bonuses.js').checks;
 checks += require('./test-game-opponents.js').checks;
+checks += require('./test-streak-rewards.js').checks;
+checks += require('./test-game-streaks.js').checks;
 done();

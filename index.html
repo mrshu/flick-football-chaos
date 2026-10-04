@@ -53,6 +53,25 @@
     <span class="team red"><b id="scoreAi">0</b> CPU</span>
   </header>
 
+  <div id="streakHud" class="hidden" role="status" aria-label="Maths answer streak and earned powers" aria-live="polite">
+    <div id="streakTrack">
+      <div class="streakScore"><b id="streakCount">0</b><span>in a row</span></div>
+      <div class="streakRun">
+        <div id="streakPips" aria-hidden="true">
+          <i id="streakPip0"></i><i id="streakPip1"></i><i id="streakPip2"></i><i id="streakPip3"></i>
+          <i id="streakPip4"></i><i id="streakPip5"></i><i id="streakPip6"></i><i id="streakPip7"></i>
+        </div>
+        <span id="streakProgress">3 more for Coaching line</span>
+      </div>
+      <span id="streakTarget" aria-hidden="true">↗</span>
+    </div>
+    <div id="streakPowers" class="hidden">
+      <span id="streakCoach" class="streakChip hidden"><span>↗ Coaching line</span> <b id="streakCoachCount"></b></span>
+      <span id="streakBig" class="streakChip hidden"><span>💪 Big striker</span> <b id="streakBigCount"></b></span>
+      <span id="streakSmall" class="streakChip hidden"><span>🐜 Tiny defenders</span> <b id="streakSmallCount"></b></span>
+    </div>
+  </div>
+
   <div id="stage">
     <canvas id="game" width="600" height="900"></canvas>
     <button id="fsBtn" type="button" title="Fullscreen (F)" aria-label="Toggle fullscreen">&#9974;</button>
