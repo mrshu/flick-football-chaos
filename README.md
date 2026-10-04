@@ -173,7 +173,7 @@ open index.html          # or: python3 -m http.server 8000
 Run the tests with Node — no framework, no dependencies:
 
 ```sh
-node test.js             # 32,077 checks, ~0.1s
+node test.js             # 45,342 checks, ~0.10s
 ```
 
 The suite is deliberately small for what it covers. It has been checked by
@@ -206,8 +206,8 @@ game.js         the game: physics, turns, AI, rendering, screens
 maths.js        question generators and the adaptive engine   (pure)
 tournament.js   the sixteen-team draw and its resolution      (pure)
 formation.js    kickoff layouts, keeper geometry, AI aiming   (pure)
-names.js        invented team names and country names         (pure)
-flags.js        every flag in the world, grouped by continent (pure)
+names.js        invented team names, and every country name   (pure)
+flags.js        the picker: continents sliced out of names.js  (pure)
 store.js        localStorage, per slot, with repair           (pure-ish)
 quiz.js         the question panel
 test.js         the whole suite
@@ -216,7 +216,14 @@ test.js         the whole suite
 The modules marked pure have no DOM, no game state, and no randomness of their
 own — the caller passes a random function in. That is what makes them testable
 against a fixed seed, and it is why the tests can simulate four thousand
-questions and assert where a learner ends up.
+questions and assert where a learner ends up. The synthetic learner they do it
+with lives in `maths.js` and the maths lab runs the same one, so the lab and
+the suite cannot quietly disagree about what a child is.
+
+Where a module does touch a browser — `store.js` reaching for `localStorage`,
+`quiz.js` for `document` — the suite stubs the handful of calls it makes, so
+loading a corrupt save and drawing a question are both tested rather than
+taken on trust.
 
 A few constraints that shaped the code:
 

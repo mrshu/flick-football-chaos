@@ -343,7 +343,7 @@ var Quiz = (function () {
     timer = setTimeout(function () {
       timer = 0;
       hide();
-      if (cb) { cb(chosen, correct, elapsed); }
+      if (cb) { cb(correct, elapsed); }
     }, correct ? 420 : 1150);
   }
 
@@ -356,9 +356,9 @@ var Quiz = (function () {
     answered = false;
     leadEl.textContent = lead;
     var prize = PRIZES[prizeId];
-    prizeGlyphEl.textContent = prize ? prize.glyph : '';
-    prizePreviewEl.innerHTML = '';
-    if (prize) { renderPreview(prize); }
+    panel.classList.toggle('saving', prizeId === 'save');
+    prizeGlyphEl.textContent = prize.glyph;
+    renderPreview(prize);
     qEl.innerHTML = '';
     choicesEl.innerHTML = '';
     var i, t, btn;
@@ -370,9 +370,7 @@ var Quiz = (function () {
       btn.type = 'button';
       btn.textContent = question.choices[i];
       btn.__value = question.choices[i];
-      (function (b) {
-        b.addEventListener('click', function () { markAndFinish(b.__value, b); });
-      })(btn);
+      btn.addEventListener('click', function () { markAndFinish(this.__value, this); });
       choicesEl.appendChild(btn);
     }
     panel.classList.remove('hidden');
@@ -383,10 +381,6 @@ var Quiz = (function () {
     ready();
     if (timer) { clearTimeout(timer); timer = 0; }
     panel.classList.add('hidden');
-    prizeGlyphEl.textContent = '';
-    prizePreviewEl.innerHTML = '';
-    qEl.innerHTML = '';
-    choicesEl.innerHTML = '';
     current = null;
     done = null;
     skipDone = null;

@@ -16,7 +16,6 @@ var Formation = (function () {
   var HALF_Y = H / 2;               // 450 - the halfway line
   var GOAL_X = W / 2;                // 300 - both goal mouths are centred here
   var PLAYER_R = 26, BALL_R = 13;
-  var BALL_HOME_X = W / 2, BALL_HOME_Y = H / 2; // (300, 450)
 
   // The kickoff exploit: ball at (300,450) sits on the same vertical line as
   // both goal centres (300,72) and (300,828). Any player also on that line
@@ -128,13 +127,16 @@ var Formation = (function () {
   }
 
   // Pure step function for the goalkeepers (playtester defect 3): slide a
-  // keeper's x toward the ball's x by at most maxStep, then clamp to the
-  // patrol range. Capping the step (rather than snapping straight to the
-  // target) is what makes the keeper lag instead of teleporting, and the
-  // clamp is what keeps it from wandering out of its own goal mouth. Kept
-  // here, not in game.js, purely so `node test.js` can exercise it without
-  // a DOM - game.js supplies the real bounds (goal-mouth-derived) and calls
-  // this once per turn, never mid-flight.
+  // keeper's x toward a target by at most maxStep, then clamp to the patrol
+  // range. Capping the step (rather than snapping straight to the target) is
+  // what makes the keeper lag instead of teleporting, and the clamp is what
+  // keeps it from wandering out of its own goal mouth. Kept here, not in
+  // game.js, purely so `node test.js` can exercise it without a DOM.
+  //
+  // game.js supplies the real bounds (goal-mouth-derived) and two targets:
+  // keeperReact steps toward the shot's predicted crossing point, every frame
+  // while the ball is in flight; diveKeeper passes maxStep Infinity, which is
+  // this function with the lag taken out - a clamp straight to the target.
   function keeperStep(x, targetX, maxStep, minX, maxX) {
     var dx = targetX - x;
     if (dx > maxStep) { dx = maxStep; }
@@ -152,9 +154,8 @@ var Formation = (function () {
     keeperStep: keeperStep,
     // Geometry exposed so tests can check placement without duplicating
     // (and risking drift from) these numbers.
-    W: W, H: H, SIDE_L: SIDE_L, SIDE_R: SIDE_R, TOP_Y: TOP_Y, BOT_Y: BOT_Y,
+    H: H, SIDE_L: SIDE_L, SIDE_R: SIDE_R, TOP_Y: TOP_Y, BOT_Y: BOT_Y,
     HALF_Y: HALF_Y, GOAL_X: GOAL_X, PLAYER_R: PLAYER_R, BALL_R: BALL_R,
-    BALL_HOME_X: BALL_HOME_X, BALL_HOME_Y: BALL_HOME_Y,
     MIN_LINE_DIST: MIN_LINE_DIST,
   };
 })();

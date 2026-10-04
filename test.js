@@ -1,4 +1,60 @@
 'use strict';
+
+// Two modules reach for browser globals: store.js for localStorage, quiz.js
+// for document. Neither is loaded by Node, so without these stubs the whole
+// persistence layer and the whole question renderer sit untested - which is
+// exactly where they sat until a mutation sweep pointed it out. The stubs are
+// the smallest thing each module actually uses, and nothing more: a stub that
+// grew features would start testing itself.
+//
+// `storage` is swappable so a test can hand the module a throwing or corrupt
+// one and see what it does.
+var storage = null;                       // null = "this browser has none"
+global.window = { get localStorage() { return storage; } };
+
+function fakeStorage(initial, opts) {
+  var map = initial || {}, o = opts || {};
+  return {
+    getItem: function (k) {
+      if (o.throwOnGet) { throw new Error('denied'); }
+      return Object.prototype.hasOwnProperty.call(map, k) ? map[k] : null;
+    },
+    setItem: function (k, v) {
+      if (o.throwOnSet) { throw new Error('quota'); }
+      map[k] = String(v);
+    },
+    removeItem: function (k) { delete map[k]; },
+    _map: map
+  };
+}
+
+// The handful of DOM calls renderToken and drawDiag make, and no others.
+function fakeNode(tag) {
+  return {
+    tagName: tag, className: '', textContent: '', innerHTML: '',
+    childNodes: [], style: {}, width: 0, height: 0,
+    appendChild: function (c) { this.childNodes.push(c); return c; },
+    getContext: function () { return fakeCtx(); },
+    setAttribute: function () {}, addEventListener: function () {}
+  };
+}
+function fakeCtx() {
+  var noop = function () {};
+  return {
+    canvas: { width: 0, height: 0 },
+    beginPath: noop, moveTo: noop, lineTo: noop, arc: noop, closePath: noop,
+    fill: noop, stroke: noop, fillText: noop, save: noop, restore: noop,
+    translate: noop, rotate: noop, scale: noop, setLineDash: noop,
+    clearRect: noop, fillRect: noop, strokeRect: noop,
+    measureText: function (t) { return { width: String(t).length * 6 }; },
+    set font(v) {}, get font() { return '10px sans-serif'; }
+  };
+}
+global.document = {
+  createElement: fakeNode,
+  getElementById: function () { return fakeNode('div'); }
+};
+
 var Maths = require('./maths.js');
 var Formation = require('./formation.js');
 var Store = require('./store.js');
@@ -13,6 +69,27 @@ function ok(cond, msg) {
 
 function eq(actual, expected, msg) {
   ok(actual === expected, msg + ' (got ' + actual + ', want ' + expected + ')');
+}
+
+// The visible terms of a sequence row and where the hidden one sits: each
+// { i, v } is a term's position among all five and its value, so a test can
+// recompute the answer from any visible term without knowing which are shown.
+function seqTerms(render) {
+  var nums = [], idx = 0, gap = -1, k;
+  for (k = 0; k < render.length; k++) {
+    if (render[k].t === 'num') { nums.push({ i: idx, v: render[k].v }); idx++; }
+    else if (render[k].t === 'box') { gap = idx; idx++; }
+  }
+  return { nums: nums, gap: gap };
+}
+
+// The first two side-by-side visible terms, which is what a step or a ratio
+// can be read off. Null if the hidden term splits every pair.
+function firstAdjacentPair(nums) {
+  for (var k = 0; k + 1 < nums.length; k++) {
+    if (nums[k + 1].i === nums[k].i + 1) { return [nums[k], nums[k + 1]]; }
+  }
+  return null;
 }
 
 // Deterministic LCG so every run is reproducible.
@@ -236,7 +313,7 @@ checkGenerators(3, false);
 checkGenerators(4, false);
 
 (function () {
-  var rand = makeRng(31), i, q, k, boxes, terms, gapIdx, step, refIdx, refVal, p;
+  var rand = makeRng(31), i, q, k, boxes;
   for (i = 0; i < 80; i++) {
     q = Maths._BANDS[3][0](rand);
     ok(q.answer <= 20, 'band 3 addition stays within 20');
@@ -251,21 +328,9 @@ checkGenerators(4, false);
 
     // Independent recomputation: derive the step from a visible adjacent
     // pair of terms (separators skipped) and extrapolate to the box.
-    terms = [];
-    for (k = 0; k < q.render.length; k++) {
-      if (q.render[k].t === 'num' || q.render[k].t === 'box') { terms.push(q.render[k]); }
-    }
-    gapIdx = -1;
-    for (p = 0; p < terms.length; p++) { if (terms[p].t === 'box') { gapIdx = p; } }
-    step = undefined;
-    for (p = 0; p < terms.length - 1; p++) {
-      if (terms[p].t === 'num' && terms[p + 1].t === 'num') {
-        step = terms[p + 1].v - terms[p].v;
-        refIdx = p; refVal = terms[p].v;
-        break;
-      }
-    }
-    eq(q.answer, refVal + (gapIdx - refIdx) * step,
+    var seq = seqTerms(q.render), pair = firstAdjacentPair(seq.nums);
+    ok(!!pair, 'sequence has two adjacent visible terms');
+    eq(q.answer, pair[0].v + (seq.gap - pair[0].i) * (pair[1].v - pair[0].v),
        'sequence gap recomputes from visible terms');
   }
   // Halving must always be exact.
@@ -405,21 +470,13 @@ checkGenerators(9, false);
   for (i = 0; i < 80; i++) {
     q = Maths._BANDS[9][3](rand);
     eq(q.skill, 'seqRule', 'band 9 gen 3 is seqRule');
-    var nums = [], k, idx = 0, gap = -1;
-    for (k = 0; k < q.render.length; k++) {
-      if (q.render[k].t === 'num') { nums.push({ i: idx, v: q.render[k].v }); idx++; }
-      else if (q.render[k].t === 'box') { gap = idx; idx++; }
-    }
-    ok(gap >= 1 && gap <= 3, 'seqRule gap is mid-sequence');
-    eq(nums.length, 4, 'seqRule shows four known terms');
-    var a = null, b = null;
-    for (k = 0; k + 1 < nums.length; k++) {
-      if (nums[k + 1].i === nums[k].i + 1) { a = nums[k]; b = nums[k + 1]; break; }
-    }
-    ok(!!a, 'seqRule has two adjacent visible terms');
-    var step = b.v - a.v;
+    var seq = seqTerms(q.render), pair = firstAdjacentPair(seq.nums);
+    ok(seq.gap >= 1 && seq.gap <= 3, 'seqRule gap is mid-sequence');
+    eq(seq.nums.length, 4, 'seqRule shows four known terms');
+    ok(!!pair, 'seqRule has two adjacent visible terms');
+    var step = pair[1].v - pair[0].v;
     ok(step >= 3 && step <= 9, 'seqRule step is 3-9');
-    eq(q.answer, a.v + (gap - a.i) * step,
+    eq(q.answer, pair[0].v + (seq.gap - pair[0].i) * step,
        'seqRule recomputes the hidden term from a visible one');
   }
 })();
@@ -615,19 +672,13 @@ checkGenerators(11, false);
   for (i = 0; i < 80; i++) {
     q = Maths._BANDS[11][2](rand);
     eq(q.skill, 'seqGeo', 'band 11 gen 2 is seqGeo');
-    var nums = [], k, idx = 0, gap = -1;
-    for (k = 0; k < q.render.length; k++) {
-      if (q.render[k].t === 'num') { nums.push({ i: idx, v: q.render[k].v }); idx++; }
-      else if (q.render[k].t === 'box') { gap = idx; idx++; }
-    }
-    ok(gap >= 2 && gap <= 4, 'seqGeo gap sits in the late half');
-    var r0 = null;
-    for (k = 0; k + 1 < nums.length; k++) {
-      if (nums[k + 1].i === nums[k].i + 1) { r0 = nums[k + 1].v / nums[k].v; break; }
-    }
+    var seq = seqTerms(q.render), pair = firstAdjacentPair(seq.nums);
+    ok(seq.gap >= 2 && seq.gap <= 4, 'seqGeo gap sits in the late half');
+    ok(!!pair, 'seqGeo has two adjacent visible terms');
+    var r0 = pair[1].v / pair[0].v;
     ok(r0 === 2 || r0 === 3, 'seqGeo ratio is 2 or 3');
-    var ref = nums[0];
-    eq(q.answer, ref.v * Math.pow(r0, gap - ref.i),
+    var ref = seq.nums[0];
+    eq(q.answer, ref.v * Math.pow(r0, seq.gap - ref.i),
        'seqGeo recomputes the hidden term from a visible one');
   }
 
@@ -646,8 +697,8 @@ checkGenerators(11, false);
 (function () {
   var rand = makeRng(101), i, q, counts = { 3: 0, 4: 0 };
 
-  // Band mixing: difficulty 3.4 should draw roughly 40% from band 4. 1000
-  // draws keeps the observed fraction's std dev (~0.015) well inside the
+  // Band mixing: difficulty 3.4 should draw roughly 40% from band 4. 800
+  // draws keeps the observed fraction's std dev (~0.017) well inside the
   // 0.07 margin either side of the 0.40 target.
   var N_MIX = 800;
   for (i = 0; i < N_MIX; i++) {
@@ -743,22 +794,15 @@ checkGenerators(11, false);
   ok(s.mastery.div >= 0 && s.mastery.div < 0.1, 'mastery converges towards 0 without going below');
 })();
 
-// The save file keeps its own copy of the ceiling (store.js must stay
-// standalone, it loads before maths.js on some pages). Nothing in the code
-// pins the two together, so pin them here: if Maths.MAX_BAND ever rises
-// without store.js following, every reload would quietly demote a child who
-// had climbed past the old top, and no other test would notice.
-(function () {
-  var high = Store.repairSlot({ band: 99, maths: { difficulty: 99, home: 99 } });
-  eq(high.band, Maths.MAX_BAND, "store's band ceiling matches Maths.MAX_BAND");
-  eq(high.maths.difficulty, Maths.MAX_BAND,
-     "store's difficulty ceiling matches Maths.MAX_BAND");
-  eq(high.maths.home, Maths.MAX_BAND, "store's home ceiling matches Maths.MAX_BAND");
-})();
-
 // ---- Task 4 (over-12): MAX_BAND ceiling ----
 (function () {
   eq(Maths.MAX_BAND, 11, 'the ladder tops out at band 11');
+  // `home` anchors the accelerator. Set it wrong here and a child placed high
+  // can never climb fast, because mayAccelerate is false from their first
+  // answer onward. Store.repairSlot is tested elsewhere; this is the other way
+  // a home is set.
+  eq(Maths.newState(9).home, 9, 'a fresh state anchors home at the chosen band');
+  eq(Maths.newState(9).difficulty, 9, 'and starts there too');
   var s = Maths.newState(11);
   eq(s.difficulty, 11, 'newState accepts a band-11 start');
   eq(Maths.newState(99).difficulty, 11, 'newState clamps above the ceiling');
@@ -805,8 +849,8 @@ checkGenerators(11, false);
            s.difficulty.toFixed(3) + ')');
       }
     }
-    ok(maxStep <= 0.40,
-       'no single answer moves a child half a band or more (largest was ' +
+    ok(maxStep <= 0.35 + 1e-9,
+       'no single answer moves a child more than 0.35 of a band (largest was ' +
        maxStep.toFixed(3) + ')');
     ok(hit8 < 0,
        'a perfect 40-answer run from band 1 does not reach band 8' +
@@ -844,9 +888,8 @@ checkGenerators(11, false);
         firstAccelerated = i + 1;
       }
     }
-    ok(firstAccelerated >= 6,
-       'two-choice answers need six in a row before accelerating (first was ' +
-       firstAccelerated + ')');
+    eq(firstAccelerated, 6,
+       'two-choice answers need six in a row before accelerating');
   })();
 
   // Slow-but-correct answers must NOT accelerate: a long run climbs at the
@@ -916,7 +959,7 @@ checkGenerators(11, false);
 
 // ---- Task 10: invariant sweep (spec 12) ----
 (function () {
-  var rand = makeRng(2024), band, i, q, k, tok, nums, ops, plain, failuresBefore = failures;
+  var rand = makeRng(2024), band, i, q, k, tok, nums, ops, plain;
 
   // The recomputation below may only run on a render made ENTIRELY of these:
   // anything else in the row means the row is not "a op b = box". `3x + 4 =
@@ -1005,7 +1048,6 @@ checkGenerators(11, false);
       }
     }
   }
-  ok(failures === failuresBefore, 'sweep completed with no invariant violations');
 })();
 
 // Fraction comparison is the one question type the sweep above cannot
@@ -1036,34 +1078,98 @@ checkGenerators(11, false);
 
 // ---- Task 11: adaptive convergence (spec 8.7) ----
 (function () {
-  // A synthetic learner of fixed ability on the 1-11 band scale. Chance of
-  // knowing the answer falls off as difficulty exceeds ability; whatever is
-  // not known is guessed from the available choices, which is what makes
-  // floor support (spec 8.6) measurable.
-  function simulate(ability, n, seed) {
-    var rand = makeRng(seed), s = Maths.newState(4);
-    var correct = 0, total = 0, sum = 0, i, known, choices, p, ok_, band, ms;
-    // The [1,11] bound is one property of Maths.update; asserting it on every
-    // one of the n simulated answers re-tests the same clamp with different
-    // numbers. Track the extremes across the whole run and assert once -
-    // identical coverage, without a check per answer.
-    var minD = Infinity, maxD = -Infinity;
-    for (i = 0; i < n; i++) {
-      band = Math.round(s.difficulty);
-      known = 1 / (1 + Math.exp(1.6 * (s.difficulty - ability)));
-      choices = Maths.choiceCount(s.difficulty);
-      p = known + (1 - known) / choices;
-      ok_ = rand() < p;
-      ms = ok_ ? (2500 + 900 * band) * (0.4 + rand() * 1.4) : 9000;
-      s = Maths.update(s, { correct: ok_, elapsedMs: ms, band: band, skill: 'x' });
-      if (s.difficulty < minD) { minD = s.difficulty; }
-      if (s.difficulty > maxD) { maxD = s.difficulty; }
-      if (i > n / 2) { total++; sum += s.difficulty; if (ok_) { correct++; } }
+  // The rest of update()'s shaping, pinned at its boundaries. Each of these
+  // was a surviving mutant: the engine's direction was asserted, its rates
+  // were not, so a tuning constant could move without anything noticing.
+  (function () {
+    function climb(band, n) {
+      var s = Maths.newState(band), exp = 2500 + 900 * band, start = s.difficulty, i;
+      for (i = 0; i < n; i++) {
+        s = Maths.update(s, { correct: true, elapsedMs: exp * 0.5, band: band, skill: 'x' });
+      }
+      return Number((s.difficulty - start).toFixed(4));
     }
-    ok(minD >= 1 && maxD <= 11,
-       'difficulty stays within [1,11] across the run (min ' + minD.toFixed(3) +
-       ', max ' + maxD.toFixed(3) + ')');
-    return { accuracy: correct / total, band: sum / total };
+    // Young bands accelerate at full strength because their content is thin;
+    // from band 4 up the climb is damped. Both sides of that edge, or the
+    // damping could be dropped entirely and nothing would fail.
+    eq(climb(3, 10), 2.5, 'a young band climbs a hot streak at full speed');
+    eq(climb(4, 10), 2.3544, 'and from band 4 up the same streak is damped');
+
+    // One right answer clears the wrong-streak. Without this, wrong-wrong-
+    // right-wrong falls as if it were four wrong in a row.
+    var s = Maths.newState(6), i;
+    for (i = 0; i < 4; i++) {
+      s = Maths.update(s, { correct: false, elapsedMs: 9000, band: 6, skill: 'x' });
+    }
+    eq(s.wrongStreak, 4, 'four wrong answers run the streak up');
+    eq(Maths.update(s, { correct: true, elapsedMs: 3000, band: 6, skill: 'x' }).wrongStreak, 0,
+       'and one quick right answer clears it');
+    eq(Maths.update(s, { correct: true, elapsedMs: 30000, band: 6, skill: 'x' }).wrongStreak, 0,
+       'a slow right answer clears it too: right is right, however long it took');
+
+    // How fast mastery moves: it is what decides how often a weak skill comes
+    // back, so the rate matters, not just the direction.
+    eq(Maths.update(Maths.newState(4),
+         { correct: true, elapsedMs: 9999, band: 4, skill: 'mul' }).mastery.mul, 0.625,
+       'one correct answer moves mastery a quarter of the way to 1');
+
+    // A fully-mastered band must still spread across its skills. The weights
+    // are `1 - mastery + 0.1`: without that floor every weight is zero once a
+    // child has nailed the band, the weighted 60% of picks all collapse onto
+    // the first generator, and only the uniform 40% keeps the others alive.
+    // Counting distinct skills would not see that - the shares do.
+    var full = Maths.newState(5), N_PICK = 3000;
+    Maths._BANDS[5].forEach(function (g) { full.mastery[g(function () { return 0.5; }).skill] = 1; });
+    var picked = {}, r2 = makeRng(4242);
+    for (i = 0; i < N_PICK; i++) {
+      var sk = Maths.make(5, full, r2).skill;
+      picked[sk] = (picked[sk] || 0) + 1;
+    }
+    eq(Object.keys(picked).length, Maths._BANDS[5].length,
+       'every skill in a fully-mastered band is still offered');
+    Object.keys(picked).forEach(function (sk) {
+      var share = picked[sk] / N_PICK;
+      ok(share > 0.20 && share < 0.50,
+         'mastered band still spreads: ' + sk + ' took ' + (share * 100).toFixed(1) + '%');
+    });
+  })();
+
+  // What counts as a fast, ordinary or slow answer, pinned at the boundary.
+  // The pace is measured against expectedMs for the band of the QUESTION, not
+  // the band the child sits at, so a child reaching up to a hard question is
+  // given the time that question deserves. Nothing else pins expectedMs, and
+  // nothing else pins where the two thresholds fall.
+  (function () {
+    var BAND = 4, exp = 2500 + 900 * BAND;   // 6100ms
+    function step(ms, band) {
+      var s = Maths.newState(4);
+      return Number((Maths.update(s, { correct: true, elapsedMs: ms,
+        band: typeof band === 'number' ? band : BAND, skill: 'x' }).difficulty - 4).toFixed(4));
+    }
+    eq(step(exp * 0.6 - 1), 0.1, 'an answer just inside fast climbs by the full step');
+    eq(step(exp * 0.6 + 1), 0.075, 'and just outside it climbs by the ordinary step');
+    eq(step(exp * 1.4 - 1), 0.075, 'an answer just inside ordinary still climbs by it');
+    eq(step(exp * 1.4 + 1), 0.04, 'and just outside it climbs by the slow step');
+    // The same wall-clock answer reads as fast on a harder question, because
+    // the harder question is allowed more time.
+    eq(step(exp * 0.6 + 1, 11), 0.1, 'a harder question is given the time it deserves');
+  })();
+
+  // The synthetic learner lives in maths.js, beside the engine it exercises,
+  // so the maths lab runs the same one. A lab that modelled a child
+  // differently from the suite would answer the same question differently
+  // with no way to tell which was lying.
+  //
+  // The [1,11] bound is one property of Maths.update; asserting it on every
+  // one of the n simulated answers would re-test the same clamp with
+  // different numbers, so simulate() tracks the extremes and this asserts
+  // once - identical coverage, without a check per answer.
+  function simulate(ability, n, seed) {
+    var r = Maths.simulate(ability, n, makeRng(seed));
+    ok(r.minD >= 1 && r.maxD <= 11,
+       'difficulty stays within [1,11] across the run (min ' + r.minD.toFixed(3) +
+       ', max ' + r.maxD.toFixed(3) + ')');
+    return r;
   }
 
   var abilities = [1.5, 3, 4.5, 6, 7.5, 9, 10.5], i, r;
@@ -1134,7 +1240,7 @@ checkGenerators(11, false);
     return Math.abs((px - x1) * dy - (py - y1) * dx) / len;
   }
 
-  var ballX = Formation.BALL_HOME_X, ballY = Formation.BALL_HOME_Y;
+  var ballX = Formation.GOAL_X, ballY = Formation.HALF_Y;
   var topGoalX = Formation.GOAL_X, topGoalY = Formation.TOP_Y;
   var botGoalX = Formation.GOAL_X, botGoalY = Formation.BOT_Y;
   var R = Formation.PLAYER_R, minSep = 2 * R;
@@ -1142,8 +1248,8 @@ checkGenerators(11, false);
 
   var rand = makeRng(20260802), i, f, all, a, b;
   // Placement zones are constructed so these invariants hold by
-  // construction (see formation.js), not by rejection sampling - a few
-  // hundred draws exercises the zone arithmetic across its random range
+  // construction (see formation.js), not by rejection sampling - forty
+  // draws exercises the zone arithmetic across its random range
   // thoroughly without re-testing the same guarantee thousands of times.
   var N = 40;
   for (i = 0; i < N; i++) {
@@ -1155,11 +1261,18 @@ checkGenerators(11, false);
     all = f.human.concat(f.ai);
 
     // No player on the ball->goal line (either goal), with real margin.
+    // Checked against an absolute bound, not against MIN_LINE_DIST itself:
+    // comparing a constant with itself passes at every value, and this one
+    // guards both the straight-flick kickoff exploit and a physical overlap.
     for (a = 0; a < all.length; a++) {
-      ok(perpDist(all[a][0], all[a][1], ballX, ballY, topGoalX, topGoalY) > Formation.MIN_LINE_DIST,
-         'player clears the ball->top-goal line');
-      ok(perpDist(all[a][0], all[a][1], ballX, ballY, botGoalX, botGoalY) > Formation.MIN_LINE_DIST,
-         'player clears the ball->bottom-goal line');
+      ok(perpDist(all[a][0], all[a][1], ballX, ballY, topGoalX, topGoalY) > ballClear,
+         'player clears the ball->top-goal line by more than the two radii');
+      ok(perpDist(all[a][0], all[a][1], ballX, ballY, botGoalX, botGoalY) > ballClear,
+         'player clears the ball->bottom-goal line by more than the two radii');
+      ok(perpDist(all[a][0], all[a][1], ballX, ballY, topGoalX, topGoalY) > 50,
+         'player clears the ball->top-goal line by the tuned margin');
+      ok(perpDist(all[a][0], all[a][1], ballX, ballY, botGoalX, botGoalY) > 50,
+         'player clears the ball->bottom-goal line by the tuned margin');
     }
 
     // No overlaps: player-player, and player-ball.
@@ -1202,7 +1315,7 @@ checkGenerators(11, false);
     ok(hd > hf1 && hd > hf2, 'human formation has one player deeper than the other two');
   }
 
-  // Sanity: 4000 random formations actually vary, not a constant fallback.
+  // Sanity: 200 random formations actually vary, not a constant fallback.
   var seen = {}, distinctCount = 0;
   rand = makeRng(555);
   for (i = 0; i < 200; i++) {
@@ -1242,8 +1355,16 @@ checkGenerators(11, false);
   (function () {
     var near = { x: 300, y: 300 };  // 150 above, aligned
     var far = { x: 300, y: 150 };   // 300 above, equally aligned
-    var chosen = Formation.chooseShooter([far, near], ball, 828);
-    ok(chosen === near, 'ties on alignment are broken by picking the nearer player');
+    ok(Formation.chooseShooter([far, near], ball, 828) === near,
+       'ties on alignment are broken by picking the nearer player');
+    // Both orders: listed first, `far` would win under a loosened comparison
+    // and this test would not notice.
+    ok(Formation.chooseShooter([near, far], ball, 828) === near,
+       'and the order they are listed in does not decide it');
+    // A player standing on the ball has no direction to be aligned with, and
+    // must never be preferred over one that does.
+    ok(Formation.chooseShooter([{ x: 300, y: 450 }, { x: 300, y: 300 }], ball, 828).y === 300,
+       'a player sitting on the ball is not the best shooter');
   })();
 
   // Direction-agnostic: the same logic works aiming at the top goal too.
@@ -1346,7 +1467,6 @@ checkGenerators(11, false);
 
 // ---- Storage: a corrupt save must never brick the game ----
 (function () {
-  var Store = require('./store.js');
 
   var fresh = Store.emptyState();
   eq(fresh.slots.length, 3, 'three slots');
@@ -1380,11 +1500,38 @@ checkGenerators(11, false);
 
   // A save written before ages moved into the team editor has no band. Reading
   // that as 0 would silently switch maths off for every existing child.
-  eq(Store.repair({ slots: [{ emoji: '⚽' }] }).slots[0].band, Store.DEFAULT_BAND,
+  // Pinned to the number, not to Store.DEFAULT_BAND: comparing the constant
+  // with itself passes even if it becomes 0, which would silently switch maths
+  // off for every new slot.
+  eq(Store.DEFAULT_BAND, 3, 'a slot made without touching the age row sits mid-ladder');
+  eq(Store.repair({ slots: [{ emoji: '⚽' }] }).slots[0].band, 3,
      'a bandless legacy slot keeps the default rather than becoming no-maths');
   eq(Store.repair({ slots: [{ band: 0 }] }).slots[0].band, 0,
      'an explicit no-maths choice survives');
   eq(Store.repair({ slots: [{ band: 6 }] }).slots[0].band, 6, 'a chosen band survives');
+
+  // A hand-edited save must not be able to widen the team card. The name field
+  // stops at 12 characters and a badge is one emoji, so repair truncates both
+  // rather than trusting what it reads.
+  eq(Store.repairSlot({ name: 'Wanderers Athletic FC' }).name.length, 12,
+     'an over-long name is cut to what the field holds');
+  eq(Store.repairSlot({ emoji: '\u{1F981}\u{1F981}\u{1F981}' }).emoji.length, 4,
+     'a badge is cut to one emoji');
+
+  // Which slot a child is on has to survive a reload, or a sibling sharing the
+  // tablet would find themselves in the wrong team every morning.
+  eq(Store.repair({ active: 2, slots: [] }).active, 2, 'the chosen slot survives');
+  eq(Store.repair({ active: 9, slots: [] }).active, 0, 'a slot out of range reads as the first');
+  eq(Store.repair({ active: 'x', slots: [] }).active, 0, 'a junk slot reads as the first');
+
+  // `unlocked` is what stops a cosmetic being announced twice; a junk entry in
+  // it would be compared against real ids forever.
+  eq(require('./names.js').country('\u{1F1FF}\u{1F1FF}'), '',
+     'an unknown badge has no country name, not the word undefined');
+
+  var badUnlocked = Store.repairSlot({ unlocked: ['gold', 7, null, 'night', {}] }).unlocked;
+  eq(badUnlocked.length, 2, 'non-string unlock ids are dropped');
+  eq(badUnlocked.join(','), 'gold,night', 'the real ids survive in order');
 
   // Every stat counter repairs the same way, including ones a save predates.
   var STATS = ['correct', 'answered', 'matches', 'wins', 'goalsFor', 'goalsAgainst', 'ms',
@@ -1410,10 +1557,13 @@ checkGenerators(11, false);
   st.slots[1].emoji = '\uD83E\uDD81'; st.slots[1].name = '';
   st.slots[1].maths = { difficulty: 4.25, mastery: { mul: 0.7 } };
   st.slots[1].trophies = 2;
+  st.slots[1].cup = { season: 2, index: 3 };
   var back = Store.repair(JSON.parse(JSON.stringify(st)));
   eq(back.slots[1].emoji, st.slots[1].emoji, 'emoji survives a round trip');
   eq(back.slots[1].name, '', 'an empty name stays empty');
   eq(back.slots[1].maths.difficulty, 4.25, 'difficulty survives');
+  eq(back.slots[1].maths.mastery.mul, 0.7,
+     'mastery survives: the engine keeps asking what the child is weak at');
 
   // `home` bounds how far acceleration may carry a child, so it has to survive
   // a reload; a save written before it existed falls back to where it sits.
@@ -1425,6 +1575,14 @@ checkGenerators(11, false);
   eq(Store.repairSlot({ maths: { difficulty: 3, home: 'x' } }).maths.home, 3,
      'a junk home falls back rather than poisoning the reach');
   eq(back.slots[1].trophies, 2, 'trophies survive');
+  // Where the cup stands is what pulls a child back tomorrow, so it has to
+  // come back exactly as it went in.
+  eq(back.slots[1].cup.season, 2, 'the cup season survives');
+  eq(back.slots[1].cup.index, 3, 'the round the cup is on survives');
+  eq(Store.repairSlot({ cup: { season: -4, index: -9 } }).cup.index, 0,
+     'a negative cup index repairs to the start, not to a draw already decided');
+  eq(Store.repairSlot({ cup: { season: -4, index: -9 } }).cup.season, 0,
+     'and a negative season repairs to the first');
 
   // ---- Over-12: saves carry the extended bands ----
   (function () {
@@ -1456,15 +1614,40 @@ checkGenerators(11, false);
   st.slots[2].maths = { difficulty: 7, mastery: {} };
   Store.clearSlot(st, 0);
   eq(st.slots[0].maths, null, 'clearing a slot empties it');
+  // A brand-new team must already own what it is wearing, or its first unlock
+  // reveals something it has been using since the first whistle.
+  var freshSlot = Store.emptySlot(), owned = require('./locker.js').earned(freshSlot);
+  Object.keys(freshSlot.equipped).forEach(function (kind) {
+    ok(owned.indexOf(freshSlot.equipped[kind]) !== -1,
+       'a new team already owns its ' + kind);
+  });
+  eq(Store.clearSlot(Store.emptyState(), 7).slots.length, 3,
+     'clearing a slot that does not exist does not grow the row');
+  eq(Store.repair({ slots: [{}, {}, {}, {}, {}] }).slots.length, 3,
+     'a hand-edited save with extra slots still repairs to three');
   eq(st.slots[2].maths.difficulty, 7, 'clearing one slot leaves the others alone');
 })();
 
 // ---- The locker: cosmetics earned by playing ----
 (function () {
   var Locker = require('./locker.js');
-  var Store = require('./store.js');
 
   ok(typeof Locker === 'object' && Locker !== null, 'Locker module loads');
+  // byId is what turns a stored id back into an item to paint.
+  eq(Locker.byId('gold').at, 1000, 'byId finds the item it is asked for');
+  eq(Locker.byId('classic').at, 0, 'including a default');
+  eq(Locker.byId('nope'), null, 'and returns nothing for an id that is not one');
+
+  eq(Locker.MILESTONES.map(function (m) { return m.at; }).join(','),
+     '10,25,50,100,175,275,400,550,750,1000',
+     'the reward schedule stays front-loaded: the first one lands in a match or two');
+
+  // The full-time card reveals unlocks in the order they were earned, not in
+  // catalogue order - that is what fresh()'s sort is for.
+  eq(require('./locker.js').fresh({ stats: { correct: 1000 }, trophies: 1, unlocked: [] })
+       .join(','),
+     'beach,stripes,cap,night,stars,crown,snow,flames,party,space,gold',
+     'unlocks are revealed in earning order');
 
   // A minimal slot, the only shape the ledger is allowed to depend on.
   function slot(correct, trophies, unlocked) {
@@ -1549,8 +1732,16 @@ checkGenerators(11, false);
 
   eq(T.COUNT, 4, 'four rounds: 16 -> 8 -> 4 -> 2 -> 1');
   eq(T.SLOTS, 16, 'sixteen entrants');
+  eq(T.youAt(T.bracket(1, null), 3), -1,
+     'a round the child has not reached reports no place, not place zero');
   eq(T.DRAW.length, 16, 'the draw fills every place');
-  eq(T.OPPONENTS.length, 4, 'one opponent per round');
+
+  // The child's opponent in a round: the other half of their pair, read out of
+  // the same draw the game itself paints.
+  function foeAt(round, avoid) {
+    var cols = T.bracket(round, avoid);
+    return cols[round][T.youAt(cols, round) ^ 1];
+  }
 
   // Every seed appears exactly once, and seed 2 is the child's place.
   var seen = {}, d;
@@ -1560,6 +1751,11 @@ checkGenerators(11, false);
     ok(T.DRAW[d] >= 1 && T.DRAW[d] <= 16, 'seed ' + T.DRAW[d] + ' is in range');
   }
   ok(!T.BY_SEED[2], 'seed 2 has no country: it is the child');
+  // Which follows only because the child sits on the seed with no flag. If
+  // they moved, the draw would paint an empty box where an opponent belongs.
+  T.bracket(0, null)[0].forEach(function (e, n) {
+    ok(e.you || typeof e.flag === 'string', 'entrant ' + n + ' is the child or carries a flag');
+  });
   for (d = 1; d <= 16; d++) {
     if (d === 2) { continue; }
     ok(typeof T.BY_SEED[d] === 'string' && T.BY_SEED[d].length > 0,
@@ -1569,20 +1765,21 @@ checkGenerators(11, false);
   // The point of a seeded draw: the child's opponents get harder, and the top
   // seed is the one waiting in the final. If this breaks, the whole difficulty
   // curve is a lie, because SKILL rises regardless.
-  var prevSeed = 99, o;
+  var prevSeed = 99, o, foe;
   for (o = 0; o < T.COUNT; o++) {
-    ok(T.OPPONENTS[o].seed < prevSeed,
+    foe = foeAt(o);
+    ok(!!foe, 'round ' + o + ' has an opponent');
+    ok(foe.seed < prevSeed,
        'round ' + o + ' opponent is a better seed than the last');
-    prevSeed = T.OPPONENTS[o].seed;
+    prevSeed = foe.seed;
   }
-  eq(T.OPPONENTS[T.COUNT - 1].seed, 1, 'the top seed waits in the final');
-  eq(T.crestFor(0).flag, T.OPPONENTS[0].flag, 'crestFor follows the draw');
+  eq(foeAt(T.COUNT - 1).seed, 1, 'the top seed waits in the final');
 
   // A fresh draw shows every entrant and decides nothing.
   var cols = T.bracket(0);
   eq(cols.length, 5, 'five columns: entrants plus one per round');
   eq(cols[0].length, 16, 'sixteen in the first column');
-  var c, i, live;
+  var c, i;
   for (c = 1; c < cols.length; c++) {
     eq(cols[c].length, cols[c - 1].length / 2, 'column ' + c + ' halves the last');
     for (i = 0; i < cols[c].length; i++) {
@@ -1603,8 +1800,6 @@ checkGenerators(11, false);
       }
     }
     // The child survives every round they have won, and exactly one place.
-    var at = T.youAt(b, played);
-    ok(at >= 0, 'the child is in column ' + played + ' at played=' + played);
     var yous = b[played].filter(function (x) { return x && x.you; }).length;
     eq(yous, 1, 'the child appears once per column');
   });
@@ -1617,9 +1812,6 @@ checkGenerators(11, false);
   // A beaten team is marked out in the column it lost from, and is not carried
   // forward. Without this the tree would show eliminated countries as alive.
   var mid = T.bracket(2);
-  for (i = 0; i < mid[0].length; i++) {
-    ok(mid[0][i].out !== undefined || false || true, 'first column resolves');
-  }
   var outCount = mid[0].filter(function (x) { return x.out; }).length;
   eq(outCount, 8, 'eight are knocked out in the first round');
   eq(mid[1].filter(function (x) { return x.out; }).length, 4,
@@ -1642,7 +1834,9 @@ checkGenerators(11, false);
     ok(sk <= 0.95, 'round ' + i + ' is never perfect');
     prev = sk;
   }
-  for (var season = 0; season < 40; season++) {
+  // The season bonus is Math.min(0.15, season * 0.05): it saturates at 3, so
+  // seasons past 4 re-check values already seen.
+  for (var season = 0; season < 5; season++) {
     for (i = 0; i < T.COUNT; i++) {
       ok(T.skillFor(i, season) <= 0.95, 'cap holds in season ' + season);
       ok(T.skillFor(i, season) >= T.skillFor(i, 0) - 1e-9, 'seasons never get easier');
@@ -1662,11 +1856,22 @@ checkGenerators(11, false);
   eq(after.season, 2, 'and the season increments');
   ok(T.isComplete(after, T.COUNT - 1), 'completing the final is detectable');
   ok(!T.isComplete({ season: 0, index: 2 }, 1), 'mid-cup is not complete');
+  ok(!T.isComplete({ season: 0, index: 0 }, 0),
+     'losing the first round is not winning the cup');
+
+  // An age band outside the ladder must clamp, not read off the end of
+  // BAND_FLOOR - undefined there makes the opponent's whole skill NaN.
+  eq(T.skillFloor(11), 0.80, 'band 11 sits on the highest floor');
+  eq(T.skillFloor(12), 0.80, 'one band past the top reads as the top, not off the end');
+  eq(T.skillFloor(99), 0.80, 'and so does a band far past it');
+  eq(T.skillFloor(0), 0, 'the young bands have no floor');
+  eq(T.skillFloor(-1), 0, 'and a band below the bottom reads as the bottom');
+  ok(isFinite(T.skillFor(0, 0, 99)) && isFinite(T.skillFor(0, 0, -1)),
+     'an out-of-range band still yields a real skill');
 
   // Out-of-range indices must not throw or return junk.
   [-5, 99].forEach(function (bad) {
     ok(isFinite(T.skillFor(bad, 0)), 'skill is finite for index ' + bad);
-    ok(!!T.crestFor(bad), 'an opponent exists for index ' + bad);
     ok(typeof T.roundIcon(bad) === 'string', 'a round icon exists for index ' + bad);
   });
 })();
@@ -1702,22 +1907,13 @@ checkGenerators(11, false);
   eq(T.skillFor(2, 0, 3), 0.70, 'band 3 round 3 is unchanged');
   eq(T.skillFor(3, 0, 3), 0.95, 'band 3 final is unchanged');
 
-  // Band 11 opens at its floor and still climbs from there to the final —
-  // the blend restores a rising ladder instead of three flat rounds.
+  // Band 11 opens at its floor and still climbs from there to the final: the
+  // ladder is strictly increasing round over round even for a floored band,
+  // which is the property `max` broke and the blend exists to restore.
   eq(T.skillFor(0, 0, 11), 0.8315789473684211, 'band 11 round 1 starts at the floor');
   eq(T.skillFor(1, 0, 11), 0.8710526315789474, 'band 11 round 2 has climbed');
   eq(T.skillFor(2, 0, 11), 0.9105263157894736, 'band 11 round 3 has climbed again');
   eq(T.skillFor(3, 0, 11), 0.95, 'band 11 final is the tuned ceiling');
-
-  // The ladder is strictly increasing round over round for a floored band —
-  // this is the property `max` broke and the blend exists to restore.
-  var prevBand11 = -1;
-  for (i = 0; i < T.COUNT; i++) {
-    var bandVal = T.skillFor(i, 0, 11);
-    ok(bandVal > prevBand11, 'band 11 round ' + i + ' is harder than the last');
-    prevBand11 = bandVal;
-  }
-  ok(T.skillFor(0, 0, 11) >= 0.80, 'band 11 round 1 is at or above its floor');
 
   // Band 9 and band 10 are blended too: the whole ladder is rescaled into the
   // space above their own floor, not just the rounds the floor used to win.
@@ -1728,16 +1924,25 @@ checkGenerators(11, false);
   eq(T.skillFor(0, 0, 10), 0.7131578947368421, 'band 10 round 1 is lifted above its own floor');
   eq(T.skillFor(2, 0, 10), 0.8710526315789473, 'band 10 round 3 is lifted too');
 
-  // The cap survives a floor and a season bonus at once.
-  for (var season = 0; season < 40; season++) {
+  // The cap survives a floor and a season bonus at once. The season bonus
+  // saturates at 3, and every band below 9 has a zero floor, so seasons 0-4
+  // and the bands either side of that edge cover every distinct case.
+  var floored = [0, 8, 9, 10, 11];
+  for (var season = 0; season < 5; season++) {
     for (i = 0; i < T.COUNT; i++) {
-      for (var band = 0; band <= 11; band++) {
-        var v = T.skillFor(i, season, band);
-        ok(v <= 0.95, 'cap holds at round ' + i + ' season ' + season + ' band ' + band);
+      for (var bi = 0; bi < floored.length; bi++) {
+        var v = T.skillFor(i, season, floored[bi]);
+        ok(v <= 0.95, 'cap holds at round ' + i + ' season ' + season + ' band ' + floored[bi]);
         ok(v >= T.skillFor(i, season), 'a floor never weakens an opponent');
       }
     }
   }
+  // Seasons 1 and 2 are where the step is visible; past 3 the cap hides it, so
+  // a test that only looks at high seasons cannot see the step size at all.
+  eq(T.skillFor(0, 1, 0).toFixed(4), '0.2500', 'season 1 lifts round 1 by one step');
+  eq(T.skillFor(0, 2, 0).toFixed(4), '0.3000', 'season 2 lifts it by two');
+  eq(T.skillFor(0, 3, 0).toFixed(4), '0.3500', 'season 3 reaches the cap');
+  eq(T.skillFor(0, 9, 0).toFixed(4), '0.3500', 'and no season goes past it');
   eq(T.skillFor(3, 20, 11), 0.95, 'floor plus a full season bonus still caps');
   eq(T.skillFor(0, 20, 11), 0.8552631578947368, 'a season bonus still lifts round 1 through the blend');
 
@@ -1746,9 +1951,6 @@ checkGenerators(11, false);
     for (i = 0; i < T.COUNT; i++) {
       eq(T.skillFor(i, season), T.skillFor(i, season, 0),
          'no band argument reads as band 0 at round ' + i + ' season ' + season);
-      eq(T.skillFor(i, season), T.skillFor(i, season, undefined),
-         'an undefined band matches no band at round ' + i + ' season ' + season);
-      ok(T.skillFor(i, season) <= 0.95, 'the old two-arg cap still holds');
     }
   }
   eq(T.skillFor(0, 0), 0.20, 'the two-arg first round is still 0.20');
@@ -1816,14 +2018,21 @@ checkGenerators(11, false);
   // The star tab: what a child sees before tapping anything. It is a shortcut
   // over the continents, so everything on it must also still be on its own
   // continent — a shortcut that moved a country would be a trap.
+  // TABS is the array the picker paints, and tabOf's `region + 1` is only
+  // correct while it is the star followed by the continents in order.
   eq(F.TABS.length, F.REGIONS.length + 1, 'the star sits in front of the world');
   eq(F.TABS[0].flags, F.TOP, 'the star is the tab that opens first');
+  F.REGIONS.forEach(function (r, n) {
+    eq(F.TABS[n + 1], r, 'tab ' + (n + 1) + ' is region ' + r.id);
+  });
   // Only the star is marked as the star. It used to share the name `lead` with
   // the continents' own lead lists, which quietly marked every tab.
   ok(!!F.TABS[0].star, 'the star is marked as a different kind of tab');
   F.REGIONS.forEach(function (r) {
     ok(!r.star, 'continent ' + r.id + ' is not marked as the star');
   });
+  eq(F.TOP.length, 30, 'the star tab holds thirty flags');
+  eq(F.TOP[0], '\u{1F1F8}\u{1F1F0}', 'and opens with the one the screen was built for');
   ok(F.TOP.length <= 30, 'the top view fits a phone without scrolling: ' + F.TOP.length);
   var inTop = {};
   F.TOP.forEach(function (f) {
@@ -1852,32 +2061,55 @@ checkGenerators(11, false);
   // merge must lose nothing and invent nothing.
   F.REGIONS.forEach(function (r) {
     eq(r.flags.length, r.alpha.length, r.id + ' keeps every country it had');
-    r.alpha.forEach(function (f) {
-      ok(r.flags.indexOf(f) !== -1, r.id + ' still lists ' + f);
-    });
     r.lead.forEach(function (f, n) {
       eq(r.flags[n], f, r.id + ' leads with its well-known countries');
     });
   });
 
-  // Where the picker opens. Anything on the star opens on the star; anything
-  // else opens on the continent that actually holds it, so a child already
-  // wearing Tuvalu is not made to hunt for it again.
+  // Which continent a country lands on. The regions are slices of
+  // Names.COUNTRIES bounded by each region's `from` marker, so membership is
+  // derived rather than written down: a marker on the wrong country would move
+  // every flag before it to the neighbouring tab with nothing to say so. These
+  // name the answer outright instead of recomputing tabOf's own body, which is
+  // what the old Tuvalu check did — and why it held for every country in the
+  // world, including ones that do not exist.
+  [['\u{1F1EB}\u{1F1F7}', 'eu', 'France'], ['\u{1F1E9}\u{1F1FF}', 'af', 'Algeria'],
+   ['\u{1F1E6}\u{1F1EC}', 'am', 'Antigua'], ['\u{1F1E6}\u{1F1EB}', 'as', 'Afghanistan'],
+   ['\u{1F1E6}\u{1F1FA}', 'oc', 'Australia'], ['\u{1F1F9}\u{1F1FB}', 'oc', 'Tuvalu'],
+   ['\u{1F1FB}\u{1F1E6}', 'eu', 'Vatican City'], ['\u{1F1FF}\u{1F1FC}', 'af', 'Zimbabwe'],
+   ['\u{1F1FB}\u{1F1EA}', 'am', 'Venezuela'], ['\u{1F1FE}\u{1F1EA}', 'as', 'Yemen']
+  ].forEach(function (row) {
+    eq(F.REGIONS[F.regionOf(row[0])].id, row[1], row[2] + ' is on ' + row[1]);
+  });
+  // The first country of every stretch, so a marker that slips by one in
+  // either direction is caught at both ends of the boundary it moved.
+  ['\u{1F1E6}\u{1F1F1}', '\u{1F1E9}\u{1F1FF}', '\u{1F1E6}\u{1F1EC}',
+   '\u{1F1E6}\u{1F1EB}', '\u{1F1E6}\u{1F1FA}'].forEach(function (f, n) {
+    eq(F.regionOf(f), n, N.country(f) + ' opens region ' + n);
+  });
+
+  // Anything on the star opens on the star, whichever continent also holds it.
   eq(F.tabOf('\u{1F1EA}\u{1F1F8}'), 0, 'Spain opens on the star');
-  eq(F.tabOf('\u{1F1F9}\u{1F1FB}'), F.regionOf('\u{1F1F9}\u{1F1FB}') + 1,
-     'Tuvalu opens on Oceania');
+  eq(F.tabOf('\u{1F1F9}\u{1F1FB}'), 5, 'Tuvalu opens on the Oceania tab');
   eq(F.tabOf('\u{1F981}'), 0, 'a lion is not a country, so it opens on the star');
 
-  // The two halves of the data must not drift: a flag with no name fills the
-  // team name field with an invented word, and a name with no flag is a
-  // country nobody can reach.
-  for (i = 0; i < all.length; i++) {
-    ok(!!N.country(all[i]), 'flag ' + all[i] + ' has a country name');
-  }
+  // Every country in names.js reaches the picker. The picker slices its
+  // continents out of that same table, so the reverse cannot fail by
+  // construction — but a `from` marker pointing at the wrong country would
+  // silently drop every flag before it, which this does catch.
   var k;
   for (k in N.COUNTRIES) {
     ok(F.isFlag(k), N.COUNTRIES[k] + ' is reachable in the picker');
   }
+  // And names one. An empty name passes every length check but hands the child
+  // an invented word where they picked their own country.
+  F.all().forEach(function (f) {
+    ok(N.country(f).length > 0, 'choosable flag ' + f + ' names a country');
+  });
+  for (k = 1; k <= 16; k++) {
+    if (k !== 2) { ok(N.country(T.BY_SEED[k]).length > 0, 'cup seed ' + k + ' names a country'); }
+  }
+  ok(N.country(T.RESERVE).length > 0, 'and so does the reserve');
 
   // The tabs are the only navigation this screen has, so each needs its own
   // glyph and its own flags.
@@ -1898,30 +2130,19 @@ checkGenerators(11, false);
   // are the best-seeded sides in the game's own draw, so a child can choose to
   // be any team they would otherwise have to beat. Eleven of them, because the
   // twelfth tile in that row is the door into this screen.
+  //
+  // flags.js now reads them out of Tournament.BY_SEED, so "best-seeded, in
+  // seed order, nothing skipped over" is true by construction and needs no
+  // test. What still needs saying is the count the row was sized for, and the
+  // one country the whole screen exists because of.
   eq(F.QUICK.length, 11, 'the card carries eleven countries and one door');
-  var seeds = {}, sd;
-  for (sd = 1; sd <= 16; sd++) {
-    if (sd !== 2) { seeds[T.BY_SEED[sd]] = sd; }
-  }
-  var worstOnCard = 0;
-  F.QUICK.forEach(function (q) {
-    ok(!!seeds[q], N.country(q) + ' on the card is one of the cup\'s own sides');
-    if (seeds[q] > worstOnCard) { worstOnCard = seeds[q]; }
-  });
-  // Best-seeded, not just any eleven of the sixteen: nothing left off the card
-  // may outrank something on it.
-  for (sd = 1; sd < worstOnCard; sd++) {
-    if (sd === 2) { continue; }
-    ok(F.QUICK.indexOf(T.BY_SEED[sd]) !== -1,
-       'seed ' + sd + ' (' + N.country(T.BY_SEED[sd]) + ') is not skipped over');
-  }
-  // The whole request started here: Spain must be one tap from the card, not
-  // behind the door.
+  eq(F.QUICK[0], T.BY_SEED[1], 'the card opens with the top seed');
   ok(F.QUICK.indexOf('\u{1F1EA}\u{1F1F8}') !== -1, 'Spain is on the card itself');
 
   // The bug this all exists for: Spain is choosable, and it is called Spain.
   var spain = '\u{1F1EA}\u{1F1F8}';
   ok(F.isFlag(spain), 'Spain can be chosen');
+  ok(!F.isFlag('\u{1F981}'), 'a lion is not a country, so it is not a flag');
   eq(N.forBadge(spain, makeRng(1)), 'Spain', 'and the team is called Spain');
 
   // Every cup opponent, and the reserve that replaces a clashing one, must be
@@ -1947,7 +2168,8 @@ checkGenerators(11, false);
       flags[row[n].flag] = true;
     }
     for (n = 0; n < T.COUNT; n++) {
-      ok(T.crestFor(n, mine).flag !== mine,
+      var played = T.bracket(n, mine);
+      ok(played[n][T.youAt(played, n) ^ 1].flag !== mine,
          'round ' + n + ' opponent is not ' + mine + ' itself');
     }
   });
@@ -1961,6 +2183,131 @@ checkGenerators(11, false);
   eq(Maths.rating(0.2), 47, 'rating clamps below the floor');
   eq(Maths.rating(20), 99, 'rating clamps above the ceiling');
   eq(Maths.rating(undefined), 47, 'rating tolerates a missing difficulty');
+})();
+
+// ---- Persistence, through the storage layer itself ----
+// Everything above tests repair(); this tests load() and save(), which are
+// what a child's device actually calls. A save that fails to repair, or that
+// throws on corrupt JSON, is the difference between a game that starts and a
+// game that never opens again.
+(function () {
+  var KEY = 'ffc.v1';
+
+  // A save from an older build must come back repaired, not raw.
+  storage = fakeStorage({ 'ffc.v1': JSON.stringify({ v: 1, slots: [{ name: 'Bo' }] }) });
+  var old = Store.load();
+  eq(old.slots[0].name, 'Bo', 'an old save keeps what it had');
+  eq(old.slots[0].equipped.ball, 'classic', 'and gains what it never knew about');
+  eq(old.slots.length, 3, 'and is widened to three slots');
+  ok(old.slots[0].stats && old.slots[0].stats.correct === 0, 'with its counters started at zero');
+
+  // Corrupt or truncated JSON must start clean, not throw: a child cannot
+  // clear a save that stops the game from opening.
+  ['{"v":1,', 'not json at all', ''].forEach(function (junk) {
+    storage = fakeStorage({ 'ffc.v1': junk });
+    var st = Store.load();
+    eq(st.active, 0, 'a corrupt save (' + junk.slice(0, 8) + ') starts clean');
+    eq(st.slots.length, 3, 'and still has three slots');
+  });
+
+  // Nothing stored at all is the first-run case.
+  storage = fakeStorage({});
+  eq(Store.load().slots.length, 3, 'a device with no save gets a fresh one');
+
+  // A round trip through the real reader and writer.
+  storage = fakeStorage({});
+  var out = Store.emptyState();
+  out.active = 2;
+  out.slots[2].emoji = '\u{1F1F8}\u{1F1F0}';
+  out.slots[2].cup = { season: 3, index: 2 };
+  ok(Store.save(out), 'save reports success when it wrote');
+  var back = Store.load();
+  eq(back.active, 2, 'the active slot survives the round trip');
+  eq(back.slots[2].emoji, '\u{1F1F8}\u{1F1F0}', 'and so does the badge');
+  eq(back.slots[2].cup.index, 2, 'and the round the cup is on');
+
+  // activeSlot follows `active`, or siblings overwrite each other's teams.
+  eq(Store.activeSlot(back).emoji, '\u{1F1F8}\u{1F1F0}', 'activeSlot reads the chosen slot');
+  back.active = 0;
+  eq(Store.activeSlot(back).emoji, '', 'and follows it when it changes');
+
+  // A write that fails mid-session reports it rather than pretending.
+  storage = fakeStorage({}, { throwOnSet: true });
+  eq(Store.save(Store.emptyState()), false, 'save reports failure when storage refuses');
+
+  // Private browsing, from the first moment: store.js probes localStorage once
+  // and caches the answer, so reaching the in-memory fallback means loading the
+  // module against a storage that was already refusing. That is the real case -
+  // a device where it never worked, not one where it stopped.
+  function freshStore(withStorage) {
+    storage = withStorage;
+    delete require.cache[require.resolve('./store.js')];
+    return require('./store.js');
+  }
+  [['a storage that throws', fakeStorage({}, { throwOnSet: true })],
+   ['no storage at all', null]].forEach(function (row) {
+    var S = freshStore(row[1]);
+    var mem = S.emptyState();
+    mem.slots[0].emoji = '\u{1F981}';
+    eq(S.save(mem), false, 'save reports failure with ' + row[0]);
+    eq(S.load().slots[0].emoji, '\u{1F981}',
+       'and the session keeps going in memory with ' + row[0]);
+    eq(S.load().slots.length, 3, 'on a state that is still a real save file');
+  });
+  // Put the shared module back the way the rest of the suite expects it.
+  delete require.cache[require.resolve('./store.js')];
+  storage = fakeStorage({});
+  Store = require('./store.js');
+})();
+
+// ---- The question renderer ----
+// What a child actually reads. These are symbols and pictures, not words, so
+// a wrong glyph is not a typo: it makes the question unanswerable. Every token
+// type Maths.make can emit is checked against what it must draw.
+(function () {
+  function tok(t) { return Quiz.renderToken(t); }
+
+  eq(tok({ t: 'num', v: 7 }).textContent, 7, 'a number draws itself');
+  eq(tok({ t: 'op', v: '+' }).textContent, '+', 'an operator draws itself');
+  eq(tok({ t: 'eq' }).textContent, '=', 'equals is one bar, not two');
+  eq(tok({ t: 'sep' }).textContent, ',', 'sequence terms are separated by commas');
+  eq(tok({ t: 'box' }).className, 'qBox', 'the unknown is an empty box');
+  eq(tok({ t: 'pct', v: 50 }).textContent, '50%', 'a percentage carries its sign');
+  eq(tok({ t: 'var', v: '3x' }).textContent, '3x', 'an algebra term draws itself');
+
+  // Counting: a band-1 child reads the picture, not the numeral. The wrong
+  // number of balls contradicts every answer on offer.
+  [1, 4, 9].forEach(function (v) {
+    var e = tok({ t: 'balls', v: v });
+    eq(e.childNodes.length, v, v + ' means exactly ' + v + ' balls');
+    eq(e.className, 'qBalls', 'and they are drawn as balls');
+  });
+
+  // Powers and fractions are the two tokens where swapping the parts still
+  // renders something plausible - and makes the answer genuinely wrong.
+  eq(tok({ t: 'pow', v: 3, e: 2 }).innerHTML, '3<sup>2</sup>', 'three squared, not two cubed');
+  var fr = tok({ t: 'frac', n: 1, d: 4 });
+  eq(fr.childNodes[0].textContent, 1, 'a fraction draws its numerator on top');
+  eq(fr.childNodes[1].textContent, 4, 'and its denominator underneath');
+  eq(fr.className, 'qFrac', 'styled as a fraction');
+
+  // A diagram is a canvas the renderer fills itself.
+  eq(tok({ t: 'diag', kind: 'angleLine', known: 40 }).className, 'qDiag',
+     'a diagram token renders as a diagram');
+
+  // Every token type Maths.make emits must be one the renderer knows: the
+  // fallback draws a question mark, which tells a child nothing.
+  var seen = {}, rand = makeRng(31337), band, i, q, j;
+  for (band = 1; band <= Maths.MAX_BAND; band++) {
+    for (i = 0; i < 400; i++) {
+      q = Maths.make(band, Maths.newState(band), rand);
+      for (j = 0; j < q.render.length; j++) { seen[q.render[j].t] = true; }
+    }
+  }
+  Object.keys(seen).forEach(function (t) {
+    var sample = { t: t, v: 2, n: 1, d: 2, e: 2, kind: 'angleLine', known: 40 };
+    ok(tok(sample).textContent !== '?', 'the renderer knows how to draw a "' + t + '" token');
+  });
 })();
 
 done();

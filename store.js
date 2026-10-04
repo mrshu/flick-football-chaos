@@ -11,6 +11,10 @@
 //   - Progress lives per slot, not globally. Siblings sharing a tablet would
 //     otherwise drag each other's adaptive difficulty around, and the engine
 //     would tune to an average describing neither child.
+// maths.js loads first on every page that loads this one (index.html), and the
+// tests require it directly.
+var Maths = (typeof Maths !== 'undefined') ? Maths : require('./maths.js');
+
 var Store = (function () {
 
   var KEY = 'ffc.v1';
@@ -18,11 +22,9 @@ var Store = (function () {
   var DEFAULT_BAND = 3;          // age 7: the middle of the range, so a slot
                                  // made without touching the age row still asks
                                  // maths rather than silently switching it off
-  var MAX_BAND = 11;             // must match Maths.MAX_BAND; the ladder's top.
-                                 // Kept as this file's own copy rather than a
-                                 // read of Maths.MAX_BAND, because store.js
-                                 // loads before maths.js on some pages and
-                                 // must stay standalone.
+  var MAX_BAND = Maths.MAX_BAND; // the ladder's top, read from the module that
+                                 // owns it: a second copy of 11 here is a
+                                 // second thing to keep in step.
 
   var memory = null;             // used when localStorage is unavailable
   var available = null;          // cached probe result
@@ -89,6 +91,12 @@ var Store = (function () {
           (typeof raw.maths.home === 'number' && isFinite(raw.maths.home))
             ? raw.maths.home : raw.maths.difficulty)),
         mastery: (raw.maths.mastery && typeof raw.maths.mastery === 'object') ? raw.maths.mastery : {}
+        // fastStreak and wrongStreak are deliberately not carried over. They
+        // are within-session momentum, three to seven answers wide, and their
+        // whole purpose is to let ordinary good or bad play pass unaccelerated
+        // first. Restoring one would let the first answer of a session days
+        // later take a full accelerated step on evidence from a session that
+        // ended. Unlike `home` above, losing them is bounded and self-correcting.
       };
     }
     if (raw.cup && typeof raw.cup.index === 'number') {
@@ -160,7 +168,7 @@ var Store = (function () {
   }
 
   return {
-    KEY: KEY, SLOTS: SLOTS, DEFAULT_BAND: DEFAULT_BAND,
+    DEFAULT_BAND: DEFAULT_BAND,
     emptySlot: emptySlot, emptyState: emptyState,
     repair: repair, repairSlot: repairSlot,
     load: load, save: save,

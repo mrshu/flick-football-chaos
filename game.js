@@ -6,10 +6,10 @@ const W = 600, H = 900;
 const SIDE_L = 22, SIDE_R = W - 22;          // side walls
 const TOP_Y = 72, BOT_Y = H - 72;            // goal lines
 const BACK_TOP = 18, BACK_BOT = H - 18;      // back of the nets
-// Narrowed from 100 (playtester defect: a 200-wide mouth is 36% of the
-// pitch and made direct shots too forgiving). 80 keeps a generous target
-// for a five-year-old while giving the keeper a mouth it can meaningfully
-// cover without spanning it end to end.
+// Narrowed from 100 (playtester defect: a 200-wide mouth is 36% of the pitch
+// and made direct shots too forgiving), then widened again from 80 once the
+// keeper started reading shots: the posts no longer have to carry the
+// difficulty on their own, and at 80 the goals simply looked too small.
 const MOUTH_HALF = 95;
 const MOUTH_L = W / 2 - MOUTH_HALF, MOUTH_R = W / 2 + MOUTH_HALF;
 
@@ -23,17 +23,18 @@ const BASE_FRICTION = 0.982, SLIPPERY_FRICTION = 0.992; // per 1/60 s
 // the flick must stay springy.
 const WALL_REST = 0.6, BODY_REST = 0.9;
 const MAX_DRAG = 170, MAX_LAUNCH = 1500, SPEED_CAP = 2100;
+// Below this a drag is a tap, not a flick: a five-year-old's accidental touch
+// must not spend a turn. drawAim uses the same number, so the arrow only
+// appears once releasing would actually launch.
+const MIN_DRAG = MAX_DRAG * 0.07;
 const STOP_SPEED = 13, MAX_MOVE_TIME = 9;
 const WIN_SCORE = 3;
 const STEP = 1 / 120;
 
 // ---- goalkeepers (playtester defect: direct shots scored too easily) ----
-// One extra, unflickable body per side. It moves only horizontally, along
-// its own goal mouth, sliding toward the ball's x between turns (never
-// mid-flight) at a capped speed so it lags rather than snaps to cover a
-// shot. It is a plain physics body (BODY_REST applies via the normal
-// collideCircles path) but invM 0, like the goalposts, so the ball bounces
-// off it without ever knocking it out of position.
+// One extra body per side, a plain physics body like any other (BODY_REST
+// applies through the normal collideCircles path). What it does on a shot is
+// in keeperReact; what the child can do with theirs is in pointerdown.
 const KEEPER_R = PLAYER_R;
 // Keepers were invM 0 when they were fixed obstacles. Now that the child can
 // flick them they must have real mass, or two keepers pass straight through
@@ -42,13 +43,6 @@ const KEEPER_R = PLAYER_R;
 // an outfield player, so the ball cannot easily barge it off its line.
 const KEEPER_INV_M = 0.18;
 const KEEPER_Y_INSET = 26; // how far in front of its own goal line it stands
-// Per-turn cap on keeper movement. The mouth is only ~108 wide at the keeper's
-// clamped range, so at 70 it crosses in two turns and barely trails play at
-// all — this is the dial to turn down if keepers feel too hard to beat.
-const KEEPER_MAX_STEP = 70;
-// A keeper only keeps goal while it is on its line; beyond this it is out of
-// position and jogging back, which is what makes a rush-out cost something.
-const KEEPER_ON_LINE = 30, KEEPER_RETURN_STEP = 70;
 const KEEPER_MIN_X = MOUTH_L + KEEPER_R, KEEPER_MAX_X = MOUTH_R - KEEPER_R;
 // The AI keeper's line, and how it reacts once a shot is on its way.
 //
@@ -168,18 +162,17 @@ const game = {
   // target; the modal is up, waiting on the child's save question. No
   // timer drives it - see askSaveQuestion.
   state: 'START', // START | HUMAN_QUESTION | HUMAN_AIM | MOVING | AI_WAIT | AI_SAVE_QUESTION | GOAL_PAUSE | OVER
-  turn: 'human', mover: 'human',
-  maths: null, mathsOn: true, startBand: 3,
+  mover: 'human',
+  maths: null, mathsOn: true,
   mode: 'single',   // 'single' | 'cup' — only the cup advances the draw
   keeperDive: null, // {x, wait} once the AI keeper has read the shot in flight
-  turnCount: 0, sinceChaos: 0, modifier: null,
+  turnCount: 0, sinceChaos: 0,
   friction: BASE_FRICTION, powerMult: 1,
-  pendingPrize: null,
   pendingAiShot: null, pendingSaveX: null,
   score: { human: 0, ai: 0 }, lastScorer: null,
   timer: 0, moveTime: 0, ballRot: 0,
   drag: null, aiChoice: null, askedLastTurn: false, threatPath: null,
-  shake: 0, slowmo: 0, trail: [],
+  shake: 0, trail: [],
   save: null, slot: null, aiSkill: 0.55,
   particles: [], lastHitSfx: 0,
 };
@@ -196,20 +189,26 @@ function init() {
     }
   }
   game.ball = { x: W / 2, y: H / 2, vx: 0, vy: 0, r: BALL_R, invM: 1, team: null, home: [W / 2, H / 2] };
-  // Kept out of game.players on purpose: that array is what pointerdown
-  // scans for a draggable human player and what pickAiPlayer scans for a
-  // CPU shooter, so keeping keepers separate is what makes them unflickable
-  // and un-choosable as a shooter, with no extra "is this a keeper" guard
-  // needed at either call site.
+  // Kept out of game.players on purpose: that array is what pickAiPlayer
+  // scans for a CPU shooter, so keeping keepers separate is what makes them
+  // un-choosable as one, with no "is this a keeper" guard at that call site.
+  // pointerdown scans every mover instead, because the child may flick theirs.
   game.keepers = [
     { x: W / 2, y: TOP_Y + KEEPER_Y_INSET, vx: 0, vy: 0, r: KEEPER_R, invM: KEEPER_INV_M,
-      team: 'ai', keeper: true, home: [W / 2, TOP_Y + KEEPER_Y_INSET] },
+      team: 'ai', home: [W / 2, TOP_Y + KEEPER_Y_INSET] },
     { x: W / 2, y: BOT_Y - KEEPER_Y_INSET, vx: 0, vy: 0, r: KEEPER_R, invM: KEEPER_INV_M,
-      team: 'human', keeper: true, home: [W / 2, BOT_Y - KEEPER_Y_INSET] },
+      team: 'human', home: [W / 2, BOT_Y - KEEPER_Y_INSET] },
   ];
+  aiKeeper = game.keepers[0];
+  humanKeeper = game.keepers[1];
+  movers = [...game.players, ...game.keepers, game.ball];
 }
 
-const movers = () => [...game.players, ...game.keepers, game.ball];
+// Every body the physics moves, in a fixed order the lookahead relies on: the
+// ball is always last. Built once in init(), because nothing afterwards adds or
+// removes one - chaos modifiers and resetPositions mutate them in place - and
+// physicsStep would otherwise rebuild it twelve times a frame.
+let movers = [], aiKeeper = null, humanKeeper = null;
 const opp = t => (t === 'human' ? 'ai' : 'human');
 
 // A fresh random formation (mirrored, exploit-free per Formation.make) is
@@ -222,10 +221,8 @@ function resetPositions() {
   for (const p of game.players) {
     p.home = p.team === 'human' ? formation.human[hi++] : formation.ai[ai++];
   }
-  for (const o of movers()) { [o.x, o.y] = o.home; o.vx = o.vy = 0; }
+  for (const o of movers) { [o.x, o.y] = o.home; o.vx = o.vy = 0; }
   game.ballRot = 0;
-  game.drag = null;
-  game.aiChoice = null;
 }
 
 function restart() {
@@ -240,7 +237,6 @@ function restart() {
   clearModifier();
   resetPositions();
   Quiz.hide();
-  game.pendingPrize = null;
   game.pendingAiShot = null;
   game.pendingSaveX = null;
   game.threatPath = null;
@@ -253,30 +249,25 @@ function restart() {
 /* ---------- persistence ---------- */
 // The child's slot is loaded once at boot and written back whenever something
 // they earned changes. Everything here tolerates storage being unavailable.
-function persist() {
-  if (game.save) { Store.save(game.save); }
-}
+function persist() { Store.save(game.save); }
 
 // Teams whose home band is 9+ get the broadcast look. A class on body and
 // CSS overrides only - layout, markup and physics are identical, and a
 // sibling's younger team on the same device is untouched.
 function applySkin() {
-  document.body.classList.toggle('pro',
-    !!(game.slot && game.slot.band >= 9));
+  document.body.classList.toggle('pro', game.slot.band >= 9);
 }
 
 function loadProgress() {
   game.save = Store.load();
   game.slot = Store.activeSlot(game.save);
   applySkin();
-  if (game.slot.maths) { game.maths = game.slot.maths; }
-  game.aiSkill = Tournament.skillFor(game.slot.cup.index, game.slot.cup.season, game.slot.band);
+  // aiSkill is not set here: boot calls refreshStart() next, which does it.
 }
 
 // Adaptive state belongs to the slot, so a sibling on another slot is not
 // dragged around by this child's answers.
 function rememberMaths() {
-  if (!game.slot || !game.maths) { return; }
   game.slot.maths = game.maths;
   persist();
 }
@@ -288,12 +279,11 @@ function updateScore() {
 }
 function setTurnMsg(text, team) {
   hudTurn.textContent = text;
-  hudTurn.className = team || '';
+  hudTurn.className = team;
 }
 
 /* ---------- chaos modifiers ---------- */
 function activateModifier(id) {
-  game.modifier = id;
   if (id === 'giant') game.ball.r = BALL_R * 1.9;
   if (id === 'tiny') game.players.forEach(p => { p.r = PLAYER_R * 0.62; });
   if (id === 'slippery') game.friction = SLIPPERY_FRICTION;
@@ -303,10 +293,9 @@ function activateModifier(id) {
   SFX.chaos();
 }
 function clearModifier() {
-  game.modifier = null;
   game.friction = BASE_FRICTION;
   game.powerMult = 1;
-  if (game.ball) game.ball.r = BALL_R;
+  game.ball.r = BALL_R;
   game.players.forEach(p => { p.r = PLAYER_R; });
   chaosBanner.classList.add('hidden');
 }
@@ -330,10 +319,12 @@ function worthABonus() {
   // Attacking half only: a giant ball or a super shot is worth something when
   // the ball is up near the CPU's goal, and worth little from your own box.
   if (game.ball.y > H / 2) { return false; }
-  // Asking two turns running is allowed only sometimes. A hard "never twice"
-  // rule caps this at half your turns and made questions too sparse; removing
-  // it entirely puts you back to one every turn whenever you camp in their
-  // half, which was too much. This is the dial between those.
+  // Asking on consecutive attacking turns is allowed only sometimes. A hard
+  // "never twice" rule caps this at half your turns and made questions too
+  // sparse; removing it entirely puts you back to one every turn whenever you
+  // camp in their half, which was too much. This is the dial between those.
+  // The flag tracks attacking turns, not all turns: the early return above
+  // leaves it alone, so turns spent in your own half neither ask nor count.
   if (game.askedLastTurn && Math.random() >= BONUS_REPEAT_CHANCE) {
     game.askedLastTurn = false;
     return false;
@@ -346,7 +337,6 @@ function worthABonus() {
 // correct answer live in slot.stats so they survive across sessions and
 // repair like every other counter.
 function recordAnswer(correct, elapsedMs) {
-  if (!game.slot) { return; }
   var st = game.slot.stats;
   st.answered += 1;
   if (correct) {
@@ -362,30 +352,26 @@ function recordAnswer(correct, elapsedMs) {
 }
 
 function askQuestion() {
-  document.getElementById('quiz').classList.remove('saving');
-  if (!game.maths) { game.maths = Maths.newState(game.startBand); }
+  if (!game.maths) { game.maths = Maths.newState(game.slot.band); }
   game.state = 'HUMAN_QUESTION';
   setTurnMsg('Your turn', 'human');
   var q = Maths.make(game.maths.difficulty, game.maths, Math.random);
   var keys = Object.keys(MODIFIERS);
   var prizeId = keys[(Math.random() * keys.length) | 0];
-  game.pendingPrize = prizeId;
-  Quiz.show(q, prizeId, function (chosen, correct, elapsedMs) {
+  Quiz.show(q, prizeId, function (correct, elapsedMs) {
     game.maths = Maths.update(game.maths, {
       correct: correct, elapsedMs: elapsedMs, band: q.band, skill: q.skill
     });
     recordAnswer(correct, elapsedMs);
     rememberMaths();
-    finishQuestion(correct);
+    finishQuestion(correct, prizeId);
   }, function () {
-    finishQuestion(false); // skip: no penalty, but no prize either
+    finishQuestion(false, prizeId); // skip: no penalty, but no prize either
   }, 'Answer for a bonus');
 }
 
-function finishQuestion(correct) {
-  var prizeId = game.pendingPrize;
-  game.pendingPrize = null;
-  if (correct && prizeId) { activateModifier(prizeId); }
+function finishQuestion(correct, prizeId) {
+  if (correct) { activateModifier(prizeId); }
   game.state = 'HUMAN_AIM';
   setTurnMsg('Your turn — drag a blue player', 'human');
 }
@@ -397,11 +383,10 @@ function finishQuestion(correct) {
 // the pending shot on target. No timer: the game waits for the child, the
 // same as the bonus question.
 function askSaveQuestion() {
-  document.getElementById('quiz').classList.add('saving');
-  if (!game.maths) { game.maths = Maths.newState(game.startBand); }
+  if (!game.maths) { game.maths = Maths.newState(game.slot.band); }
   setTurnMsg('CPU shoots — save it!', 'ai');
   var q = Maths.make(game.maths.difficulty, game.maths, Math.random);
-  Quiz.show(q, 'save', function (chosen, correct, elapsedMs) {
+  Quiz.show(q, 'save', function (correct, elapsedMs) {
     game.maths = Maths.update(game.maths, {
       correct: correct, elapsedMs: elapsedMs, band: q.band, skill: q.skill
     });
@@ -434,28 +419,18 @@ function saveShot(shot, firstX) {
   for (i = 0; i < candidates.length; i++) {
     x = candidates[i];
     diveKeeper(x);
-    if (!simulateAiShot(shot).scores) { return true; }
+    if (!simulateAiShot(shot).scores) { return; }
   }
   diveKeeper(firstX); // nothing stops it - keep the honest dive rather than none
-  return false;
 }
 
 
 
 /* ---------- goalkeepers ---------- */
-// Repositioned once per turn setup (never mid-flight, never as part of
-// either side's move) so it can never cost the CPU its turn. Both keepers
-// track the same ball x regardless of whose turn is starting - real
-// keepers do not stop watching the ball when it is the other side's turn.
-function updateKeepers() {
-  // Deliberately does nothing to a keeper's position. Keepers are ordinary
-  // bodies: they stay where play or the child's flick leaves them, and are put
-  // back on their line by resetPositions() after a goal, exactly like every
-  // outfield player. Anything that repositioned them between turns moved a
-  // piece the child had not touched.
-  for (const k of game.keepers) { k.vx = 0; k.vy = 0; }
-}
-
+// Keepers are ordinary bodies. Nothing repositions them between turns: they
+// stay where play or the child's flick leaves them, and are put back on their
+// line by resetPositions() after a goal, exactly like every outfield player.
+//
 // Where a ball on its current heading would cross the keeper's line. Straight
 // extrapolation: between the ball and the goal there is nothing to curve it,
 // and friction changes when it arrives, not where.
@@ -472,14 +447,13 @@ function crossingX(ball) {
 // actually buys. It moves at a fixed speed from wherever it stands, so a shot
 // into the far corner is genuinely harder to reach than one hit at the keeper.
 function keeperReact(dt) {
-  var k = game.keepers.filter(function (g) { return g.team === 'ai'; })[0];
-  if (!k) { return; }
   if (game.state !== 'MOVING' || game.mover !== 'human') { game.keeperDive = null; return; }
+  var k = aiKeeper;
 
   var predicted = crossingX(game.ball);
   if (predicted === null) { return; }        // not coming: hold position
 
-  if (game.keeperDive === null || game.keeperDive === undefined) {
+  if (game.keeperDive === null) {
     var spread = KEEPER_READ_BASE + KEEPER_READ_RANGE * (1 - game.aiSkill);
     game.keeperDive = {
       x: predicted + (Math.random() * 2 - 1) * spread,
@@ -496,22 +470,16 @@ function keeperReact(dt) {
   k.vx = k.vy = 0;
 }
 
-// A correct save answer jumps the human keeper straight to the shot's
-// predicted crossing point (known because the shot was already simulated
-// - see simulateAiShot), clamped into its own goal mouth.
-// Formation.keeperStep with an unlimited step is exactly a clamp-to-target,
-// i.e. a "dive" with no lag. The ball then genuinely collides with the
-// repositioned keeper when the shot plays out - nothing about the save is
-// faked.
+// Formation.keeperStep with an unlimited step is exactly a clamp-to-target:
+// a dive with no lag, into the goal mouth. The ball then genuinely collides
+// with the repositioned keeper when the shot plays out - nothing about the
+// save is faked. Which x saveShot picks is saveShot's business.
 function diveKeeper(x) {
-  var keeper = game.keepers.filter(function (k) { return k.team === 'human'; })[0];
-  keeper.x = Formation.keeperStep(keeper.x, x, Infinity, KEEPER_MIN_X, KEEPER_MAX_X);
+  humanKeeper.x = Formation.keeperStep(humanKeeper.x, x, Infinity, KEEPER_MIN_X, KEEPER_MAX_X);
 }
 
 /* ---------- turn flow ---------- */
 function startTurn(team) {
-  updateKeepers();
-  game.turn = team;
   game.turnCount++;
   game.sinceChaos++;
   // Random chaos is only for the maths-off arcade mode; with maths on it is
@@ -537,28 +505,24 @@ function startTurn(team) {
 }
 
 function settle() {
-  for (const o of movers()) o.vx = o.vy = 0;
+  for (const o of movers) o.vx = o.vy = 0;
   clearModifier();
   startTurn(opp(game.mover));
 }
 
 function goalScored(scorer) {
-  addShake(SHAKE_GOAL);
-  game.slowmo = 0.55;   // a beat of slow motion so the goal lands
+  addShake(SHAKE_MAX);
   game.trail.length = 0;
   game.score[scorer]++;
   game.lastScorer = scorer;
   // Counted for every goal in every mode: the record is of what the child did,
   // not of what the cup made of it.
-  if (game.slot) {
-    game.slot.stats[scorer === 'human' ? 'goalsFor' : 'goalsAgainst'] += 1;
-  }
+  game.slot.stats[scorer === 'human' ? 'goalsFor' : 'goalsAgainst'] += 1;
   updateScore();
   goalFlash.textContent = scorer === 'human' ? 'GOAL!' : 'CPU SCORES!';
   goalFlash.classList.remove('hidden');
   if (!document.body.classList.contains('pro')) {
-    confetti(scorer === 'human' ? W / 2 : W / 2, scorer === 'human' ? TOP_Y : BOT_Y,
-             scorer === 'human' ? 1 : -1);
+    confetti(scorer === 'human' ? TOP_Y : BOT_Y, scorer === 'human' ? 1 : -1);
   }
   SFX.goal();
   game.state = 'GOAL_PAUSE';
@@ -578,16 +542,14 @@ function afterGoal() {
 
 function gameOver(winner) {
   var trophyWon = false;
-  if (game.slot) {
-    game.slot.stats.matches += 1;
-    if (winner === 'human') { game.slot.stats.wins += 1; }
-    if (game.kickoffAt) { game.slot.stats.ms += Date.now() - game.kickoffAt; }
-    game.kickoffAt = 0;
-  }
+  game.slot.stats.matches += 1;
+  if (winner === 'human') { game.slot.stats.wins += 1; }
+  game.slot.stats.ms += Date.now() - game.kickoffAt;
+  game.kickoffAt = 0;
   // A single match is a friendly: it costs nothing and wins nothing. Only the
   // cup moves the draw on, or a child could lose their place in it by asking
   // for a kickabout.
-  if (game.slot && game.mode === 'cup') {
+  if (game.mode === 'cup') {
     const before = game.slot.cup.index;
     game.slot.cup = Tournament.recordResult(game.slot.cup, winner === 'human');
     if (Tournament.isComplete(game.slot.cup, before)) { game.slot.trophies += 1; trophyWon = true; }
@@ -596,14 +558,11 @@ function gameOver(winner) {
     game.wonCup = trophyWon;
     game.aiSkill = Tournament.skillFor(game.slot.cup.index, game.slot.cup.season, game.slot.band);
   }
-  // After both branches: a friendly still moves the counters above, and losing
-  // those on a refresh would make the record quietly wrong.
-  if (game.slot) { persist(); }
   // Anything the match earned is revealed here, at full time — never while a
   // question is open, so the questions stay a move and not a shop. The ledger
   // is derived from the counters; `unlocked` only records what has been shown,
   // which makes each reveal fire exactly once and lets a stale save replay it.
-  var freshIds = game.slot ? Locker.fresh(game.slot) : [];
+  var freshIds = Locker.fresh(game.slot);
   el('overUnlocks').classList.toggle('hidden', !freshIds.length);
   if (freshIds.length) {
     var row = el('overUnlockRow');
@@ -615,8 +574,10 @@ function gameOver(winner) {
       row.appendChild(cv);
       game.slot.unlocked.push(id);
     });
-    persist();
   }
+  // After every branch above: a friendly still moves the counters, and losing
+  // those on a refresh would make the record quietly wrong.
+  persist();
   game.state = 'OVER';
   overTitle.textContent = winner === 'human' ? 'You Win! \u{1F3C6}' : 'CPU Wins \u{1F916}';
   overSub.textContent = `Final score ${game.score.human} – ${game.score.ai}`;
@@ -644,14 +605,14 @@ function pickAiPlayer() {
 // corner furthest from the human keeper (Formation.farCorner) rather than
 // dead centre - "aim away from the keeper", the owner's instruction - with
 // a small random margin off the post so the exact target still varies shot
-// to shot. Aim error and power are also tightened a little further than
-// before (0.07->0.05 rad of error; 0.58->0.6 power floor, 0.09->0.08
-// randomness) now that the save question gives the child a second line of
-// defence - see aiLaunch and the playtest notes for why this stayed modest.
+// to shot. Aim error and power randomness both scale with skill (see below),
+// and the power floor was lifted to 0.6, now that the save question gives the
+// child a second line of defence - see aiLaunch and the playtest notes for
+// why this stayed modest.
 function computeAiShot() {
-  const p = game.aiChoice || pickAiPlayer();
+  const p = game.aiChoice;
   const b = game.ball;
-  const keeper = game.keepers.filter(k => k.team === 'human')[0]; // defends the goal the CPU shoots at
+  const keeper = humanKeeper;   // defends the goal the CPU shoots at
   const margin = KEEPER_R + 4 + Math.random() * 18;
   // Keepers no longer drift on their own, so always shooting at the corner
   // furthest from this one would mean scoring in the same unguarded spot every
@@ -705,7 +666,7 @@ function aiLaunch() {
   const shot = computeAiShot();
   if (!game.mathsOn) { commitAiShot(shot); return; }
   const sim = simulateAiShot(shot);
-  if (!sim.onTarget) { commitAiShot(shot); return; }
+  if (!sim.scores) { commitAiShot(shot); return; }
   game.pendingAiShot = shot;
   game.pendingSaveX = sim.x;
   game.threatPath = sim.path;
@@ -721,7 +682,7 @@ function collideCircles(a, b) {
   let d = Math.hypot(dx, dy);
   const minD = a.r + b.r;
   if (d >= minD) return;
-  if (d < 1e-4) { d = 1e-4; dx = minD; dy = 0; } // perfectly stacked: push apart along x
+  if (d < 1e-4) { d = 1e-4; dx = d; dy = 0; }    // perfectly stacked: push apart along +x
   const nx = dx / d, ny = dy / d;
   const overlap = minD - d;
   a.x -= nx * overlap * (a.invM / invSum);
@@ -737,13 +698,14 @@ function collideCircles(a, b) {
 }
 
 // simActive guards this during the save mechanic's forward lookahead (see
-// simulateAiShot below) - that run must be silent and must not disturb the
-// real hit-sound cooldown, since nothing has actually happened on screen.
+// simulateAiShot below). Nothing in that run has happened on screen, so it
+// must neither shake the pitch nor make a sound, and must not spend the real
+// hit-sound cooldown on collisions the child never saw.
 let simActive = false;
 
 function hitSfx(impact) {
-  if (impact > SHAKE_HIT_THRESHOLD) { addShake(Math.min(2, impact / 700)); }
   if (simActive) return;
+  if (impact > SHAKE_HIT_THRESHOLD) { addShake(Math.min(2, impact / 700)); }
   const now = performance.now();
   if (impact > 90 && now - game.lastHitSfx > 50) {
     game.lastHitSfx = now;
@@ -756,8 +718,7 @@ function hitSfx(impact) {
 function walls(o, isBall) {
   if (o.x - o.r < SIDE_L) { o.x = SIDE_L + o.r; o.vx = Math.abs(o.vx) * WALL_REST; hitSfx(Math.abs(o.vx)); }
   if (o.x + o.r > SIDE_R) { o.x = SIDE_R - o.r; o.vx = -Math.abs(o.vx) * WALL_REST; hitSfx(Math.abs(o.vx)); }
-  const inMouth = o.x > MOUTH_L + 4 && o.x < MOUTH_R - 4;
-  if (isBall && inMouth) {
+  if (isBall && o.x > MOUTH_L + 4 && o.x < MOUTH_R - 4) {
     // ball may pass the goal line; keep it inside the net box
     if (o.y < TOP_Y || o.y > BOT_Y) {
       if (o.x - o.r < MOUTH_L) { o.x = MOUTH_L + o.r; o.vx = Math.abs(o.vx) * WALL_REST; }
@@ -802,18 +763,15 @@ function resolveCollisions(list, ballRef) {
 }
 
 function physicsStep(dt) {
-  const list = movers();
-  advanceBodies(list, game.friction, dt);
+  advanceBodies(movers, game.friction, dt);
   const b = game.ball;
-  game.ballRot += (Math.hypot(b.vx, b.vy) / Math.max(b.r, 1)) * dt * (b.vx < 0 ? -1 : 1);
-  resolveCollisions(list, b);
-  if (game.state === 'MOVING') {
-    if (b.y + b.r < TOP_Y) goalScored('human');       // ball fully inside top goal
-    else if (b.y - b.r > BOT_Y) goalScored('ai');     // ball fully inside bottom goal
-  }
+  game.ballRot += (Math.hypot(b.vx, b.vy) / b.r) * dt * (b.vx < 0 ? -1 : 1);
+  resolveCollisions(movers, b);
+  if (b.y + b.r < TOP_Y) goalScored('human');       // ball fully inside top goal
+  else if (b.y - b.r > BOT_Y) goalScored('ai');     // ball fully inside bottom goal
 }
 
-const allStopped = () => movers().every(o => Math.hypot(o.vx, o.vy) < STOP_SPEED);
+const allStopped = (list) => list.every(o => Math.hypot(o.vx, o.vy) < STOP_SPEED);
 
 function cloneBody(o) {
   return { x: o.x, y: o.y, vx: o.vx, vy: o.vy, r: o.r, invM: o.invM };
@@ -828,38 +786,29 @@ function cloneBody(o) {
 // worth of steps, same ceiling a real move gets, then gives up - one shot
 // played out once, not a search over shot choices, so this stays cheap.
 function simulateAiShot(shot) {
-  const list = movers();
-  const clones = list.map(cloneBody);
-  const shooterIdx = list.indexOf(shot.player);
-  const simBall = clones[clones.length - 1]; // movers() always ends with game.ball
+  const clones = movers.map(cloneBody);
+  const shooterIdx = movers.indexOf(shot.player);
+  const simBall = clones[clones.length - 1]; // movers always ends with game.ball
   clones[shooterIdx].vx = shot.vx;
   clones[shooterIdx].vy = shot.vy;
   simActive = true;
   const maxSteps = Math.ceil(MAX_MOVE_TIME / STEP);
   let scores = false, crossX = null;
   const path = [];
-  // A shot the child never gets to defend is a shot they cannot learn from, so
-  // "threatening" is deliberately wider than "certain goal": anything that ends
-  // up near the mouth counts, and near-misses are exactly the moments worth
-  // saving. Track the ball's closest approach to the goal line and its x there.
-  let bestDy = Infinity, bestX = simBall.x;
   for (let i = 0; i < maxSteps; i++) {
     advanceBodies(clones, game.friction, STEP);
     resolveCollisions(clones, simBall);
     if (i % 6 === 0) { path.push(simBall.x, simBall.y); }
-    const dy = BOT_Y - simBall.y;
-    if (dy < bestDy) { bestDy = dy; bestX = simBall.x; }
     if (simBall.y - simBall.r > BOT_Y) { scores = true; crossX = simBall.x; break; } // would score for ai
     if (simBall.y + simBall.r < TOP_Y) { break; }                                     // own-goal fluke: not this shot's target
-    if (clones.every(o => Math.hypot(o.vx, o.vy) < STOP_SPEED)) { break; }            // settled without scoring
+    if (allStopped(clones)) { break; }                                                // settled without scoring
   }
   simActive = false;
   // Only a shot that would actually go in. Widening this to near-misses took
   // the save question to 80% of CPU turns, which with the bonus question meant
   // roughly one question every turn — the owner playing it reported questions
   // "all the time". A save is worth asking for when there is a goal to stop.
-  const threatening = scores;
-  return { onTarget: threatening, scores: scores, x: scores ? crossX : bestX, path: path };
+  return { scores: scores, x: crossX, path: path };
 }
 
 
@@ -877,7 +826,7 @@ canvas.addEventListener('pointerdown', e => {
   let best = null, bd = Infinity;
   // Keepers are draggable too: rushing yours out is a real clearance, at the
   // real cost of leaving the goal empty for the CPU's next shot.
-  for (const pl of game.players.concat(game.keepers)) {
+  for (const pl of movers) {
     if (pl.team !== 'human') continue;
     const d = Math.hypot(pl.x - p.x, pl.y - p.y);
     if (d < pl.r + 22 && d < bd) { bd = d; best = pl; }
@@ -904,9 +853,8 @@ function endDrag(e) {
   game.drag = null;
   const dx = player.x - px, dy = player.y - py;
   const len = Math.hypot(dx, dy);
-  const power = Math.min(len / MAX_DRAG, 1);
-  if (power < 0.07 || len < 1) return; // too gentle: cancel, keep aiming
-  const sp = power * MAX_LAUNCH * game.powerMult;
+  if (len < MIN_DRAG) return;   // too gentle: cancel, keep aiming
+  const sp = Math.min(len / MAX_DRAG, 1) * MAX_LAUNCH * game.powerMult;
   player.vx = (dx / len) * sp;
   player.vy = (dy / len) * sp;
   game.mover = 'human';
@@ -925,18 +873,16 @@ el('again').addEventListener('click', () => {
   overlay.classList.add('hidden');
   // Next opponent, or the same one again after a loss — either way the child
   // sees who they are facing before play resumes. A friendly just kicks off.
-  if (game.mode === 'cup' && game.slot && game.slot.emoji) {
+  if (game.mode === 'cup') {
     // A finished cup is drawn one last time with the child in the champion's
     // place. From there the button goes home, not into the next season.
     showBracket(game.wonCup ? Tournament.COUNT : undefined);
     game.wonCup = false;
-  } else if (game.slot && game.slot.emoji) {
+  } else {
     // A friendly finishes: show what it added to the record, then go home.
     // Kicking straight into another match made the result meaningless — there
     // was nothing between one game and the next.
     showStats(true);
-  } else {
-    restart();
   }
 });
 
@@ -988,18 +934,20 @@ var BADGES = FUN.concat(Flags.QUICK);
 // than for one country a child might think they had just chosen.
 var FLAG_DOOR = '\u{1F310}';
 
-function slotLabel(slot) { return slot.emoji || '\uFF0B'; }
+// Badge and name, as the stats and locker panels both head themselves.
+function teamLabel() {
+  return game.slot.emoji + (game.slot.name ? ' ' + game.slot.name : '');
+}
 
 function paintSlots() {
   var row = el('slotRow');
-  if (!row || !game.save) { return; }
   row.innerHTML = '';
   game.save.slots.forEach(function (slot, i) {
     var card = document.createElement('div');
     card.className = 'slotCard' + (i === game.save.active ? ' on' : '') + (slot.emoji ? '' : ' empty');
     var badge = document.createElement('div');
     badge.className = 'badge';
-    badge.textContent = slotLabel(slot);
+    badge.textContent = slot.emoji || '\uFF0B';
     card.appendChild(badge);
     if (slot.name) {
       var who = document.createElement('div');
@@ -1028,7 +976,6 @@ function paintSlots() {
       pen.addEventListener('click', function (e) {
         e.stopPropagation();       // editing is not also "just select this"
         var was = choose();
-        refreshStart();
         openTeamEditor(was);
         SFX.select();
       });
@@ -1053,9 +1000,7 @@ function refreshStart() {
   // Must not be gated on game.slot.maths: changing a team's age is exactly
   // what clears maths (see the team editor's OK handler), so guarding on it
   // would skip this recompute at the one moment the band actually changed.
-  if (game.slot) {
-    game.aiSkill = Tournament.skillFor(game.slot.cup.index, game.slot.cup.season, game.slot.band);
-  }
+  game.aiSkill = Tournament.skillFor(game.slot.cup.index, game.slot.cup.season, game.slot.band);
 }
 
 // Making a team is where a child says who they are: badge, name, and age. Age
@@ -1067,9 +1012,8 @@ function openTeamEditor(returnTo) {
   var chosen = game.slot.emoji || BADGES[0];
   // Once the child edits the name it is theirs; picking badges stops rewriting it.
   var typed = !!game.slot.name;
-  var band = paintAges(game.slot.band, function (b) { band = b; });
+  paintAges(game.slot.band);
   grid.innerHTML = '';
-  var tiles = [];
 
   // A badge the child has not overtyped renames the team with it, so picking a
   // flag gives you that country rather than a stray invention.
@@ -1085,8 +1029,8 @@ function openTeamEditor(returnTo) {
   // child can see what they picked without this card growing a row for it.
   function paintChoice() {
     var away = Flags.isFlag(chosen) && BADGES.indexOf(chosen) === -1;
-    tiles.forEach(function (t) {
-      t.btn.className = (t.badge === chosen) ? 'on' : '';
+    BADGES.forEach(function (b, i) {
+      grid.children[i].className = (b === chosen) ? 'on' : '';
     });
     door.className = away ? 'door on' : 'door';
     doorFace.textContent = away ? chosen : FLAG_DOOR;
@@ -1097,7 +1041,6 @@ function openTeamEditor(returnTo) {
     var btn = document.createElement('button');
     btn.type = 'button'; btn.textContent = b;
     btn.addEventListener('click', function () { choose(b); });
-    tiles.push({ badge: b, btn: btn });
     grid.appendChild(btn);
   });
 
@@ -1127,7 +1070,8 @@ function openTeamEditor(returnTo) {
     nameInput.value = Names.make(Math.random);
     SFX.select();
   };
-  el('teamDelete').className = '';
+  var del = el('teamDelete');
+  del.className = '';
   ed.classList.remove('hidden');
 
   // A way out that changes nothing. Without it, tapping the empty "+" slot to
@@ -1152,17 +1096,16 @@ function openTeamEditor(returnTo) {
     game.slot.name = nameInput.value.slice(0, 12);
     // Changing the age is the child telling us the old level was wrong, so the
     // adaptive state it produced is thrown away with it.
-    if (band !== game.slot.band) { game.slot.maths = null; game.maths = null; }
-    game.slot.band = band;
+    if (editorBand !== game.slot.band) { game.slot.maths = null; game.maths = null; }
+    game.slot.band = editorBand;
     applySkin();
     persist();
     ed.classList.add('hidden');
     refreshStart();
   };
   // Deleting is the one destructive control here, so it takes two taps.
-  el('teamDelete').onclick = function () {
-    var btn = el('teamDelete');
-    if (btn.className !== 'arm') { btn.className = 'arm'; return; }
+  del.onclick = function () {
+    if (del.className !== 'arm') { del.className = 'arm'; return; }
     Store.clearSlot(game.save, game.save.active);
     game.slot = Store.activeSlot(game.save);
     applySkin();
@@ -1262,13 +1205,12 @@ var bracketFinal = false;   // is the draw currently showing a finished cup?
 function bracketBox(cell, state) {
   var box = document.createElement('div');
   box.className = 'bx ' + state;
-  box.textContent = cell ? (cell.you ? (game.slot.emoji || '⚽') : cell.flag) : '';
+  box.textContent = cell ? (cell.you ? game.slot.emoji : cell.flag) : '';
   return box;
 }
 
 function showBracket(played) {
   var view = el('bracket'), tree = el('bracketTree'), heads = el('bracketRounds');
-  if (!view || !game.slot) { return false; }
   if (typeof played !== 'number') { played = game.slot.cup.index; }
   // Winning the cup has to be an ending. On the champion view this screen's
   // button goes back to the menu instead of kicking off the next season —
@@ -1279,7 +1221,7 @@ function showBracket(played) {
   // On the champion view the main button already goes home; a second one
   // beside it would just be two ways to do the same thing.
   el('bracketBack').classList.toggle('hidden', bracketFinal);
-  var mine = game.slot.emoji || '⚽';
+  var mine = game.slot.emoji;
   var cols = Tournament.bracket(played, mine), c, i, cell, colEl, head;
   // The child's next opponent is the other half of their pair in this round.
   var foeRow = played < Tournament.COUNT ? (Tournament.youAt(cols, played) ^ 1) : -1;
@@ -1330,7 +1272,6 @@ function showBracket(played) {
     ? '\u{1F3C6}×' + game.slot.trophies
     : '\u{1F3C6}';
   view.classList.remove('hidden');
-  return true;
 }
 
 function boxState(cell, col, row, played, foeRow) {
@@ -1349,7 +1290,6 @@ function hideBracket() { el('bracket').classList.add('hidden'); }
 // how far through the cup this team is.
 function paintCup() {
   var pips = el('cupPips'), shelf = el('trophyShelf');
-  if (!pips || !game.slot) { return; }
   pips.innerHTML = '';
   for (var i = 0; i < Tournament.COUNT; i++) {
     var p = document.createElement('i');
@@ -1376,8 +1316,7 @@ function fmtTime(ms) {
 var statsThenHome = false;
 
 function showStats(thenHome) {
-  var grid = el('statsGrid'), s = game.slot && game.slot.stats;
-  if (!s) { return; }
+  var grid = el('statsGrid'), s = game.slot.stats;
   statsThenHome = !!thenHome;
   var pct = s.answered ? Math.round(s.correct * 100 / s.answered) : 0;
   var rows = [
@@ -1406,13 +1345,12 @@ function showStats(thenHome) {
       grid.appendChild(cell);
     });
   });
-  el('statsWho').textContent = (game.slot.emoji || '⚽') +
-    (game.slot.name ? ' ' + game.slot.name : '');
+  el('statsWho').textContent = teamLabel();
   el('statsPanel').classList.remove('hidden');
 }
 
 el('startStats').addEventListener('click', function () {
-  if (!game.slot || !game.slot.emoji) { return; }
+  if (!game.slot.emoji) { return; }
   SFX.select();
   showStats();
 });
@@ -1449,7 +1387,7 @@ function paintCosmeticTile(canvas, item, progress) {
     paintHat(c, m, y, r, item.id);
   } else {
     // a patch of turf: base coat, one mowing stripe, the halfway line
-    var th = PITCH_THEMES[item.id] || PITCH_THEMES.day;
+    var th = PITCH_THEMES[item.id];
     c.fillStyle = th.base; c.fillRect(0, 0, s, s);
     c.fillStyle = th.stripe;
     c.fillRect(0, 0, s, s / 3); c.fillRect(0, s * 2 / 3, s, s / 3);
@@ -1477,8 +1415,8 @@ function paintCosmeticTile(canvas, item, progress) {
 // How far this slot is towards an item it has not earned yet, 0..1. Cup items
 // are bought with a different currency, so they count trophies instead.
 function cosmeticProgress(item) {
-  if (item.cup) { return (game.slot.trophies || 0) / item.cup; }
-  return (game.slot.stats.correct || 0) / item.at;
+  if (item.cup) { return game.slot.trophies / item.cup; }
+  return game.slot.stats.correct / item.at;
 }
 
 var LOCKER_GRIDS = { ball: 'lockerBall', hat: 'lockerHat', pitch: 'lockerPitch' };
@@ -1505,8 +1443,8 @@ function paintLocker() {
       need.className = 'need';
       if (!have) {
         need.textContent = it.cup
-          ? '\u{1F3C6} ' + (game.slot.trophies || 0) + '/' + it.cup
-          : (game.slot.stats.correct || 0) + '/' + it.at;
+          ? '\u{1F3C6} ' + game.slot.trophies + '/' + it.cup
+          : game.slot.stats.correct + '/' + it.at;
       }
       btn.appendChild(need);
       btn.addEventListener('click', function () {
@@ -1522,9 +1460,8 @@ function paintLocker() {
 }
 
 function showLocker() {
-  if (!game.slot || !game.slot.emoji) { return; }
-  el('lockerWho').textContent = (game.slot.emoji || '⚽') +
-    (game.slot.name ? ' ' + game.slot.name : '');
+  if (!game.slot.emoji) { return; }
+  el('lockerWho').textContent = teamLabel();
   paintLocker();
   el('lockerPanel').classList.remove('hidden');
 }
@@ -1542,9 +1479,7 @@ el('lockerClose').addEventListener('click', function () {
 // locker, where the price tags live.
 function paintNextUnlock() {
   var wrap = el('nextUnlock');
-  if (!wrap) { return; }
-  var n = (game.slot && game.slot.emoji && game.slot.band > 0)
-    ? Locker.next(game.slot) : null;
+  var n = (game.slot.emoji && game.slot.band > 0) ? Locker.next(game.slot) : null;
   if (!n) { wrap.classList.add('hidden'); return; }
   wrap.classList.remove('hidden');
   // Filled across this leg only (from the last milestone, not from zero), so
@@ -1553,33 +1488,33 @@ function paintNextUnlock() {
     (game.slot.stats.correct - n.prev) / (n.at - n.prev));
 }
 
-// Wire the age row inside the team editor. Returns the band it starts on and
-// reports every change back, so the caller keeps a single source of truth.
-function paintAges(current, onPick) {
+// The band the age row is currently showing. It lives here rather than inside
+// paintAges so the row and the save button read one value, not two kept equal
+// by hand. Store.repairSlot guarantees game.slot.band is a number.
+var editorBand = 0;
+
+// Wire the age row inside the team editor.
+function paintAges(current) {
   var btns = el('teamAges').querySelectorAll('.ageBtn'), i;
-  var band = (typeof current === 'number') ? current : Store.DEFAULT_BAND;
+  editorBand = current;
 
   function paint() {
     for (var k = 0; k < btns.length; k++) {
       var b = Number(btns[k].getAttribute('data-band'));
-      btns[k].className = (b === band) ? 'ageBtn on' : 'ageBtn';
+      btns[k].className = (b === editorBand) ? 'ageBtn on' : 'ageBtn';
       // Echo the chosen button next to the cake, so the row is unmistakably
       // an age and the current answer is readable without hunting for it.
-      if (b === band) { el('ageValue').textContent = btns[k].textContent; }
+      if (b === editorBand) { el('ageValue').textContent = btns[k].textContent; }
     }
   }
   for (i = 0; i < btns.length; i++) {
-    (function (btn) {
-      btn.onclick = function () {
-        band = Number(btn.getAttribute('data-band'));
-        paint();
-        onPick(band);
-        SFX.select();
-      };
-    })(btns[i]);
+    btns[i].onclick = function () {
+      editorBand = Number(this.getAttribute('data-band'));
+      paint();
+      SFX.select();
+    };
   }
   paint();
-  return band;
 }
 
 // Starting is two questions, asked in that order: what kind of game, then who
@@ -1590,9 +1525,6 @@ function paintAges(current, onPick) {
 // A single match changes no cup progress and never opens the draw; the cup does
 // both. Everything else — age, adaptive state, badge — comes from the active
 // team either way, so neither mode needs a settings screen behind it.
-//
-// The boot sequence never calls restart(), so game.state stays 'START' — which
-// blocks the pointerdown handler — until `startGo` fires.
 function showStep(step) {
   el('modeStep').classList.toggle('hidden', step !== 'mode');
   el('teamStep').classList.toggle('hidden', step !== 'team');
@@ -1607,15 +1539,14 @@ function pickMode(mode) {
   showStep('team');
   // A first-time child has no team at all; go straight to making one rather
   // than showing them a row of empty slots to decipher.
-  if (!game.slot || !game.slot.emoji) { openTeamEditor(); }
+  if (!game.slot.emoji) { openTeamEditor(); }
 }
 
 function startPlaying() {
   SFX.unlock();
   // An empty slot has nobody to play as. Make the team first.
-  if (!game.slot || !game.slot.emoji) { openTeamEditor(); return; }
+  if (!game.slot.emoji) { openTeamEditor(); return; }
   game.mathsOn = game.slot.band > 0;
-  game.startBand = game.slot.band > 0 ? game.slot.band : 1;
   game.maths = game.slot.maths || null;
   el('startScreen').classList.add('hidden');
   // A team entering the cup meets its next opponent on the draw, not by being
@@ -1629,14 +1560,13 @@ el('startBack').addEventListener('click', function () { SFX.select(); showStep('
 el('startGo').addEventListener('click', startPlaying);
 
 /* ---------- juice ---------- */
-// Screen shake, a ball trail and a brief slow-motion on goals. None of it
+// Screen shake and a ball trail. None of it
 // changes the rules; it exists because a hard collision that registers only as
 // a number is a hard collision the child does not feel.
 // Kept deliberately small. Shake should register a hard hit at the edge of
 // vision, not make a child track a moving pitch while they are trying to aim.
 const SHAKE_MAX = 3.5;
 const SHAKE_HIT_THRESHOLD = 420;   // only genuinely heavy contact shakes at all
-const SHAKE_GOAL = 3.5;
 
 function addShake(amount) {
   game.shake = Math.min(SHAKE_MAX, game.shake + amount);
@@ -1645,7 +1575,6 @@ function addShake(amount) {
 function updateJuice(dt) {
   game.shake *= Math.pow(0.0025, dt);          // decays in ~a fifth of a second
   if (game.shake < 0.05) game.shake = 0;
-  if (game.slowmo > 0) game.slowmo = Math.max(0, game.slowmo - dt);
 
   // Trail: a short history of ball positions, only while it is actually moving.
   const b = game.ball, sp = Math.hypot(b.vx, b.vy);
@@ -1673,10 +1602,10 @@ function drawTrail() {
 
 /* ---------- particles ---------- */
 const CONFETTI_COLORS = ['#ffd54a', '#ff8a3d', '#57e389', '#6fb5ff', '#ff6b8a', '#c792ff'];
-function confetti(x, y, dir) {
+function confetti(y, dir) {
   for (let i = 0; i < 46; i++) {
     game.particles.push({
-      x: x + (Math.random() - 0.5) * MOUTH_HALF * 2,
+      x: W / 2 + (Math.random() - 0.5) * MOUTH_HALF * 2,
       y,
       vx: (Math.random() - 0.5) * 460,
       vy: dir * (60 + Math.random() * 420),
@@ -1735,8 +1664,8 @@ const PITCH_THEMES = {
 // hand-edited save draws the classic look rather than nothing.
 const COSMETIC_DEFAULTS = { ball: 'classic', pitch: 'day', hat: 'none' };
 function equippedId(kind) {
-  const id = game.slot && game.slot.equipped && game.slot.equipped[kind];
-  return (id && Locker.byId(id)) ? id : COSMETIC_DEFAULTS[kind];
+  const id = game.slot.equipped[kind];
+  return Locker.byId(id) ? id : COSMETIC_DEFAULTS[kind];
 }
 function pitchTheme() { return PITCH_THEMES[equippedId('pitch')] || PITCH_THEMES.day; }
 
@@ -1776,21 +1705,27 @@ function drawPitch() {
   }
 }
 
-function drawPlayer(p, t) {
+// The disc every body on the pitch is drawn as: drop shadow, coloured body,
+// pale centre. Players and keepers differ only in their two colours and in
+// what gets painted on top.
+function drawDisc(p, body, edge) {
   ctx.beginPath();
   ctx.ellipse(p.x + 3, p.y + 4, p.r, p.r * 0.92, 0, 0, 6.29);
   ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fill();
 
-  const isHuman = p.team === 'human';
   ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.29);
-  ctx.fillStyle = isHuman ? '#3b82f6' : '#ef4444'; ctx.fill();
+  ctx.fillStyle = body; ctx.fill();
   ctx.lineWidth = 3.5;
-  ctx.strokeStyle = isHuman ? '#1e50b0' : '#a51f1f'; ctx.stroke();
+  ctx.strokeStyle = edge; ctx.stroke();
 
   ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 0.45, 0, 6.29);
-  ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fill();
-  ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 0.45, 0, 6.29);
-  ctx.lineWidth = 2; ctx.strokeStyle = isHuman ? '#1e50b0' : '#a51f1f'; ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.87)'; ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = edge; ctx.stroke();
+}
+
+function drawPlayer(p, t) {
+  const isHuman = p.team === 'human';
+  drawDisc(p, isHuman ? '#3b82f6' : '#ef4444', isHuman ? '#1e50b0' : '#a51f1f');
 
   ctx.beginPath();
   ctx.arc(p.x - p.r * 0.3, p.y - p.r * 0.35, p.r * 0.5, Math.PI * 0.9, Math.PI * 1.6);
@@ -1845,8 +1780,7 @@ function paintHat(c, x, y, r, hat) {
 
 // Goalkeeper: same silhouette as an outfield player but in its own colour
 // (neither team's blue/red) with an outer ring, so it reads as "the keeper"
-// at a glance without any label - and is never mistaken for a draggable
-// blue player.
+// at a glance without any label.
 // Both keepers used to be the same gold, so a child could not tell which one
 // was theirs. Each now wears a keeper kit tinted to its own side, while the
 // outer ring stays the shared shape language that says "this is a keeper".
@@ -1881,31 +1815,16 @@ function drawThreat(t) {
   ctx.setLineDash([]);
 
   // where it will cross the line
-  if (game.pendingSaveX !== null && game.pendingSaveX !== undefined) {
-    ctx.beginPath();
-    ctx.arc(game.pendingSaveX, BOT_Y, 13 + 5 * pulse, 0, 6.29);
-    ctx.strokeStyle = 'rgba(255,64,64,0.95)';
-    ctx.lineWidth = 4; ctx.stroke();
-  }
+  ctx.beginPath();
+  ctx.arc(game.pendingSaveX, BOT_Y, 13 + 5 * pulse, 0, 6.29);
+  ctx.strokeStyle = 'rgba(255,64,64,0.95)';
+  ctx.lineWidth = 4; ctx.stroke();
   ctx.restore();
 }
 
 function drawKeeper(p) {
-  const kit = KEEPER_KIT[p.team] || KEEPER_KIT.human;
-
-  ctx.beginPath();
-  ctx.ellipse(p.x + 3, p.y + 4, p.r, p.r * 0.92, 0, 0, 6.29);
-  ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fill();
-
-  ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.29);
-  ctx.fillStyle = kit.body; ctx.fill();
-  ctx.lineWidth = 3.5;
-  ctx.strokeStyle = kit.edge; ctx.stroke();
-
-  ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 0.45, 0, 6.29);
-  ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fill();
-  ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 0.45, 0, 6.29);
-  ctx.lineWidth = 2; ctx.strokeStyle = kit.edge; ctx.stroke();
+  const kit = KEEPER_KIT[p.team];
+  drawDisc(p, kit.body, kit.edge);
 
   // The gloves: two small arcs either side, so a keeper reads as a keeper even
   // in a still frame, not just by its colour.
@@ -2006,7 +1925,7 @@ function drawAim() {
   const { player, px, py } = game.drag;
   const dx = player.x - px, dy = player.y - py;
   const len = Math.hypot(dx, dy);
-  if (len < 6) return;
+  if (len < MIN_DRAG) return;
   const power = Math.min(len / MAX_DRAG, 1);
   const nx = dx / len, ny = dy / len;
   const col = `hsl(${120 * (1 - power)}, 95%, 55%)`;
@@ -2050,12 +1969,10 @@ function drawParticles() {
 
 function draw(t) {
   ctx.clearRect(0, 0, W, H);
-  let sx = 0, sy = 0;
   if (game.shake > 0) {
-    sx = (Math.random() * 2 - 1) * game.shake;
-    sy = (Math.random() * 2 - 1) * game.shake;
     ctx.save();
-    ctx.translate(sx, sy);
+    ctx.translate((Math.random() * 2 - 1) * game.shake,
+                  (Math.random() * 2 - 1) * game.shake);
   }
   drawPitch();
   for (const k of game.keepers) drawKeeper(k);
@@ -2082,7 +1999,7 @@ function frame(now) {
     game.timer -= dt;
     if (game.timer <= 0) afterGoal();
   } else if (game.state === 'MOVING') {
-    acc += dt * (game.slowmo > 0 ? 0.35 : 1);
+    acc += dt;
     game.moveTime += dt;
     let steps = 0;
     while (acc >= STEP && steps < 12 && game.state === 'MOVING') {
@@ -2091,7 +2008,7 @@ function frame(now) {
       steps++;
     }
     if (game.state !== 'MOVING') acc = 0;
-    else if (allStopped() || game.moveTime > MAX_MOVE_TIME) settle();
+    else if (allStopped(movers) || game.moveTime > MAX_MOVE_TIME) settle();
   } else {
     acc = 0;
   }
@@ -2106,7 +2023,8 @@ function frame(now) {
 /* ---------- boot ---------- */
 // The pitch renders immediately (as a static backdrop, same trick the win
 // overlay already relies on) but nothing is playable: game.state stays
-// 'START' until the start screen's Play button calls restart().
+// 'START', which is what blocks the pointerdown handler, until something
+// calls restart() - the Play button in a friendly, the draw's kickoff in a cup.
 init();
 loadProgress();
 // After loadProgress, not before: the start-screen block runs at parse time,

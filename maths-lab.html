@@ -15,7 +15,7 @@
   .sub { opacity: .6; font-size: 14px; margin-bottom: 18px; }
   .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
   .row label { font-size: 13px; opacity: .7; margin-right: 4px; }
-  button.lab, select.lab, input.lab {
+  button.lab, input.lab {
     font: inherit; font-size: 14px; font-weight: 700; color: #fff;
     padding: 7px 12px; border-radius: 9px; cursor: pointer;
     border: 2px solid rgba(255,255,255,.22); background: rgba(255,255,255,.07);
@@ -156,30 +156,6 @@
   el('roll').addEventListener('click', roll);
   el('diff').addEventListener('change', roll);
 
-  // A synthetic learner of fixed ability on the same 1-MAX_BAND scale. Their chance of
-  // knowing an answer falls off as difficulty passes their ability, and what
-  // they do not know they guess from the choices on offer.
-  //
-  // Copied deliberately from test.js rather than invented: a lab that modelled
-  // the learner differently would give a different answer to the same question,
-  // and there would be no way to tell which one was lying.
-  function simulate(ability, n) {
-    var s = Maths.newState(4);
-    var correct = 0, total = 0, sum = 0, i, known, choices, p, ok_, at, ms;
-    for (i = 0; i < n; i++) {
-      at = Math.round(s.difficulty);         // not `band`: that is the preview's
-      known = 1 / (1 + Math.exp(1.6 * (s.difficulty - ability)));
-      choices = Maths.choiceCount(s.difficulty);
-      p = known + (1 - known) / choices;
-      ok_ = Math.random() < p;
-      ms = ok_ ? (2500 + 900 * at) * (0.4 + Math.random() * 1.4) : 9000;
-      s = Maths.update(s, { correct: ok_, elapsedMs: ms, band: at, skill: 'x' });
-      // Measure the second half only: the first is the climb to their level.
-      if (i > n / 2) { total++; sum += s.difficulty; if (ok_) { correct++; } }
-    }
-    return { band: sum / total, accuracy: correct / total };
-  }
-
   el('sim').addEventListener('click', function () {
     var n = Number(el('simN').value) || 4000;
     var html = '<tr><th>Ability</th><th>Settles at band</th><th>Correct</th></tr>';
@@ -187,7 +163,11 @@
     // how content and engine get judged, so it must not stop where the engine
     // no longer does.
     [1.5, 3, 4.5, 6, 7.5, 9, 10.5].forEach(function (ability) {
-      var r = simulate(ability, n);
+      // Maths.simulate is the same synthetic learner test.js asserts against,
+      // not a copy of it. A lab that modelled the learner differently from the
+      // suite would give a different answer to the same question, and there
+      // would be no way to tell which one was lying.
+      var r = Maths.simulate(ability, n, Math.random);
       // The band should land near their ability, and accuracy near 80%.
       var bandOk = Math.abs(r.band - Math.min(Maths.MAX_BAND, ability)) < 1.2;
       var accOk = r.accuracy > 0.72 && r.accuracy < 0.88;

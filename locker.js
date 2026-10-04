@@ -48,8 +48,8 @@ var Locker = (function () {
   }
 
   function has(item, slot) {
-    if (item.cup) { return (slot.trophies || 0) >= item.cup; }
-    return (slot.stats.correct || 0) >= item.at;
+    if (item.cup) { return slot.trophies >= item.cup; }
+    return slot.stats.correct >= item.at;
   }
 
   // Every id this slot has earned, defaults included.
@@ -66,8 +66,7 @@ var Locker = (function () {
     var prev = 0, i;
     for (i = 0; i < MILESTONES.length; i++) {
       if (!has(MILESTONES[i], slot)) {
-        return { id: MILESTONES[i].id, kind: MILESTONES[i].kind,
-                 at: MILESTONES[i].at, prev: prev };
+        return { id: MILESTONES[i].id, at: MILESTONES[i].at, prev: prev };
       }
       prev = MILESTONES[i].at;
     }
@@ -78,10 +77,9 @@ var Locker = (function () {
   // milestone order. Defaults never announce themselves. Consuming these is
   // the caller's job — append them to slot.unlocked and persist.
   function fresh(slot) {
-    var seenAlready = slot.unlocked || [];
     return ITEMS.filter(function (it) {
       return (it.at > 0 || it.cup) && has(it, slot) &&
-             seenAlready.indexOf(it.id) === -1;
+             slot.unlocked.indexOf(it.id) === -1;
     }).sort(function (a, b) { return (a.cup ? 0 : a.at) - (b.cup ? 0 : b.at); })
       .map(function (it) { return it.id; });
   }

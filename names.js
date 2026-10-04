@@ -32,7 +32,11 @@ var Names = (function () {
   //
   // Short forms throughout: the name field stops at 12 characters, so anything
   // longer is cut to the form a child would still recognise (Liechtenst.,
-  // N. Macedonia, Dominican R.). Same order and grouping as flags.js.
+  // N. Macedonia, Dominican R.).
+  //
+  // Order matters: flags.js slices this table into continents, so the entries
+  // are grouped by continent and alphabetical within each. A country added in
+  // the wrong place lands on the wrong tab of the picker.
   var COUNTRIES = {
     // Europe
     '\u{1F1E6}\u{1F1F1}': 'Albania', '\u{1F1E6}\u{1F1E9}': 'Andorra',
@@ -147,8 +151,7 @@ var Names = (function () {
   function forBadge(badge, rand) { return country(badge) || make(rand); }
 
   return {
-    make: make, country: country, forBadge: forBadge,
-    COUNTRIES: COUNTRIES, ONSET: ONSET, VOWEL: VOWEL, CODA: CODA
+    make: make, country: country, forBadge: forBadge, COUNTRIES: COUNTRIES
   };
 })();
 

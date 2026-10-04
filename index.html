@@ -57,9 +57,9 @@
     <canvas id="game" width="600" height="900"></canvas>
     <button id="fsBtn" type="button" title="Fullscreen (F)" aria-label="Toggle fullscreen">&#9974;</button>
     <div id="chaosBanner" class="hidden"></div>
-    <div id="goalFlash" class="hidden">GOAL!</div>
+    <div id="goalFlash" class="hidden"></div>
     <div id="quiz" class="hidden">
-      <div id="quizLead">Answer for a bonus</div>
+      <div id="quizLead"></div>
       <div id="quizPrize">
         <div id="quizPrizeGlyph"></div>
         <div id="quizPrizePreview"></div>
@@ -81,7 +81,7 @@
         <p class="caption">How old are you?</p>
         <div id="ageLead">
           <span class="cake">&#127874;</span>
-          <span id="ageValue">7</span>
+          <span id="ageValue"></span>
         </div>
         <div id="teamAges" title="Age">
           <button type="button" class="ageBtn" data-band="1">5</button>
@@ -143,7 +143,7 @@
     <div id="bracket" class="hidden">
       <div id="bracketCard">
         <div id="bracketTitle">&#127942;</div>
-        <p class="caption" id="bracketCaption">Next match</p>
+        <p class="caption" id="bracketCaption"></p>
         <div id="bracketTie">
           <div class="side"><span class="bdg" id="tieMe"></span><span class="nm" id="tieMeName"></span></div>
           <div class="vs"><span id="tieRound">&#127942;</span></div>
@@ -160,13 +160,13 @@
 
     <div id="overlay" class="hidden">
       <div id="overCard">
-        <h1 id="overTitle">You Win!</h1>
+        <h1 id="overTitle"></h1>
         <p id="overSub"></p>
         <div id="overUnlocks" class="hidden">
           <p class="caption">Unlocked!</p>
           <div id="overUnlockRow"></div>
         </div>
-        <button id="again">Play Again</button>
+        <button id="again"></button>
       </div>
     </div>
   </div>
@@ -175,10 +175,10 @@
 </div>
 <script src="maths.js"></script>
 <script src="names.js"></script>
+<script src="tournament.js"></script>
 <script src="flags.js"></script>
 <script src="store.js"></script>
 <script src="locker.js"></script>
-<script src="tournament.js"></script>
 <script src="quiz.js"></script>
 <script src="formation.js"></script>
 <script src="game.js"></script>

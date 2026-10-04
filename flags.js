@@ -15,10 +15,16 @@
 // Slovakia never has to read, tap a tab, or scroll; the continents are the
 // fallback for the long tail, not the price of entry.
 //
-// Every flag here must also appear in names.js — a flag with no country name
-// would fill the team name field with an invented word instead.
+// The countries themselves come from names.js, which is why a flag can never
+// be here without a country name to fill the team name field with.
 //
 // Pure: no DOM, no game state.
+// names.js loads first, on every page and in the tests: the country list is
+// this file's source of truth for which flags exist and in what order.
+var Names = (typeof Names !== 'undefined') ? Names : require('./names.js');
+// tournament.js owns the seeding, which is what decides the shortcut row.
+var Tournament = (typeof Tournament !== 'undefined') ? Tournament : require('./tournament.js');
+
 var Flags = (function () {
 
   // The tab glyphs are the only navigation, since the game has no words. Three
@@ -27,117 +33,68 @@ var Flags = (function () {
   // small child already reads as that place. A child who guesses wrong taps
   // the next tab, which costs nothing.
   //
-  // `alpha` is every country of that continent in English alphabetical order —
-  // the order that is easy to keep correct. `lead` is the handful pulled to the
-  // front of it, which is the order that is easy to USE. The two are merged
-  // below, so a country added to `alpha` still appears even if nobody thinks to
-  // rank it, and a country in `lead` cannot be lost from its continent.
+  // Each continent's countries are not listed here. names.js already holds all
+  // 197 of them, grouped by continent and alphabetical within each — the order
+  // that is easy to keep correct — and a second copy of that list is a second
+  // thing to keep in step. So a region names only `from`, the first country of
+  // its stretch, and takes the rest of the stretch from names.js.
+  //
+  // `lead` is the handful pulled to the front of that stretch, which is the
+  // order that is easy to USE. The two are merged below, so a country added to
+  // names.js still appears even if nobody thinks to rank it, and a country in
+  // `lead` cannot be lost from its continent.
   var REGIONS = [
     // Europe
-    { id: 'eu', icon: '\u{1F3F0}',
+    { id: 'eu', icon: '\u{1F3F0}', from: '\u{1F1E6}\u{1F1F1}',   // Albania
       lead: [
       '\u{1F1EA}\u{1F1F8}', '\u{1F1E9}\u{1F1EA}', '\u{1F1EB}\u{1F1F7}', '\u{1F1EE}\u{1F1F9}', '\u{1F1EC}\u{1F1E7}',
       '\u{1F1F5}\u{1F1F9}', '\u{1F1F3}\u{1F1F1}', '\u{1F1F8}\u{1F1F0}', '\u{1F1E8}\u{1F1FF}', '\u{1F1F5}\u{1F1F1}',
       '\u{1F1FA}\u{1F1E6}', '\u{1F1E6}\u{1F1F9}', '\u{1F1ED}\u{1F1FA}', '\u{1F1ED}\u{1F1F7}', '\u{1F1E7}\u{1F1EA}',
       '\u{1F1E8}\u{1F1ED}', '\u{1F1F8}\u{1F1EA}', '\u{1F1F3}\u{1F1F4}', '\u{1F1E9}\u{1F1F0}', '\u{1F1EC}\u{1F1F7}'
-      ], alpha: [
-      '\u{1F1E6}\u{1F1F1}', '\u{1F1E6}\u{1F1E9}', '\u{1F1E6}\u{1F1F2}', '\u{1F1E6}\u{1F1F9}',
-      '\u{1F1E6}\u{1F1FF}', '\u{1F1E7}\u{1F1FE}', '\u{1F1E7}\u{1F1EA}', '\u{1F1E7}\u{1F1E6}',
-      '\u{1F1E7}\u{1F1EC}', '\u{1F1ED}\u{1F1F7}', '\u{1F1E8}\u{1F1FE}', '\u{1F1E8}\u{1F1FF}',
-      '\u{1F1E9}\u{1F1F0}', '\u{1F1EA}\u{1F1EA}', '\u{1F1EB}\u{1F1EE}', '\u{1F1EB}\u{1F1F7}',
-      '\u{1F1EC}\u{1F1EA}', '\u{1F1E9}\u{1F1EA}', '\u{1F1EC}\u{1F1F7}', '\u{1F1ED}\u{1F1FA}',
-      '\u{1F1EE}\u{1F1F8}', '\u{1F1EE}\u{1F1EA}', '\u{1F1EE}\u{1F1F9}', '\u{1F1FD}\u{1F1F0}',
-      '\u{1F1F1}\u{1F1FB}', '\u{1F1F1}\u{1F1EE}', '\u{1F1F1}\u{1F1F9}', '\u{1F1F1}\u{1F1FA}',
-      '\u{1F1F2}\u{1F1F9}', '\u{1F1F2}\u{1F1E9}', '\u{1F1F2}\u{1F1E8}', '\u{1F1F2}\u{1F1EA}',
-      '\u{1F1F3}\u{1F1F1}', '\u{1F1F2}\u{1F1F0}', '\u{1F1F3}\u{1F1F4}', '\u{1F1F5}\u{1F1F1}',
-      '\u{1F1F5}\u{1F1F9}', '\u{1F1F7}\u{1F1F4}', '\u{1F1F7}\u{1F1FA}', '\u{1F1F8}\u{1F1F2}',
-      '\u{1F1F7}\u{1F1F8}', '\u{1F1F8}\u{1F1F0}', '\u{1F1F8}\u{1F1EE}', '\u{1F1EA}\u{1F1F8}',
-      '\u{1F1F8}\u{1F1EA}', '\u{1F1E8}\u{1F1ED}', '\u{1F1F9}\u{1F1F7}', '\u{1F1FA}\u{1F1E6}',
-      '\u{1F1EC}\u{1F1E7}', '\u{1F1FB}\u{1F1E6}'
-    ] },
+      ] },
     // Africa
-    { id: 'af', icon: '\u{1F30D}',
+    { id: 'af', icon: '\u{1F30D}', from: '\u{1F1E9}\u{1F1FF}',   // Algeria
       lead: [
       '\u{1F1F2}\u{1F1E6}', '\u{1F1EA}\u{1F1EC}', '\u{1F1F3}\u{1F1EC}', '\u{1F1FF}\u{1F1E6}', '\u{1F1EC}\u{1F1ED}',
       '\u{1F1F8}\u{1F1F3}', '\u{1F1E8}\u{1F1F2}', '\u{1F1E9}\u{1F1FF}', '\u{1F1F9}\u{1F1F3}', '\u{1F1F0}\u{1F1EA}',
       '\u{1F1EA}\u{1F1F9}', '\u{1F1E8}\u{1F1EE}'
-      ], alpha: [
-      '\u{1F1E9}\u{1F1FF}', '\u{1F1E6}\u{1F1F4}', '\u{1F1E7}\u{1F1EF}', '\u{1F1E7}\u{1F1FC}',
-      '\u{1F1E7}\u{1F1EB}', '\u{1F1E7}\u{1F1EE}', '\u{1F1E8}\u{1F1F2}', '\u{1F1E8}\u{1F1FB}',
-      '\u{1F1E8}\u{1F1EB}', '\u{1F1F9}\u{1F1E9}', '\u{1F1F0}\u{1F1F2}', '\u{1F1E8}\u{1F1EC}',
-      '\u{1F1E8}\u{1F1E9}', '\u{1F1E9}\u{1F1EF}', '\u{1F1EA}\u{1F1EC}', '\u{1F1EC}\u{1F1F6}',
-      '\u{1F1EA}\u{1F1F7}', '\u{1F1F8}\u{1F1FF}', '\u{1F1EA}\u{1F1F9}', '\u{1F1EC}\u{1F1E6}',
-      '\u{1F1EC}\u{1F1F2}', '\u{1F1EC}\u{1F1ED}', '\u{1F1EC}\u{1F1F3}', '\u{1F1EC}\u{1F1FC}',
-      '\u{1F1E8}\u{1F1EE}', '\u{1F1F0}\u{1F1EA}', '\u{1F1F1}\u{1F1F8}', '\u{1F1F1}\u{1F1F7}',
-      '\u{1F1F1}\u{1F1FE}', '\u{1F1F2}\u{1F1EC}', '\u{1F1F2}\u{1F1FC}', '\u{1F1F2}\u{1F1F1}',
-      '\u{1F1F2}\u{1F1F7}', '\u{1F1F2}\u{1F1FA}', '\u{1F1F2}\u{1F1E6}', '\u{1F1F2}\u{1F1FF}',
-      '\u{1F1F3}\u{1F1E6}', '\u{1F1F3}\u{1F1EA}', '\u{1F1F3}\u{1F1EC}', '\u{1F1F7}\u{1F1FC}',
-      '\u{1F1F8}\u{1F1F9}', '\u{1F1F8}\u{1F1F3}', '\u{1F1F8}\u{1F1E8}', '\u{1F1F8}\u{1F1F1}',
-      '\u{1F1F8}\u{1F1F4}', '\u{1F1FF}\u{1F1E6}', '\u{1F1F8}\u{1F1F8}', '\u{1F1F8}\u{1F1E9}',
-      '\u{1F1F9}\u{1F1FF}', '\u{1F1F9}\u{1F1EC}', '\u{1F1F9}\u{1F1F3}', '\u{1F1FA}\u{1F1EC}',
-      '\u{1F1FF}\u{1F1F2}', '\u{1F1FF}\u{1F1FC}'
-    ] },
+      ] },
     // The Americas
-    { id: 'am', icon: '\u{1F30E}',
+    { id: 'am', icon: '\u{1F30E}', from: '\u{1F1E6}\u{1F1EC}',   // Antigua
       lead: [
       '\u{1F1E7}\u{1F1F7}', '\u{1F1E6}\u{1F1F7}', '\u{1F1FA}\u{1F1F8}', '\u{1F1F2}\u{1F1FD}', '\u{1F1E8}\u{1F1E6}',
       '\u{1F1E8}\u{1F1F4}', '\u{1F1E8}\u{1F1F1}', '\u{1F1FA}\u{1F1FE}', '\u{1F1F5}\u{1F1EA}', '\u{1F1EF}\u{1F1F2}'
-      ], alpha: [
-      '\u{1F1E6}\u{1F1EC}', '\u{1F1E6}\u{1F1F7}', '\u{1F1E7}\u{1F1F8}', '\u{1F1E7}\u{1F1E7}',
-      '\u{1F1E7}\u{1F1FF}', '\u{1F1E7}\u{1F1F4}', '\u{1F1E7}\u{1F1F7}', '\u{1F1E8}\u{1F1E6}',
-      '\u{1F1E8}\u{1F1F1}', '\u{1F1E8}\u{1F1F4}', '\u{1F1E8}\u{1F1F7}', '\u{1F1E8}\u{1F1FA}',
-      '\u{1F1E9}\u{1F1F2}', '\u{1F1E9}\u{1F1F4}', '\u{1F1EA}\u{1F1E8}', '\u{1F1F8}\u{1F1FB}',
-      '\u{1F1EC}\u{1F1E9}', '\u{1F1EC}\u{1F1F9}', '\u{1F1EC}\u{1F1FE}', '\u{1F1ED}\u{1F1F9}',
-      '\u{1F1ED}\u{1F1F3}', '\u{1F1EF}\u{1F1F2}', '\u{1F1F2}\u{1F1FD}', '\u{1F1F3}\u{1F1EE}',
-      '\u{1F1F5}\u{1F1E6}', '\u{1F1F5}\u{1F1FE}', '\u{1F1F5}\u{1F1EA}', '\u{1F1F0}\u{1F1F3}',
-      '\u{1F1F1}\u{1F1E8}', '\u{1F1FB}\u{1F1E8}', '\u{1F1F8}\u{1F1F7}', '\u{1F1F9}\u{1F1F9}',
-      '\u{1F1FA}\u{1F1F8}', '\u{1F1FA}\u{1F1FE}', '\u{1F1FB}\u{1F1EA}'
-    ] },
+      ] },
     // Asia
-    { id: 'as', icon: '\u{1F30F}',
+    { id: 'as', icon: '\u{1F30F}', from: '\u{1F1E6}\u{1F1EB}',   // Afghanistan
       lead: [
       '\u{1F1EF}\u{1F1F5}', '\u{1F1F0}\u{1F1F7}', '\u{1F1E8}\u{1F1F3}', '\u{1F1EE}\u{1F1F3}', '\u{1F1F9}\u{1F1ED}',
       '\u{1F1FB}\u{1F1F3}', '\u{1F1EE}\u{1F1E9}', '\u{1F1F5}\u{1F1ED}', '\u{1F1F8}\u{1F1E6}', '\u{1F1F6}\u{1F1E6}'
-      ], alpha: [
-      '\u{1F1E6}\u{1F1EB}', '\u{1F1E7}\u{1F1ED}', '\u{1F1E7}\u{1F1E9}', '\u{1F1E7}\u{1F1F9}',
-      '\u{1F1E7}\u{1F1F3}', '\u{1F1F0}\u{1F1ED}', '\u{1F1E8}\u{1F1F3}', '\u{1F1EE}\u{1F1F3}',
-      '\u{1F1EE}\u{1F1E9}', '\u{1F1EE}\u{1F1F7}', '\u{1F1EE}\u{1F1F6}', '\u{1F1EE}\u{1F1F1}',
-      '\u{1F1EF}\u{1F1F5}', '\u{1F1EF}\u{1F1F4}', '\u{1F1F0}\u{1F1FF}', '\u{1F1F0}\u{1F1F7}',
-      '\u{1F1F0}\u{1F1FC}', '\u{1F1F0}\u{1F1EC}', '\u{1F1F1}\u{1F1E6}', '\u{1F1F1}\u{1F1E7}',
-      '\u{1F1F2}\u{1F1FE}', '\u{1F1F2}\u{1F1FB}', '\u{1F1F2}\u{1F1F3}', '\u{1F1F2}\u{1F1F2}',
-      '\u{1F1F3}\u{1F1F5}', '\u{1F1F0}\u{1F1F5}', '\u{1F1F4}\u{1F1F2}', '\u{1F1F5}\u{1F1F0}',
-      '\u{1F1F5}\u{1F1F8}', '\u{1F1F5}\u{1F1ED}', '\u{1F1F6}\u{1F1E6}', '\u{1F1F8}\u{1F1E6}',
-      '\u{1F1F8}\u{1F1EC}', '\u{1F1F1}\u{1F1F0}', '\u{1F1F8}\u{1F1FE}', '\u{1F1F9}\u{1F1FC}',
-      '\u{1F1F9}\u{1F1EF}', '\u{1F1F9}\u{1F1ED}', '\u{1F1F9}\u{1F1F1}', '\u{1F1F9}\u{1F1F2}',
-      '\u{1F1E6}\u{1F1EA}', '\u{1F1FA}\u{1F1FF}', '\u{1F1FB}\u{1F1F3}', '\u{1F1FE}\u{1F1EA}'
-    ] },
+      ] },
     // Oceania
-    { id: 'oc', icon: '\u{1F998}',
+    { id: 'oc', icon: '\u{1F998}', from: '\u{1F1E6}\u{1F1FA}',   // Australia
       lead: [
       '\u{1F1E6}\u{1F1FA}', '\u{1F1F3}\u{1F1FF}', '\u{1F1EB}\u{1F1EF}', '\u{1F1F5}\u{1F1EC}'
-      ], alpha: [
-      '\u{1F1E6}\u{1F1FA}', '\u{1F1EB}\u{1F1EF}', '\u{1F1F0}\u{1F1EE}', '\u{1F1F2}\u{1F1ED}',
-      '\u{1F1EB}\u{1F1F2}', '\u{1F1F3}\u{1F1F7}', '\u{1F1F3}\u{1F1FF}', '\u{1F1F5}\u{1F1FC}',
-      '\u{1F1F5}\u{1F1EC}', '\u{1F1FC}\u{1F1F8}', '\u{1F1F8}\u{1F1E7}', '\u{1F1F9}\u{1F1F4}',
-      '\u{1F1F9}\u{1F1FB}', '\u{1F1FB}\u{1F1FA}'
-    ] }
+      ] }
   ];
 
-  // Lead first, then whatever the alphabet still has left. Done once, here,
-  // rather than at paint time: the picker should not be deciding what order the
-  // world is in every time a tab is tapped.
-  function order(region) {
-    var out = [], i;
-    for (i = 0; i < region.lead.length; i++) {
-      if (region.alpha.indexOf(region.lead[i]) !== -1) { out.push(region.lead[i]); }
-    }
-    for (i = 0; i < region.alpha.length; i++) {
-      if (out.indexOf(region.alpha[i]) === -1) { out.push(region.alpha[i]); }
-    }
-    return out;
-  }
+  // Each region's stretch of names.js, then its flags: lead first, then
+  // whatever the alphabet still has left. Done once, here, rather than at paint
+  // time: the picker should not be deciding what order the world is in every
+  // time a tab is tapped.
   (function () {
-    for (var i = 0; i < REGIONS.length; i++) { REGIONS[i].flags = order(REGIONS[i]); }
+    var world = Object.keys(Names.COUNTRIES), i, j, r, start, end, out;
+    for (i = 0; i < REGIONS.length; i++) {
+      r = REGIONS[i];
+      start = world.indexOf(r.from);
+      end = (i + 1 < REGIONS.length) ? world.indexOf(REGIONS[i + 1].from) : world.length;
+      r.alpha = world.slice(start, end);
+      out = r.lead.slice();
+      for (j = 0; j < r.alpha.length; j++) {
+        if (out.indexOf(r.alpha[j]) === -1) { out.push(r.alpha[j]); }
+      }
+      r.flags = out;
+    }
   })();
 
   // The countries a child actually asks for, in the order they are likely to
@@ -184,14 +141,14 @@ var Flags = (function () {
   // in seed order, and a child can choose to BE any team they would otherwise
   // have to beat. Eleven of them, which is also a team.
   //
-  // These must stay a subset of Tournament.BY_SEED; the tests hold that line.
-  // Everything not on the card, Slovakia and its neighbours included, is one
-  // tap away behind the globe — and they open the star tab of the picker.
-  var QUICK = [
-    '\u{1F1E7}\u{1F1F7}', '\u{1F1E6}\u{1F1F7}', '\u{1F1EA}\u{1F1F8}', '\u{1F1E9}\u{1F1EA}',
-    '\u{1F1EC}\u{1F1E7}', '\u{1F1F3}\u{1F1F1}', '\u{1F1F5}\u{1F1F9}', '\u{1F1E7}\u{1F1EA}',
-    '\u{1F1ED}\u{1F1F7}', '\u{1F1EE}\u{1F1F9}', '\u{1F1F2}\u{1F1E6}'
-  ];
+  // Read out of the draw rather than listed beside it, so "the best-seeded
+  // sides" cannot quietly stop being true. Everything not on the card,
+  // Slovakia and its neighbours included, is one tap away behind the globe —
+  // and they open the star tab of the picker.
+  var QUICK = Object.keys(Tournament.BY_SEED)
+    .map(Number).sort(function (a, b) { return a - b; })
+    .slice(0, 11)
+    .map(function (seed) { return Tournament.BY_SEED[seed]; });
 
   // Which continent a flag belongs to. The world is partitioned by REGIONS, so
   // this is the one true answer; the star tab is a view over it, not a place.

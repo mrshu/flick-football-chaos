@@ -39,7 +39,6 @@ var Maths = (function () {
   }
 
   function buildChoices(answer, count, near, rand, min) {
-    if (min === undefined) { min = 0; }
     var out = [answer], i, v;
 
     // Strings (comparison answers) take their alternatives verbatim.
@@ -55,7 +54,7 @@ var Maths = (function () {
     }));
     for (i = 0; i < pool.length && out.length < count; i++) {
       v = pool[i];
-      if (typeof v === 'number' && v >= min && out.indexOf(v) === -1) { out.push(v); }
+      if (v >= min && out.indexOf(v) === -1) { out.push(v); }
     }
 
     // Pad outward from the answer until we have enough distinct options.
@@ -85,101 +84,111 @@ var Maths = (function () {
     };
   }
 
-  function genBond5(rand) {
-    var a = _randInt(rand, 1, 4);
-    return {
-      render: [{ t: 'balls', v: a }, { t: 'op', v: OP.add }, { t: 'box' },
-               { t: 'eq' }, { t: 'balls', v: 5 }],
-      answer: 5 - a, skill: 'bond5',
-      near: [5 - a + 1, 5 - a - 1, a, 5]
+  // "a OP b = □", the shape thirteen generators share.
+  function _row(a, op, b) {
+    return [{ t: 'num', v: a }, { t: 'op', v: op },
+            { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }];
+  }
+
+  // Five terms separated by dots, with one of them hidden.
+  function _seqRow(vals, gap) {
+    var render = [], i;
+    for (i = 0; i < vals.length; i++) {
+      if (i > 0) { render.push({ t: 'sep' }); }
+      render.push(i === gap ? { t: 'box' } : { t: 'num', v: vals[i] });
+    }
+    return render;
+  }
+
+  // "a + □ = total": the number bonds. Band 1 asks it to 5 in balls a child
+  // can count, band 2 to 10 in numerals — nothing else separates the two.
+  function makeBond(total, tok, skill) {
+    return function (rand) {
+      var a = _randInt(rand, 1, total - 1);
+      return {
+        render: [{ t: tok, v: a }, { t: 'op', v: OP.add }, { t: 'box' },
+                 { t: 'eq' }, { t: tok, v: total }],
+        answer: total - a, skill: skill,
+        near: [total - a + 1, total - a - 1, a, total]
+      };
     };
   }
+
+  // Subtraction inside a range, with distractors an off-by-one either way,
+  // the sum, and the number taken away.
+  function makeSub(lo, hi, skill) {
+    return function (rand) {
+      var a = _randInt(rand, lo, hi), b = _randInt(rand, 1, a);
+      return {
+        render: _row(a, OP.sub, b),
+        answer: a - b, skill: skill,
+        near: [a - b + 1, Math.max(0, a - b - 1), a + b, b]
+      };
+    };
+  }
+
+  // An arithmetic sequence with one term hidden. The two bands that use it
+  // differ only in how the step and the start are drawn.
+  function makeLinSeq(drawStep, drawStart, skill) {
+    return function (rand) {
+      var step = drawStep(rand);
+      var start = drawStart(rand, step);
+      var gap = _randInt(rand, 1, 3); // index of the hidden term among 5
+      var vals = [], i;
+      for (i = 0; i < 5; i++) { vals.push(start + i * step); }
+      return {
+        render: _seqRow(vals, gap), answer: vals[gap], skill: skill,
+        near: [vals[gap] + step, vals[gap] - step, vals[gap] + 1, vals[gap] - 1]
+      };
+    };
+  }
+
+  var genBond5 = makeBond(5, 'balls', 'bond5');
 
   // --- band 2: addition, subtraction and bonds within 10 ---
   function genAdd10(rand) {
     var a = _randInt(rand, 1, 9), b = _randInt(rand, 1, 10 - a);
     return {
-      render: [{ t: 'num', v: a }, { t: 'op', v: OP.add },
-               { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
+      render: _row(a, OP.add, b),
       answer: a + b, skill: 'add10',
       near: [a + b + 1, a + b - 1, Math.abs(a - b), a + b + 2]
     };
   }
 
-  function genSub10(rand) {
-    var a = _randInt(rand, 2, 10), b = _randInt(rand, 1, a);
-    return {
-      render: [{ t: 'num', v: a }, { t: 'op', v: OP.sub },
-               { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
-      answer: a - b, skill: 'sub10',
-      near: [a - b + 1, Math.max(0, a - b - 1), a + b, b]
-    };
-  }
+  var genSub10 = makeSub(2, 10, 'sub10');
 
-  function genBond10(rand) {
-    var a = _randInt(rand, 1, 9);
-    return {
-      render: [{ t: 'num', v: a }, { t: 'op', v: OP.add }, { t: 'box' },
-               { t: 'eq' }, { t: 'num', v: 10 }],
-      answer: 10 - a, skill: 'bond10',
-      near: [10 - a + 1, 10 - a - 1, a, 10]
-    };
-  }
+  var genBond10 = makeBond(10, 'num', 'bond10');
 
   // --- band 3: within 20, doubles, sequences ---
   function genAdd20(rand) {
     var a = _randInt(rand, 2, 15), b = _randInt(rand, 2, 20 - a);
     return {
-      render: [{ t: 'num', v: a }, { t: 'op', v: OP.add },
-               { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
+      render: _row(a, OP.add, b),
       answer: a + b, skill: 'add20',
       near: [a + b + 1, a + b - 1, a + b + 10, Math.abs(a - b)]
     };
   }
 
-  function genSub20(rand) {
-    var a = _randInt(rand, 5, 20), b = _randInt(rand, 1, a);
-    return {
-      render: [{ t: 'num', v: a }, { t: 'op', v: OP.sub },
-               { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
-      answer: a - b, skill: 'sub20',
-      near: [a - b + 1, Math.max(0, a - b - 1), a + b, b]
-    };
-  }
+  var genSub20 = makeSub(5, 20, 'sub20');
 
   function genDouble(rand) {
     var a = _randInt(rand, 2, 10);
     return {
-      render: [{ t: 'num', v: a }, { t: 'op', v: OP.add },
-               { t: 'num', v: a }, { t: 'eq' }, { t: 'box' }],
+      render: _row(a, OP.add, a),
       answer: a * 2, skill: 'double',
       near: [a * 2 + 1, a * 2 - 1, a, a * 2 + 2]
     };
   }
 
-  function genSeq(rand) {
-    var step = _pick(rand, [2, 5, 10]);
-    var start = step * _randInt(rand, 1, 4);
-    var gap = _randInt(rand, 1, 3); // index of the hidden term among 5
-    var render = [], i, v;
-    for (i = 0; i < 5; i++) {
-      v = start + i * step;
-      if (i > 0) { render.push({ t: 'sep' }); }
-      render.push(i === gap ? { t: 'box' } : { t: 'num', v: v });
-    }
-    var answer = start + gap * step;
-    return {
-      render: render, answer: answer, skill: 'seq',
-      near: [answer + step, answer - step, answer + 1, answer - 1]
-    };
-  }
+  var genSeq = makeLinSeq(
+    function (rand) { return _pick(rand, [2, 5, 10]); },
+    function (rand, step) { return step * _randInt(rand, 1, 4); }, 'seq');
 
   // --- band 4: easy tables, within 100, halves ---
   function genMul(rand) {
     var a = _pick(rand, [2, 5, 10]), b = _randInt(rand, 2, 12);
     return {
-      render: [{ t: 'num', v: a }, { t: 'op', v: OP.mul },
-               { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
+      render: _row(a, OP.mul, b),
       answer: a * b, skill: 'mul',
       near: [a * b + a, a * b - a, a + b, a * b + 1]
     };
@@ -188,8 +197,7 @@ var Maths = (function () {
   function genAdd100(rand) {
     var a = _randInt(rand, 10, 89), b = _randInt(rand, 5, 99 - a);
     return {
-      render: [{ t: 'num', v: a }, { t: 'op', v: OP.add },
-               { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
+      render: _row(a, OP.add, b),
       answer: a + b, skill: 'add100',
       near: [a + b + 10, a + b - 10, a + b + 1, a + b - 1]
     };
@@ -198,8 +206,7 @@ var Maths = (function () {
   function genSub100(rand) {
     var a = _randInt(rand, 20, 99), b = _randInt(rand, 5, a);
     return {
-      render: [{ t: 'num', v: a }, { t: 'op', v: OP.sub },
-               { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
+      render: _row(a, OP.sub, b),
       answer: a - b, skill: 'sub100',
       near: [a - b + 10, Math.max(0, a - b - 10), a - b + 1, a + b]
     };
@@ -219,8 +226,7 @@ var Maths = (function () {
   function genTable(rand) {
     var a = _randInt(rand, 2, 12), b = _randInt(rand, 2, 12);
     return {
-      render: [{ t: 'num', v: a }, { t: 'op', v: OP.mul },
-               { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
+      render: _row(a, OP.mul, b),
       answer: a * b, skill: 'table',
       near: [a * b + a, a * b - a, a * b + b, a + b]
     };
@@ -229,8 +235,7 @@ var Maths = (function () {
   function genDiv(rand) {
     var b = _randInt(rand, 2, 12), q = _randInt(rand, 2, 12), a = b * q;
     return {
-      render: [{ t: 'num', v: a }, { t: 'op', v: OP.div },
-               { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
+      render: _row(a, OP.div, b),
       answer: q, skill: 'div',
       near: [q + 1, q - 1, b, a - b]
     };
@@ -253,8 +258,7 @@ var Maths = (function () {
     var b = _randInt(rand, 20, Math.min(199, a));
     var addition = rand() < 0.5;
     return {
-      render: [{ t: 'num', v: a }, { t: 'op', v: addition ? OP.add : OP.sub },
-               { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
+      render: _row(a, addition ? OP.add : OP.sub, b),
       answer: addition ? a + b : a - b, skill: 'add1000',
       near: addition ? [a + b + 10, a + b - 10, a + b + 100, a - b]
                      : [a - b + 10, Math.max(0, a - b - 10), a - b + 100, a + b]
@@ -266,8 +270,7 @@ var Maths = (function () {
     var aq = _randInt(rand, 1, 8), bq = _randInt(rand, 1, 8); // quarter units
     var sum = (aq + bq) / 4;
     return {
-      render: [{ t: 'num', v: aq / 4 }, { t: 'op', v: OP.add },
-               { t: 'num', v: bq / 4 }, { t: 'eq' }, { t: 'box' }],
+      render: _row(aq / 4, OP.add, bq / 4),
       answer: sum, skill: 'dec',
       near: [(aq + bq + 1) / 4, (aq + bq - 1) / 4,
              (aq + bq + 4) / 4, Math.abs(aq - bq) / 4]
@@ -338,8 +341,7 @@ var Maths = (function () {
   function genNeg(rand) {
     var a = _randInt(rand, 1, 9), b = _randInt(rand, 1, 12);
     return {
-      render: [{ t: 'num', v: a }, { t: 'op', v: OP.sub },
-               { t: 'num', v: b }, { t: 'eq' }, { t: 'box' }],
+      render: _row(a, OP.sub, b),
       answer: a - b, skill: 'neg',
       near: [b - a, a - b + 1, a - b - 1, a + b]
     };
@@ -410,21 +412,9 @@ var Maths = (function () {
     };
   }
 
-  function genSeqRule(rand) {
-    var step = _randInt(rand, 3, 9);
-    var start = _randInt(rand, 2, 20);
-    var gap = _randInt(rand, 1, 3);
-    var render = [], i;
-    for (i = 0; i < 5; i++) {
-      if (i > 0) { render.push({ t: 'sep' }); }
-      render.push(i === gap ? { t: 'box' } : { t: 'num', v: start + i * step });
-    }
-    var answer = start + gap * step;
-    return {
-      render: render, answer: answer, skill: 'seqRule',
-      near: [answer + step, answer - step, answer + 1, answer - 1]
-    };
-  }
+  var genSeqRule = makeLinSeq(
+    function (rand) { return _randInt(rand, 3, 9); },
+    function (rand) { return _randInt(rand, 2, 20); }, 'seqRule');
 
   _BANDS[7] = [genPct, genOrder, genRatio];
   _BANDS[8] = [genNeg, genSquare, genRoot, genEqn];
@@ -483,15 +473,11 @@ var Maths = (function () {
   // the defining property is untouched — the differences still grow by a
   // constant, now 2a rather than always 2.
   function genSeqQuad(rand) {
-    var a = _randInt(rand, 1, 3), c = _randInt(rand, 0, 12), render = [], i, v;
-    for (i = 1; i <= 5; i++) {
-      v = a * i * i + c;
-      if (i > 1) { render.push({ t: 'sep' }); }
-      render.push(i === 5 ? { t: 'box' } : { t: 'num', v: v });
-    }
-    var answer = 25 * a + c;
+    var a = _randInt(rand, 1, 3), c = _randInt(rand, 0, 12), vals = [], i;
+    for (i = 1; i <= 5; i++) { vals.push(a * i * i + c); }
+    var answer = vals[4];
     return {
-      render: render, answer: answer, skill: 'seqQuad',
+      render: _seqRow(vals, 4), answer: answer, skill: 'seqQuad',
       // Continued linearly, repeating the last difference (7a) instead of
       // growing it — that lands on answer − 2a, so the "off by two" pair that
       // used to sit beside it has become ±2a, which cannot collide with it.
@@ -533,17 +519,12 @@ var Maths = (function () {
     var r = _pick(rand, [2, 3]);
     var start = _randInt(rand, 2, 6);
     var gap = _randInt(rand, 2, 4);
-    var render = [], i, v;
-    for (i = 0; i < 5; i++) {
-      v = start * Math.pow(r, i);
-      if (i > 0) { render.push({ t: 'sep' }); }
-      render.push(i === gap ? { t: 'box' } : { t: 'num', v: v });
-    }
-    var answer = start * Math.pow(r, gap);
-    var prev = start * Math.pow(r, gap - 1);
-    var prevprev = start * Math.pow(r, gap - 2);
+    var vals = [], i;
+    for (i = 0; i < 5; i++) { vals.push(start * Math.pow(r, i)); }
+    // gap is 2..4, so the two terms before it are always in the row.
+    var answer = vals[gap], prev = vals[gap - 1], prevprev = vals[gap - 2];
     return {
-      render: render, answer: answer, skill: 'seqGeo',
+      render: _seqRow(vals, gap), answer: answer, skill: 'seqGeo',
       // Continued linearly from the two terms before the gap.
       near: [prev + (prev - prevprev), answer + r, answer - r, prev]
     };
@@ -565,11 +546,10 @@ var Maths = (function () {
   // Bands 1-8 cover ages 5-12; 9-11 carry the ladder to 16+ (see the over-12
   // spec). One constant, so the ceiling cannot disagree with itself.
   var MAX_BAND = 11;
+  function _clampBand(d) { return d < 1 ? 1 : (d > MAX_BAND ? MAX_BAND : d); }
 
   function newState(startBand) {
-    var d = typeof startBand === 'number' ? startBand : 1;
-    if (d < 1) { d = 1; }
-    if (d > MAX_BAND) { d = MAX_BAND; }
+    var d = _clampBand(typeof startBand === 'number' ? startBand : 1);
     // `home` is the band an adult chose for this child, and it is the single
     // most reliable thing the engine is ever told. Acceleration is allowed to
     // roam a few bands either side of it and no further; see update().
@@ -601,7 +581,7 @@ var Maths = (function () {
   function pickGenerator(band, state, rand) {
     var gens = _BANDS[band], skills = _skillIndex[band];
     var i, m, w, weights = [], total = 0, r;
-    if (rand() < 0.4) { return gens[_randInt(rand, 0, gens.length - 1)]; }
+    if (rand() < 0.4) { return _pick(rand, gens); }
     for (i = 0; i < gens.length; i++) {
       m = state.mastery[skills[i]] !== undefined
         ? state.mastery[skills[i]] : 0.5;
@@ -636,10 +616,10 @@ var Maths = (function () {
 
   // Acceleration: a plain random walk needs dozens of correct answers to
   // climb out of a band a misplaced child has clearly outgrown (12 fast
-  // answers in a row only reaches 2.20 from band 1). ACCEL_TRIGGER lets a
-  // few (3) fast-correct or wrong answers pass unaccelerated — that is
-  // ordinary good/bad play — before every further answer in the same
-  // direction jumps further than the last, up to ACCEL_CAP. Young bands
+  // answers in a row only reaches 2.20 from band 1). ACCEL_TRIGGER_UP/_DOWN let
+  // the first few fast-correct (3) or wrong (2) answers pass unaccelerated —
+  // that is ordinary good/bad play — before every further answer in the same
+  // direction jumps further than the last, up to ACCEL_CAP_UP/_DOWN. Young bands
   // (<=4) accelerate upward at full strength because their content is
   // thin and a capable child exhausts it fast; bands 5-11 hold real ground
   // that still rewards practice, so ACCEL_UP_OLD_RATIO damps the climb
@@ -674,9 +654,9 @@ var Maths = (function () {
   // row to climb back down. Seven failures is not a correction, it is a
   // reason to stop playing.
   //
-  // Capping the climb at 0.40 holds the largest up-step to half a band, so an
-  // unbroken hot streak still clears two bands in about seven answers — fast
-  // enough for the child who has plainly outgrown their level — but crossing
+  // Capping the climb at 0.25 holds the largest up-step to 0.35 of a band, so
+  // an unbroken hot streak still clears two bands in about eleven answers —
+  // fast enough for the child who has plainly outgrown their level — but crossing
   // the whole scale takes a sustained run rather than one lucky afternoon.
   // The fall keeps the old cap: an overshoot has to be cheaper to undo than
   // it was to make.
@@ -697,31 +677,57 @@ var Maths = (function () {
   // taps is a 1-in-16 event, and that used to be enough to arm the
   // accelerator. Weighting the streak by 1 - 1/choices means a child on
   // two-choice questions needs six good answers to start climbing fast, and a
-  // child on four-choice questions needs four.
+  // child on four-choice questions needs five.
   function evidence(choices) { return 1 - 1 / choices; }
 
   function accelExtra(streak, unit, cap, trigger) {
-    var extra;
-    if (streak <= trigger) { return 0; }
-    extra = unit * (streak - trigger);
-    return extra > cap ? cap : extra;
+    return Math.max(0, Math.min(cap, unit * (streak - trigger)));
   }
 
   function expectedMs(band) { return 2500 + 900 * band; }
 
   // A FIFA-style number for the stats card: difficulty 1 reads 47, the
   // ceiling reads 99. Display only - nothing in the engine reads it back.
+  // A synthetic learner of fixed ability on the 1-11 band scale: the chance
+  // of knowing an answer falls off as difficulty passes their ability, and
+  // whatever they do not know they guess from the choices on offer. Answers
+  // they know arrive at a plausible pace; ones they do not time out.
+  //
+  // Both test.js and maths-lab.html run this, and that is the point. A lab
+  // that modelled the learner differently from the suite would give a
+  // different answer to the same question, with no way to tell which was
+  // lying. Keeping it here also means neither has to re-type expectedMs.
+  //
+  // Returns where the learner settles, measured over the second half of the
+  // run only - the first half is the climb to their level.
+  function simulate(ability, n, rand, startBand) {
+    var s = newState(typeof startBand === 'number' ? startBand : 4);
+    var correct = 0, total = 0, sum = 0, i, known, choices, p, got, band, ms;
+    var minD = Infinity, maxD = -Infinity;
+    for (i = 0; i < n; i++) {
+      band = Math.round(s.difficulty);
+      known = 1 / (1 + Math.exp(1.6 * (s.difficulty - ability)));
+      choices = choiceCount(s.difficulty);
+      p = known + (1 - known) / choices;
+      got = rand() < p;
+      ms = got ? expectedMs(band) * (0.4 + rand() * 1.4) : 9000;
+      s = update(s, { correct: got, elapsedMs: ms, band: band, skill: 'x' });
+      if (s.difficulty < minD) { minD = s.difficulty; }
+      if (s.difficulty > maxD) { maxD = s.difficulty; }
+      if (i > n / 2) { total++; sum += s.difficulty; if (got) { correct++; } }
+    }
+    return { band: sum / total, accuracy: correct / total, minD: minD, maxD: maxD };
+  }
+
   function rating(difficulty) {
-    var d = (typeof difficulty === 'number' && isFinite(difficulty)) ? difficulty : 1;
-    if (d < 1) { d = 1; }
-    if (d > MAX_BAND) { d = MAX_BAND; }
+    var d = _clampBand((typeof difficulty === 'number' && isFinite(difficulty)) ? difficulty : 1);
     return Math.round(47 + (d - 1) * 52 / (MAX_BAND - 1));
   }
 
   function update(state, outcome) {
     var d = state.difficulty, step, exp = expectedMs(outcome.band);
     var fastStreak = state.fastStreak || 0, wrongStreak = state.wrongStreak || 0;
-    var home = typeof state.home === 'number' ? state.home : d;
+    var home = state.home;
     // Beyond a few bands from where an adult placed them, the climb loses its
     // accelerator. A hard ceiling would be wrong — advanced children and
     // mis-set ages are both real — so this only slows the ascent, it does not
@@ -749,9 +755,7 @@ var Maths = (function () {
       step = -DOWN - accelExtra(wrongStreak, ACCEL_DOWN, ACCEL_CAP_DOWN,
                                 ACCEL_TRIGGER_DOWN);
     }
-    d += step;
-    if (d < 1) { d = 1; }
-    if (d > MAX_BAND) { d = MAX_BAND; }
+    d = _clampBand(d + step);
 
     var mastery = {}, k;
     for (k in state.mastery) {
@@ -771,7 +775,7 @@ var Maths = (function () {
     make: make, update: update, newState: newState,
     choiceCount: choiceCount, buildChoices: buildChoices,
     _randInt: _randInt, _pick: _pick, _shuffle: _shuffle,
-    _BANDS: _BANDS, MAX_BAND: MAX_BAND, rating: rating
+    _BANDS: _BANDS, simulate: simulate, MAX_BAND: MAX_BAND, rating: rating
   };
 })();
 

@@ -70,7 +70,7 @@ var Tournament = (function () {
       next = [];
       for (i = 0; i < prev.length; i += 2) {
         a = prev[i]; b = prev[i + 1];
-        if (r >= played || !a || !b) { next.push(null); continue; }
+        if (r >= played) { next.push(null); continue; }
         w = (a.you || b.you) ? (a.you ? a : b) : (a.seed < b.seed ? a : b);
         (w === a ? b : a).out = true;
         next.push({ you: !!w.you, seed: w.seed, flag: w.flag });
@@ -88,18 +88,6 @@ var Tournament = (function () {
     for (i = 0; i < row.length; i++) { if (row[i] && row[i].you) { return i; } }
     return -1;
   }
-
-  // The child's opponent in each round, derived from the draw rather than
-  // listed beside it, so changing the draw cannot leave the two disagreeing.
-  var OPPONENTS = (function () {
-    var out = [], r, cols, at;
-    for (r = 0; r < ROUNDS; r++) {
-      cols = bracket(r);
-      at = youAt(cols, r);
-      out.push(cols[r][at ^ 1]);
-    }
-    return out;
-  })();
 
   // The lowest opponent strength an age band will accept.
   //
@@ -148,11 +136,6 @@ var Tournament = (function () {
     return floor + (capped / CAP) * (CAP - floor);
   }
 
-  function crestFor(index, avoid) {
-    var o = OPPONENTS[Math.max(0, Math.min(ROUNDS - 1, index))];
-    return (o.flag === avoid) ? { seed: o.seed, flag: RESERVE } : o;
-  }
-
   function roundIcon(i) {
     return ROUND_ICONS[Math.max(0, Math.min(ROUNDS - 1, i))];
   }
@@ -174,10 +157,8 @@ var Tournament = (function () {
 
   return {
     COUNT: ROUNDS, SLOTS: SLOTS, DRAW: DRAW, BY_SEED: BY_SEED, RESERVE: RESERVE,
-    SKILL: SKILL, ROUND_ICONS: ROUND_ICONS, OPPONENTS: OPPONENTS,
-    BAND_FLOOR: BAND_FLOOR,
     bracket: bracket, youAt: youAt, roundIcon: roundIcon,
-    skillFor: skillFor, skillFloor: skillFloor, crestFor: crestFor,
+    skillFor: skillFor, skillFloor: skillFloor,
     recordResult: recordResult, isComplete: isComplete
   };
 })();
