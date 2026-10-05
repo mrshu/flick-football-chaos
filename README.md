@@ -55,6 +55,18 @@ harder. First to three goals wins.
   the ball bigger, players smaller, or shots more powerful. These effects last
   one turn and can affect either team.
 
+### Shot feedback
+
+After your flick settles, a brief touchline note explains what happened:
+missed ball contact, a player hitting a defender, a ball off the post or
+wall, or a keeper stopping, deflecting or slowing an on-target shot.
+A keeper brush is described as a touch, rather than claiming a save.
+Useful advances are acknowledged too. A short aiming tip appears where
+helpful; repeating the same outcome does not repeat its advice.
+
+Feedback uses real collision evidence, never the CPU's planning previews.
+It does not interrupt play, and goals take precedence over the note.
+
 ### Earned bonuses
 
 With maths on, a correct answer earns a football advantage. The offer shows
@@ -185,9 +197,24 @@ existing tuned profiles. A younger team's first cup climbs through Levels
 still increase in difficulty and cap at Level 10. The draw, introduction,
 scoreboard and result show your rival's fictional captain, flag and level.
 
+Rivals also have a stable football style, introduced before kickoff and
+shown beside their level during play:
+
+| Style | What changes on the pitch |
+| --- | --- |
+| Direct attacker | Looks for a shot into the open corner and values goal proximity. |
+| Space builder | Tries softer diagonal advances to change the shooting lane, alongside direct finishes. |
+| Bank-shot specialist | Tries side-wall rebounds and direct shots, favoring useful flank setups when neither scores. |
+
+Styles change decisions while keeping the chosen level's aim, launch limit,
+keeper settings and shot-search budget. Every candidate uses ordinary
+physics; a genuine goal is preferred to a setup move. The same captain
+keeps their style across friendlies, cup rounds and reloads.
+
 For a single match, choose any level from 0 to 10 with the slider or step buttons.
-The same level always means the same football strength, independently of age,
-maths and cup progress. Level 0 has loose aim and a slow keeper for practice;
+The same level uses the same aim and keeper settings, independently of age,
+maths and cup progress; the rival's style determines its tactical choices.
+Level 0 has loose aim and a slow keeper for practice;
 even Level 10 has imperfect aiming and finite keeper speed.
 
 The local "Finding an opponent" introduction cycles through rival badges,
@@ -248,7 +275,7 @@ open index.html          # or: python3 -m http.server 8000
 Run the tests with Node — no framework, no dependencies:
 
 ```sh
-node test.js             # 49,832 checks, including bonuses, streaks and opponents
+node test.js             # 50,504 checks, including styles and shot feedback
 ```
 
 The suite is deliberately small for what it covers. It has been checked by
@@ -281,6 +308,8 @@ game.js         the game: physics, turns, AI, rendering, screens
 maths.js        question generators and the adaptive engine   (pure)
 tournament.js   the sixteen-team draw and its resolution      (pure)
 formation.js    kickoff layouts, keeper geometry, AI aiming   (pure)
+opponents.js    rival styles, shot intents and setup choices  (pure)
+shot-feedback.js real contact evidence and flick outcomes     (pure)
 bonuses.js      reward descriptions, contact guides, setup moves (pure)
 names.js        invented team names, and every country name   (pure)
 flags.js        the picker: continents sliced out of names.js  (pure)

@@ -48,6 +48,7 @@ var context = vm.createContext({
   window: { addEventListener: noop },
   document: { getElementById: el, addEventListener: noop, body: node() },
   Store: Store, Tournament: Tournament, Bonuses: require('./bonuses.js'),
+  Opponents: require('./opponents.js'), ShotFeedback: require('./shot-feedback.js'),
   Formation: require('./formation.js'), Maths: require('./maths.js'),
   Names: require('./names.js'), Flags: require('./flags.js'),
   Locker: require('./locker.js'),
@@ -82,6 +83,7 @@ function fixture(scene, round, season, band, profile) {
   game.slot = Store.emptySlot(); game.slot.band = band || 3;
   game.save = Store.emptyState(); game.save.slots[0] = game.slot;
   game.opponent = profile || Tournament.opponentFor(round || 0, season || 0, game.slot.band);
+  game.matchOpponent = null;
   game.aiSkill = game.opponent.skill;
   game.aiChoice = api.pickAiPlayer();
   game.plannedAiShot = null;
@@ -324,11 +326,55 @@ eq(game.humanTurns, 1, 'a restarted match begins with its first human turn');
 eq(game.nextQuestionTurn, 3, 'a restarted match resets the opening quiet period');
 eq(game.plannedAiShot, null, 'a restarted match discards a stale CPU plan');
 
+// Styles reach real shot decisions without secretly changing numeric level.
+// The low and high ends share identical scenes and candidate random streams.
+var styleCounts = {};
+var Opponents = require('./opponents.js');
+Object.keys(Opponents.STYLES).forEach(function (id) {
+  var scored = [];
+  [0, 10].forEach(function (level) {
+    var goals = 0, profile = Tournament.profileForLevel(level);
+    for (var scene = 0; scene < 8; scene++) {
+      for (var repetition = 0; repetition < 2; repetition++) {
+        fixture(scene, 0, 0, 3, profile);
+        game.matchOpponent = { name: 'Test rival', style: Opponents.STYLES[id] };
+        seed = 3000 + scene * 100 + repetition;
+        var planned = api.computeAiShot();
+        ok(simulationCalls() <= profile.shotAttempts, id + ' keeps the numeric level search budget');
+        ok(Math.hypot(planned.vx, planned.vy) <= 1500 + 1e-8, id + ' uses ordinary launch limits');
+        deep(game.opponent, profile, id + ' does not change level strength or keeper settings');
+        if (planned.preview.scores) goals++;
+      }
+    }
+    scored.push(goals);
+  });
+  ok(scored[1] > scored[0], id + ' level ten finds more real goals than practice');
+  styleCounts[id] = scored;
+
+  fixture(3, 0, 0, 3, Tournament.profileForLevel(0));
+  game.matchOpponent = { name: 'Test rival', style: Opponents.STYLES[id] };
+  var planned = api.computeAiShot();
+  eq(planned.intent, { direct: 'direct', builder: 'build', banker: 'bank' }[id],
+    id + ' changes its actual first candidate even at the smallest budget');
+  var preview = planned.preview;
+  game.plannedAiShot = planned; game.mathsOn = false;
+  api.aiLaunch();
+  for (var step = 0; step < Math.ceil(9 / (1 / 120)) && game.state === 'MOVING'; step++) {
+    api.physicsStep(1 / 120);
+    if (api.allStopped(api.movers)) break;
+  }
+  eq(game.score.ai > 0, preview.scores, id + ' planned goals agree with actual playback');
+  eq(game.score.human > 0, preview.ownGoal, id + ' own-goal prediction agrees with playback');
+  ok(Math.abs(game.ball.x - preview.ballX) < 1e-8 && Math.abs(game.ball.y - preview.ballY) < 1e-8,
+    id + ' settles exactly where the preview predicted');
+});
+
 if (require.main === module) {
   console.log('Opponent/pacing checks: ' + checks + ' passed.');
   console.log('Seeded cup goals: ' + counts.join('/') + ' of ' + (scenes * repetitions) +
     '; keeper central goals: ' + central.join('/') + ' of 32; close corners: ' + closeCorners + ' of 32.');
   console.log('Levels ' + scaleLevels.join('/') + ' goals: ' + scaleCounts.join('/') + ' of ' + scaleTotal +
     '; Level10 close corners: ' + eliteCloseCorners + ' of 24; central goals: ' + eliteCentral + ' of 24.');
+  console.log('Style goals at levels0/10: ' + JSON.stringify(styleCounts) + ' of16.');
 }
 module.exports = { checks: checks };

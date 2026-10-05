@@ -10,6 +10,7 @@
 // Pure: no DOM or game state. Friendly matchmaking accepts a random source;
 // cup opponents follow the seeded draw. The game reads `matchFor` to configure
 // a match, `bracket` to draw the tree, and calls `recordResult` at full time.
+var Opponents = (typeof Opponents !== 'undefined') ? Opponents : require('./opponents.js');
 var Tournament = (function () {
 
   var ROUNDS = 4;                  // 16 -> 8 -> 4 -> 2 -> 1
@@ -93,6 +94,7 @@ var Tournament = (function () {
       level = levelForCup(round, year, band);
       return {
         level: level, name: captainName(flag), flag: flag,
+        style: Opponents.styleFor(captainName(flag)),
         round: roundName(round), season: year + 1,
         profile: profileForLevel(level)
       };
@@ -109,6 +111,7 @@ var Tournament = (function () {
     flag = flags[index];
     return {
       level: level, name: captainName(flag), flag: flag, round: null, season: null,
+      style: Opponents.styleFor(captainName(flag)),
       profile: profileForLevel(level)
     };
   }

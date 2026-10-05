@@ -181,6 +181,8 @@ const game = {
   save: null, slot: null, aiSkill: 0.20,
   opponent: Tournament.opponentFor(0, 0),
   particles: [], lastHitSfx: 0,
+  shotRecord: null, shotPlayer: null, shotStartBall: null, shotBallTouched: false,
+  feedbackRemaining: 0, lastShotTip: null,
 };
 
 function init() {
@@ -250,6 +252,8 @@ function restart() {
   game.sinceChaos = 0;
   game.particles = [];
   game.lastScorer = null;
+  clearShotFeedback();
+  game.lastShotTip = null;
   clearModifier();
   resetPositions();
   Quiz.hide();
@@ -304,6 +308,37 @@ function setTurnMsg(text, team) {
 
 function rivalName() { return game.matchOpponent ? game.matchOpponent.name : 'Opponent'; }
 
+function rivalStyle() {
+  return game.matchOpponent && game.matchOpponent.style || Opponents.STYLES.direct;
+}
+
+// Feedback is a pitch-edge note. It never pauses a turn or changes physics.
+function clearShotFeedback() {
+  game.shotRecord = game.shotPlayer = game.shotStartBall = null;
+  game.shotBallTouched = false;
+  game.feedbackRemaining = 0;
+  el('shotFeedback').classList.add('hidden');
+}
+
+function finishShotFeedback() {
+  if (!game.shotRecord) return;
+  const feedback = ShotFeedback.result(game.shotRecord, {
+    startBall: game.shotStartBall, endBall: game.ball
+  });
+  game.shotRecord = game.shotPlayer = game.shotStartBall = null;
+  if (!feedback) return;
+  el('shotFeedbackIcon').textContent = feedback.icon;
+  el('shotFeedbackTitle').textContent = feedback.title;
+  // The outcome is always shown; a repeated tip stays quiet until something
+  // different happens, so learning feedback does not become another prompt.
+  const tip = feedback.tip && feedback.id !== game.lastShotTip ? feedback.tip : '';
+  el('shotFeedbackTip').textContent = tip;
+  el('shotFeedbackTip').classList.toggle('hidden', !tip);
+  game.lastShotTip = feedback.id;
+  game.feedbackRemaining = tip ? 4 : 2.8;
+  el('shotFeedback').classList.remove('hidden');
+}
+
 function levelLabel(level) {
   return 'Level ' + level + ' · ' + Tournament.LEVELS[level].name;
 }
@@ -320,6 +355,8 @@ function refreshOpponentHud() {
     el('hudFoeFlag').textContent = game.matchOpponent.flag;
     el('hudFoeName').textContent = game.matchOpponent.name;
     el('hudFoeLevel').textContent = 'Level ' + game.matchOpponent.level;
+    el('hudFoeStyle').textContent = { direct: 'Direct', builder: 'Build-up', banker: 'Bank shots' }[rivalStyle().id];
+    el('hudFoeStyle').title = rivalStyle().name + ' — ' + rivalStyle().hint;
     el('hudFoeName').title = game.matchOpponent.name + ' · ' + Names.country(game.matchOpponent.flag);
   }
 }
@@ -328,6 +365,7 @@ function refreshOpponentHud() {
 // while the child is reading it, and backing out leaves cup progress intact.
 function findOpponent() {
   el('hud').classList.add('hidden');
+  clearShotFeedback();
   clearModifier();
   Quiz.hide();
   overlay.classList.add('hidden');
@@ -350,6 +388,7 @@ function findOpponent() {
   el('matchFoeFlag').textContent = '?';
   el('matchFoeName').textContent = 'Searching…';
   el('matchFoeCountry').textContent = '';
+  el('matchStyle').classList.add('hidden');
   el('matchLevel').textContent = levelLabel(foe.level);
   el('matchHint').textContent = Tournament.LEVELS[foe.level].hint;
   el('matchSeason').textContent = seasonHint(foe);
@@ -399,6 +438,11 @@ function revealOpponent() {
   el('matchFoeFlag').textContent = foe.flag;
   el('matchFoeName').textContent = foe.name;
   el('matchFoeCountry').textContent = Names.country(foe.flag);
+  const style = rivalStyle();
+  el('matchStyleIcon').textContent = style.icon;
+  el('matchStyleName').textContent = style.name;
+  el('matchStyleHint').textContent = style.hint + ' ' + style.counterTip;
+  el('matchStyle').classList.remove('hidden');
   el('matchGo').disabled = false;
   el('matchStatus').textContent = foe.name + ' is ready to play';
   el('matchReveal').classList.add('hidden');
@@ -859,6 +903,7 @@ function startTurn(team) {
 
 function settle() {
   for (const o of movers) o.vx = o.vy = 0;
+  if (game.mover === 'human') finishShotFeedback();
   const again = game.mover === 'human' && game.extraFlicks > 0;
   clearModifier();
   if (again) {
@@ -874,6 +919,7 @@ function settle() {
 }
 
 function goalScored(scorer) {
+  clearShotFeedback(); // a real goal celebration takes precedence
   game.extraFlicks = 0; // either side's goal ends the opportunity
   addShake(SHAKE_MAX);
   game.trail.length = 0;
@@ -950,6 +996,8 @@ function gameOver(winner) {
   el('overOpponent').textContent = finishedOpponent
     ? finishedOpponent.flag + ' ' + finishedOpponent.name + ' · ' + levelLabel(finishedOpponent.level)
     : '';
+  el('overStyle').textContent = finishedOpponent && finishedOpponent.style
+    ? finishedOpponent.style.icon + ' ' + finishedOpponent.style.name : '';
   const cupNext = game.mode === 'cup' && !trophyWon;
   el('overNext').classList.toggle('hidden', !cupNext);
   if (cupNext) {
@@ -969,6 +1017,8 @@ function gameOver(winner) {
 }
 
 /* ---------- AI ---------- */
+const AI_GEOMETRY = { W, H, SIDE_L, SIDE_R, TOP_Y, BOT_Y, BACK_BOT,
+  MOUTH_L, MOUTH_R, BALL_R, WALL_REST };
 // Shooter selection is angle-aware (Formation.chooseShooter): it scores each
 // CPU player by whether hitting the ball from their position would actually
 // send it goalward, not just by raw distance.
@@ -980,19 +1030,22 @@ function pickAiPlayer() {
 // Each candidate is an ordinary, imperfect flick toward the open goal corner.
 // A stronger opponent gets more chances to notice a blocked or poorly aimed
 // candidate before committing. It cannot exceed the human's launch power.
-function candidateAiShot() {
+function candidateAiShot(attempt) {
   const p = game.aiChoice;
   const b = game.ball;
   const keeper = humanKeeper;   // defends the goal the CPU shoots at
-  const margin = KEEPER_R + 4 + Math.random() * 18;
+  const style = game.matchOpponent && game.matchOpponent.style;
+  const intent = style ? Opponents.shotIntent(style.id, b, keeper,
+    { ...AI_GEOMETRY, BALL_R: b.r }, attempt || 0, Math.random) : null;
+  const margin = intent ? 0 : KEEPER_R + 4 + Math.random() * 18;
   // Keepers no longer drift on their own, so always shooting at the corner
   // furthest from this one would mean scoring in the same unguarded spot every
   // single time. Go for the open side most of the time, but not always, and
   // not always to the same depth.
-  const targetX = Math.random() < 0.75
+  const targetX = intent ? intent.x : Math.random() < 0.75
     ? Formation.farCorner(keeper.x, MOUTH_L, MOUTH_R, margin)
     : MOUTH_L + margin + Math.random() * (MOUTH_R - MOUTH_L - 2 * margin);
-  let dx = targetX - b.x, dy = BACK_BOT - b.y;
+  let dx = targetX - b.x, dy = (intent ? intent.y : BACK_BOT) - b.y;
   const dl = Math.hypot(dx, dy) || 1;
   dx /= dl; dy /= dl;
   // contact point slightly behind the ball so the hit pushes it goalward
@@ -1005,20 +1058,28 @@ function candidateAiShot() {
   ang += (Math.random() * 2 - 1) * (0.24 - 0.19 * sk);
   const dist = Math.hypot(tx - p.x, ty - p.y);
   const power = Math.min(1, 0.6 + dist / 720 + Math.random() * (0.28 - 0.24 * sk));
-  const sp = power * MAX_LAUNCH * game.powerMult;
-  return { player: p, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp };
+  const scale = intent ? intent.powerScale : 1;
+  // A builder can tap the ball into space without reducing a distant player's
+  // launch below the speed needed to reach the contact point at all.
+  const contactPower = Math.min(power, (dist * 1.2 + 90) / MAX_LAUNCH);
+  const sp = Math.max(contactPower, power * scale) * MAX_LAUNCH * game.powerMult;
+  return { player: p, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp,
+    intent: intent ? intent.kind : 'direct' };
 }
 
 function computeAiShot() {
   let best = null, bestValue = -Infinity;
   for (let i = 0; i < game.opponent.shotAttempts; i++) {
-    const shot = candidateAiShot();
+    const shot = candidateAiShot(i);
     const preview = simulateAiShot(shot);
     shot.preview = preview;
     if (preview.scores) { return shot; }
     // Prefer useful settled field position over a brief advance that rebounds
     // back into danger. An own goal is worse than any non-scoring alternative.
-    const value = preview.ownGoal ? -Infinity : -Math.hypot(preview.ballX - W / 2, BOT_Y - preview.ballY);
+    const style = game.matchOpponent && game.matchOpponent.style;
+    const value = preview.ownGoal ? -Infinity : style
+      ? Opponents.positionValue(style.id, preview, AI_GEOMETRY)
+      : -Math.hypot(preview.ballX - W / 2, BOT_Y - preview.ballY);
     if (best === null || value > bestValue) { best = shot; bestValue = value; }
   }
   return best;
@@ -1037,7 +1098,8 @@ function commitAiShot(shot) {
   game.state = 'MOVING';
   game.aiChoice = null;
   game.plannedAiShot = null;
-  setTurnMsg(rivalName() + ' shoots!', 'ai');
+  setTurnMsg(rivalName() + (shot.intent === 'build' ? ' builds an attack!' :
+    shot.intent === 'bank' ? ' tries a bank shot!' : ' shoots!'), 'ai');
   SFX.launch();
 }
 
@@ -1058,6 +1120,29 @@ function aiLaunch() {
 }
 
 /* ---------- physics ---------- */
+// Only the real human flick writes evidence. CPU search and earned-save
+// previews use these same collision functions on clones without producing
+// feedback, consuming a tip, or touching the active ledger.
+function recordShotContact(body, other, impact, beforeBall, strikeSpeed) {
+  if (simActive || game.state !== 'MOVING' || game.mover !== 'human' || !game.shotRecord || impact <= 0) return;
+  const actor = body === game.ball ? 'ball' : body === game.shotPlayer ? 'shooter' : null;
+  if (!actor) return;
+  if (actor === 'ball' && (!game.shotBallTouched || other && other.team === 'human' && strikeSpeed > STOP_SPEED)) {
+    ShotFeedback.contact(game.shotRecord, { kind: 'ball', actor, speed: impact });
+    game.shotBallTouched = true;
+  }
+  const kind = other === 'wall' ? 'wall' : other === aiKeeper ? 'keeper' :
+    game.posts.includes(other) ? 'post' : other && other.team === 'ai' ? 'defender' : null;
+  if (!kind) return;
+  const event = { kind, actor, speed: impact, beforeBall,
+    afterBall: { vx: game.ball.vx, vy: game.ball.vy } };
+  if (actor === 'ball' && beforeBall && beforeBall.vy < -1e-6 && beforeBall.y + body.r >= TOP_Y) {
+    const crossing = beforeBall.x + beforeBall.vx * (TOP_Y - beforeBall.y) / beforeBall.vy;
+    event.onTarget = crossing >= MOUTH_L + body.r && crossing <= MOUTH_R - body.r;
+  }
+  ShotFeedback.contact(game.shotRecord, event);
+}
+
 function collideCircles(a, b) {
   const invSum = a.invM + b.invM;
   if (invSum === 0) return;
@@ -1067,6 +1152,11 @@ function collideCircles(a, b) {
   if (d >= minD) return;
   if (d < 1e-4) { d = 1e-4; dx = d; dy = 0; }    // perfectly stacked: push apart along +x
   const nx = dx / d, ny = dy / d;
+  const beforeBall = !simActive && game.shotRecord && (a === game.ball || b === game.ball)
+    ? { x: game.ball.x, y: game.ball.y, vx: game.ball.vx, vy: game.ball.vy } : null;
+  // A ball rebounding into a stationary teammate is still the same attempt.
+  // Use the teammate's motion before the impulse to identify a new strike.
+  const strikeSpeed = a === game.ball ? -(b.vx * nx + b.vy * ny) : a.vx * nx + a.vy * ny;
   const overlap = minD - d;
   a.x -= nx * overlap * (a.invM / invSum);
   a.y -= ny * overlap * (a.invM / invSum);
@@ -1077,6 +1167,8 @@ function collideCircles(a, b) {
   const j = -(1 + BODY_REST) * velN / invSum;
   a.vx -= j * nx * a.invM; a.vy -= j * ny * a.invM;
   b.vx += j * nx * b.invM; b.vy += j * ny * b.invM;
+  recordShotContact(a, b, -velN, beforeBall, strikeSpeed);
+  recordShotContact(b, a, -velN, beforeBall, strikeSpeed);
   hitSfx(-velN);
 }
 
@@ -1099,8 +1191,16 @@ function hitSfx(impact) {
 // isBall is passed in rather than compared against game.ball so the same
 // function works unchanged on simulateAiShot's cloned ball.
 function walls(o, isBall) {
-  if (o.x - o.r < SIDE_L) { o.x = SIDE_L + o.r; o.vx = Math.abs(o.vx) * WALL_REST; hitSfx(Math.abs(o.vx)); }
-  if (o.x + o.r > SIDE_R) { o.x = SIDE_R - o.r; o.vx = -Math.abs(o.vx) * WALL_REST; hitSfx(Math.abs(o.vx)); }
+  if (o.x - o.r < SIDE_L) {
+    const impact = -o.vx;
+    o.x = SIDE_L + o.r; o.vx = Math.abs(o.vx) * WALL_REST;
+    recordShotContact(o, 'wall', impact); hitSfx(Math.abs(o.vx));
+  }
+  if (o.x + o.r > SIDE_R) {
+    const impact = o.vx;
+    o.x = SIDE_R - o.r; o.vx = -Math.abs(o.vx) * WALL_REST;
+    recordShotContact(o, 'wall', impact); hitSfx(Math.abs(o.vx));
+  }
   if (isBall && o.x > MOUTH_L + 4 && o.x < MOUTH_R - 4) {
     // ball may pass the goal line; keep it inside the net box
     if (o.y < TOP_Y || o.y > BOT_Y) {
@@ -1110,8 +1210,16 @@ function walls(o, isBall) {
     if (o.y - o.r < BACK_TOP) { o.y = BACK_TOP + o.r; o.vy = Math.abs(o.vy) * WALL_REST; }
     if (o.y + o.r > BACK_BOT) { o.y = BACK_BOT - o.r; o.vy = -Math.abs(o.vy) * WALL_REST; }
   } else {
-    if (o.y - o.r < TOP_Y) { o.y = TOP_Y + o.r; o.vy = Math.abs(o.vy) * WALL_REST; hitSfx(Math.abs(o.vy)); }
-    if (o.y + o.r > BOT_Y) { o.y = BOT_Y - o.r; o.vy = -Math.abs(o.vy) * WALL_REST; hitSfx(Math.abs(o.vy)); }
+    if (o.y - o.r < TOP_Y) {
+      const impact = -o.vy;
+      o.y = TOP_Y + o.r; o.vy = Math.abs(o.vy) * WALL_REST;
+      recordShotContact(o, 'wall', impact); hitSfx(Math.abs(o.vy));
+    }
+    if (o.y + o.r > BOT_Y) {
+      const impact = o.vy;
+      o.y = BOT_Y - o.r; o.vy = -Math.abs(o.vy) * WALL_REST;
+      recordShotContact(o, 'wall', impact); hitSfx(Math.abs(o.vy));
+    }
   }
 }
 
@@ -1284,6 +1392,10 @@ function endDrag(e) {
   const len = Math.hypot(dx, dy);
   if (len < MIN_DRAG) return;   // too gentle: cancel, keep aiming
   const sp = Math.min(len / MAX_DRAG, 1) * MAX_LAUNCH * game.powerMult;
+  clearShotFeedback();
+  game.shotRecord = ShotFeedback.create();
+  game.shotPlayer = player;
+  game.shotStartBall = { x: game.ball.x, y: game.ball.y };
   player.vx = (dx / len) * sp;
   player.vy = (dy / len) * sp;
   game.keeperDive = null;
@@ -1291,7 +1403,7 @@ function endDrag(e) {
   game.moveTime = 0;
   game.state = 'MOVING';
   consumeStreakPowers(player);
-  setTurnMsg('Nice flick!', 'human');
+  setTurnMsg('Your flick is in play', 'human');
   SFX.launch();
 }
 canvas.addEventListener('pointerup', endDrag);
@@ -1341,6 +1453,7 @@ el('bracketBack').addEventListener('click', () => {
 // into.
 function goHome() {
   game.state = 'START';
+  clearShotFeedback();
   el('hud').classList.add('hidden');
   game.matchReady = false;
   el('matchmaking').classList.add('hidden');
@@ -1692,6 +1805,8 @@ function showBracket(played) {
   el('tieLevel').textContent = next ? levelLabel(next.level) : '';
   el('tieLevel').classList.toggle('hidden', !next);
   el('tieChallenge').textContent = next ? Tournament.LEVELS[next.level].hint : '';
+  el('tieStyle').textContent = next ? next.style.icon + ' ' + next.style.name + ' — ' + next.style.hint : '';
+  el('tieStyle').classList.toggle('hidden', !next);
   el('tieSeason').textContent = seasonHint(next);
 
   tree.innerHTML = '';
@@ -2571,6 +2686,10 @@ function frame(now) {
   let dt = (now - last) / 1000;
   last = now;
   if (dt > 0.1) dt = 0.1;
+  if (game.feedbackRemaining > 0) {
+    game.feedbackRemaining = Math.max(0, game.feedbackRemaining - dt);
+    if (game.feedbackRemaining === 0) el('shotFeedback').classList.add('hidden');
+  }
 
   if (game.state === 'MATCHMAKING') {
     if (!game.matchReady) updateOpponentSearch(dt);

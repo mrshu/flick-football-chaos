@@ -67,7 +67,7 @@
     <span id="turnMsg" class="human">Your turn</span>
     <span class="team red">
       <span class="teamIdentity"><span id="hudFoeFlag">⚽</span><span id="hudFoeName">Opponent</span></span>
-      <span class="teamScore"><b id="scoreAi">0</b><small id="hudFoeLevel">Level 1</small></span>
+      <span class="teamScore"><b id="scoreAi">0</b><span class="rivalRating"><small id="hudFoeLevel">Level 2</small><small id="hudFoeStyle"></small></span></span>
     </span>
   </header>
 
@@ -107,6 +107,10 @@
         </div>
         <p class="levelBadge" id="matchLevel"></p>
         <p id="matchHint"></p>
+        <div id="matchStyle" class="opponentStyle hidden">
+          <span id="matchStyleIcon" aria-hidden="true"></span>
+          <div class="opponentStyleCopy"><b id="matchStyleName"></b><p id="matchStyleHint"></p></div>
+        </div>
         <p id="matchSeason"></p>
         <p id="matchStatus">Scouting the opposition…</p>
         <div id="matchSearch" aria-hidden="true"><span>⚽</span></div>
@@ -215,6 +219,7 @@
         </div>
         <p class="levelBadge" id="tieLevel"></p>
         <p id="tieChallenge"></p>
+        <p id="tieStyle" class="opponentStyleCue"></p>
         <p id="tieSeason"></p>
         <div id="bracketButtons">
           <button id="bracketBack" type="button" aria-label="Back">&#8592;</button>
@@ -230,6 +235,7 @@
         <h1 id="overTitle"></h1>
         <p id="overSub"></p>
         <p id="overOpponent"></p>
+        <p id="overStyle" class="opponentStyleCue"></p>
         <p id="overNext" class="hidden"></p>
         <div id="overUnlocks" class="hidden">
           <p class="caption">Unlocked!</p>
@@ -240,15 +246,23 @@
     </div>
   </div>
 
-  <footer id="hint">Drag a blue player back &amp; release to flick &mdash; first to 3 goals wins!</footer>
+  <footer id="hint">
+    <span id="hintText">Drag a blue player back &amp; release to flick &mdash; first to 3 goals wins!</span>
+    <div id="shotFeedback" class="hidden" role="status" aria-live="polite" aria-atomic="true">
+      <span id="shotFeedbackIcon" aria-hidden="true"></span>
+      <div class="shotFeedbackCopy"><strong id="shotFeedbackTitle"></strong><span id="shotFeedbackTip"></span></div>
+    </div>
+  </footer>
 </div>
 <script src="maths.js"></script>
 <script src="names.js"></script>
+<script src="opponents.js"></script>
 <script src="tournament.js"></script>
 <script src="flags.js"></script>
 <script src="store.js"></script>
 <script src="locker.js"></script>
 <script src="bonuses.js"></script>
+<script src="shot-feedback.js"></script>
 <script src="quiz.js"></script>
 <script src="formation.js"></script>
 <script src="game.js"></script>

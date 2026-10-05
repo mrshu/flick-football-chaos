@@ -2366,4 +2366,6 @@ checks += require('./test-streak-rewards.js').checks;
 checks += require('./test-game-streaks.js').checks;
 checks += require('./test-opponent-levels.js').checks;
 checks += require('./test-game-matchmaking.js').checks;
+checks += require('./test-opponent-styles.js').checks;
+checks += require('./test-shot-feedback.js').checks;
 done();

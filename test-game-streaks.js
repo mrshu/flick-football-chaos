@@ -68,6 +68,7 @@ var context = vm.createContext({
   window: { addEventListener: noop },
   document: { getElementById: el, addEventListener: noop, body: node() },
   Bonuses: Bonuses, Store: Store, Tournament: Tournament,
+  Opponents: require('./opponents.js'), ShotFeedback: require('./shot-feedback.js'),
   Formation: require('./formation.js'), Maths: require('./maths.js'),
   Names: require('./names.js'), Flags: require('./flags.js'), Locker: require('./locker.js'),
   Quiz: {

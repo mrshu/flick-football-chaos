@@ -99,6 +99,7 @@ var context = vm.createContext({
   window: { addEventListener: noop, matchMedia: function () { return { matches: reducedMotion }; } },
   document: { getElementById: el, createElement: node, addEventListener: noop, body: node() },
   Store: Store, Tournament: Tournament, Bonuses: require('./bonuses.js'),
+  Opponents: require('./opponents.js'), ShotFeedback: require('./shot-feedback.js'),
   Formation: require('./formation.js'), Maths: require('./maths.js'),
   Names: require('./names.js'), Flags: require('./flags.js'), Locker: require('./locker.js'),
   Quiz: { show: noop, hide: noop }
@@ -108,7 +109,8 @@ var boot = source.indexOf('/* ---------- boot ---------- */');
 assert.ok(boot > 0, 'game boot marker exists');
 vm.runInContext(source.slice(0, boot), context, { filename: 'game.js' });
 var api = vm.runInContext('({ game, init, clearModifier, configureOpponent, findOpponent, ' +
-  'revealOpponent, startPlaying, paintCup, showBracket, goalScored, afterGoal, frame })', context);
+  'revealOpponent, startPlaying, paintCup, showBracket, goalScored, afterGoal, frame, ' +
+  'collideCircles, settle, simulateAiShot, physicsStep, allStopped, get movers() { return movers; } })', context);
 // Keep the frame's real state transitions while avoiding irrelevant pitch art.
 vm.runInContext('draw = function () {};', context);
 var game = api.game, frameTime = 1000;
@@ -193,7 +195,11 @@ for (var level = 0; level <= 10; level++) {
   eq(game.turnCount, 0, 'the reveal starts no football turns');
   eq(game.kickoffAt, 0, 'the reveal starts no match timer');
   ok(el('streakHud').classList.contains('hidden'), 'maths streak HUD is hidden while finding a rival');
+  ok(el('matchStyle').classList.contains('hidden'), 'scouting does not reveal the chosen style early');
   kickoff();
+  eq(el('matchStyleName').textContent, revealed.style.name, 'the reveal explains its real style');
+  ok(!el('matchStyle').classList.contains('hidden'), 'the style appears with the actual rival');
+  ok(el('hudFoeStyle').title.includes(revealed.style.name), 'the HUD retains the actual style');
   eq(game.matchOpponent, revealed, 'kickoff preserves the exact revealed opponent object');
   eq(game.opponent, revealed.profile, 'kickoff launches the revealed football profile');
   eq(game.aiSkill, revealed.profile.skill, 'aiming uses the selected football profile');
@@ -441,6 +447,132 @@ eq(game.matchOpponent, finished, 'the champion draw does not overwrite the final
 el('roundGo').dispatch('click');
 eq(game.state, 'START', 'the champion button goes home instead of starting another cup');
 eq(game.slot.stats.matches, 1, 'the final is recorded as exactly one completed match');
+
+// Exercise the collision hooks with an actual pointer-launched human flick.
+// Use ordinary radii and no active rewards so each contact is unambiguous.
+function beginFeedbackShot() {
+  fixture(); game.mathsOn = false;
+  api.findOpponent(); kickoff();
+  var player = game.players[1];
+  player.x = 300; player.y = 620;
+  pointer('pointerdown', player.x, player.y);
+  pointer('pointermove', player.x, player.y + 60);
+  pointer('pointerup', player.x, player.y + 60);
+  eq(game.state, 'MOVING', 'a real flick starts the feedback ledger');
+  ok(game.shotRecord, 'feedback is armed only after a valid launch');
+  return player;
+}
+function strikeBall(player) {
+  player.x = 300; player.y = 480; player.vx = 0; player.vy = -600;
+  game.ball.x = 300; game.ball.y = 450; game.ball.vx = game.ball.vy = 0;
+  api.collideCircles(player, game.ball);
+}
+function noteAfterSettle(expected) {
+  api.settle();
+  eq(el('shotFeedbackTitle').textContent, expected, 'real shot outcome is reported accurately');
+  ok(!el('shotFeedback').classList.contains('hidden'), 'the outcome note is visible');
+  eq(game.state, 'AI_WAIT', 'feedback leaves the normal opponent turn intact');
+  eq(game.shotRecord, null, 'settlement closes the ledger before opponent planning');
+}
+
+var feedbackPlayer = beginFeedbackShot();
+api.physicsStep(1 / 120);
+noteAfterSettle('Missed the ball');
+var firstTip = el('shotFeedbackTip').textContent;
+ok(firstTip.length > 0, 'a missed flick gets a short useful tip');
+// Another same-outcome flick reports the outcome without repeating its tip.
+game.state = 'HUMAN_AIM';
+attemptFlick(); api.settle();
+eq(el('shotFeedbackTitle').textContent, 'Missed the ball', 'a repeated miss still explains the outcome');
+eq(el('shotFeedbackTip').textContent, '', 'identical advice does not repeat every turn');
+advance(45);
+ok(el('shotFeedback').classList.contains('hidden'), 'the outcome note expires without input');
+
+feedbackPlayer = beginFeedbackShot();
+strikeBall(feedbackPlayer);
+var ledgerBefore = JSON.stringify(game.shotRecord);
+api.simulateAiShot({ player: game.players[4], vx: 0, vy: 1000 });
+eq(JSON.stringify(game.shotRecord), ledgerBefore, 'lookahead never creates human feedback evidence');
+var keeper = game.keepers[0];
+keeper.x = 300; keeper.y = 98; keeper.vx = keeper.vy = 0;
+game.ball.x = 300; game.ball.y = 130; game.ball.vx = 0; game.ball.vy = -600;
+api.collideCircles(keeper, game.ball);
+noteAfterSettle('Keeper stopped the shot');
+
+feedbackPlayer = beginFeedbackShot();
+strikeBall(feedbackPlayer);
+var post = vm.runInContext('game.posts[0]', context);
+game.ball.x = post.x + 13; game.ball.y = post.y + 10;
+game.ball.vx = -300; game.ball.vy = -300;
+api.collideCircles(game.ball, post);
+noteAfterSettle('Off the post');
+
+// A stationary blue teammate struck by a ricochet is not a new attempt.
+feedbackPlayer = beginFeedbackShot();
+strikeBall(feedbackPlayer);
+post = vm.runInContext('game.posts[0]', context);
+game.ball.x = post.x + 13; game.ball.y = post.y + 10;
+game.ball.vx = -300; game.ball.vy = -300;
+api.collideCircles(game.ball, post);
+var teammate = game.players[0];
+teammate.x = 300; teammate.y = 600; teammate.vx = teammate.vy = 0;
+game.ball.x = 300; game.ball.y = 568; game.ball.vx = 0; game.ball.vy = 600;
+api.collideCircles(teammate, game.ball);
+noteAfterSettle('Off the post');
+
+// A moving teammate can make a genuine fresh strike after a ricochet.
+feedbackPlayer = beginFeedbackShot(); strikeBall(feedbackPlayer);
+post = vm.runInContext('game.posts[0]', context);
+game.ball.x = post.x + 13; game.ball.y = post.y + 10;
+game.ball.vx = -300; game.ball.vy = -300;
+api.collideCircles(game.ball, post);
+teammate = game.players[0]; teammate.x = 300; teammate.y = 600;
+teammate.vx = 0; teammate.vy = -500;
+game.ball.x = 300; game.ball.y = 568; game.ball.vx = game.ball.vy = 0;
+api.collideCircles(teammate, game.ball);
+noteAfterSettle('Ball in play');
+
+// Judge the incoming heading before overlap separation moves the ball.
+feedbackPlayer = beginFeedbackShot(); strikeBall(feedbackPlayer);
+keeper = game.keepers[0]; keeper.x = 196; keeper.y = 105;
+keeper.vx = keeper.vy = 0;
+game.ball.x = 216; game.ball.y = 130; game.ball.vx = 0; game.ball.vy = -600;
+api.collideCircles(keeper, game.ball);
+ok(game.ball.x > 218, 'the actual collision correction can move the ball across the safe-mouth boundary');
+noteAfterSettle('Keeper got a touch');
+eq(el('shotFeedbackTip').textContent, '', 'an off-target keeper touch gives no speculative save advice');
+
+feedbackPlayer = beginFeedbackShot();
+feedbackPlayer.x = 300; feedbackPlayer.y = 480; feedbackPlayer.vx = 0; feedbackPlayer.vy = -20;
+game.ball.x = 300; game.ball.y = 450; game.ball.vx = game.ball.vy = 0;
+api.collideCircles(feedbackPlayer, game.ball);
+noteAfterSettle('Ball in play');
+
+feedbackPlayer = beginFeedbackShot();
+var defender = game.players[4];
+feedbackPlayer.x = 300; feedbackPlayer.y = 600;
+feedbackPlayer.vx = 0; feedbackPlayer.vy = -600;
+defender.x = 300; defender.y = 554; defender.vx = defender.vy = 0;
+api.collideCircles(feedbackPlayer, defender);
+api.settle();
+eq(el('shotFeedbackTitle').textContent, 'Player hit a defender', 'a red player obstructing the striker is explained');
+
+feedbackPlayer = beginFeedbackShot();
+strikeBall(feedbackPlayer);
+api.goalScored('human');
+ok(el('shotFeedback').classList.contains('hidden'), 'a goal takes precedence over shot feedback');
+eq(game.shotRecord, null, 'scoring clears stale collision evidence');
+api.afterGoal();
+ok(el('shotFeedback').classList.contains('hidden'), 'the next kickoff does not reveal stale feedback');
+feedbackPlayer = beginFeedbackShot();
+el('matchBack').dispatch('click');
+eq(game.shotRecord, null, 'going home discards an unfinished feedback ledger');
+
+fixture('cup', 1); api.showBracket();
+ok(el('tieStyle').textContent.includes(Tournament.matchFor('cup', 2, game.slot.cup, 3, game.slot.emoji).style.name),
+  'the cup preview explains the next rival style');
+api.findOpponent(); kickoff(); finish('human');
+ok(el('overStyle').textContent.includes(game.matchOpponent.style.name), 'the result keeps the completed rival style');
 
 if (require.main === module) console.log(checks + ' matchmaking checks, 0 failures');
 module.exports = { checks: checks };
